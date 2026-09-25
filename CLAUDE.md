@@ -1,38 +1,17 @@
-# Bouldering Coaching
+# VSWebsite
 
-A personal site for a bouldering coach. The coach (admin) signs in to manage students and write their training plans. Each student signs in to see only their own plans and leave notes on sessions.
+A personal website that holds several small apps. Each app is its own folder with its own `index.html` and its own `CLAUDE.md`. The root `index.html` is a home page with one card per app.
 
-## How it's built
+## Apps
 
-- One page: `index.html`, with HTML, CSS and plain JavaScript inline. No build step. supabase-js v2 comes from jsDelivr, fonts from Google Fonts.
-- Backend: Supabase (auth + Postgres). `supabase/schema.sql` creates everything. Setup steps are in `SETUP.md`. `CONFIG` at the top of the script holds the project URL and publishable key.
-- **Security is in the database, not the page.** Row-level security in `schema.sql` decides what each user can read or write. Any new table needs RLS and policies. The page never holds the secret key.
-- Serve it over http (`npx serve .`), since sign-in links need a real address.
-
-## Accounts
-
-- Coach = an email in `public.admins` (no API access to that table). `is_admin()` checks the signed-in email.
-- Students are invited: the coach adds a row to `students`, and the page calls `signInWithOtp` to email a link. The `gate_signup` trigger on `auth.users` refuses any sign-up whose email isn't in `students` or `admins`, so sign-ups can stay enabled.
-- Links go through `mailer`, a second client with no stored session, so sending one never touches the coach's session. Both clients use the implicit flow, so a link works on any device.
-- Links redirect to `?setpw=1`. After sign-in, `claim_student()` links the account to the student row (`students.user_id`). A student without `user_metadata.password_set` is sent to "Choose a Password".
-
-## Data
-
-- `students(id, name, email, goal, user_id)`
-- `plans(id, student_id, title, overview, start_date, active)`: `active` = current plan. A student with exactly one current plan sees it straight away.
-- `sessions(id, plan_id, week, position, title, details, exercises)`: `exercises` is JSON `[{name, sets, reps, rest, notes}]`.
-- `notes(id, session_id, author_id, from_coach, body)`: students can add and delete their own. The coach can do anything.
-
-## Pages (hash routes, `route()`)
-
-- Coach: `#/` students + add student + latest student notes; `#/student/<id>` details, plans, account; `#/plan/<id>` plan editor.
-- Student: `#/` their current plan (or a list); `#/plan/<id>` one plan.
-- The plan editor keeps a `draft` and saves on **Save Plan** (upserts sessions, deletes removed ones). Session ids are made in the browser so notes stay attached. `dirty` drives the leave check (`onHashChange`, `beforeunload`, Sign Out). **Student View** previews the draft.
+- `coaching/`: bouldering coaching. The coach manages students and plans; students sign in to see only their own. Uses Supabase. See `coaching/CLAUDE.md` and `coaching/SETUP.md`.
 
 ## Conventions
 
-- Colors are tokens on `:root`, with dark mode under `prefers-color-scheme` and `[data-theme]`. Don't hard-code colors.
-- Fonts: Space Grotesk for headings, Inter for body text.
-- Must work at phone width (~400px). Exercise tables become stacked cards under 600px.
-- Buttons, headings and labels use title case; hints and messages use sentence case.
-- Confirmations use `ask()` (one `<dialog>`), which settles on submit.
+- Static files only, with no build step. The whole repo root is published as is (Netlify, publish directory `.`).
+- Adding an app: create a folder with an `index.html`, then add a card for it on the root `index.html`.
+- Apps link with relative paths (`coaching/`, not `/coaching/`), so the site works on a Netlify address or a custom domain.
+- Apps that need a backend can share one Supabase project. Give each app's tables a name that won't clash (the coaching tables are `students`, `plans`, `sessions`, `notes`, `admins`), and keep row-level security on every table.
+- Shared look: tokens on `:root` with a dark theme, Space Grotesk headings, Inter body text, and a layout that works at about 400px wide.
+- Buttons, headings and labels use title case. Hints and messages use sentence case.
+- Never commit secret keys. A Supabase publishable (anon) key is fine to commit.

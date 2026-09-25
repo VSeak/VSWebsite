@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bouldering Coaching</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #F4F1EC; --card: #FFFFFF; --field: #FFFFFF; --ink: #1F1D1A; --muted: #6B665E;
+  --line: #E2DDD4; --accent: #C0503A; --accent-ink: #FFFFFF; --soft: #F8E6DF;
+  --danger: #B42318; --warn: #9A5B00; --ok: #2F7D4F; --shadow: 0 1px 2px rgba(31,29,26,.06);
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161412; --card: #211E1B; --field: #1A1816; --ink: #EEE9E2; --muted: #A39C91;
+    --line: #36312C; --accent: #E27458; --accent-ink: #1A0E0A; --soft: #3A2620;
+    --danger: #F2856F; --warn: #E3AE5A; --ok: #74C295; --shadow: none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161412; --card: #211E1B; --field: #1A1816; --ink: #EEE9E2; --muted: #A39C91;
+  --line: #36312C; --accent: #E27458; --accent-ink: #1A0E0A; --soft: #3A2620;
+  --danger: #F2856F; --warn: #E3AE5A; --ok: #74C295; --shadow: none;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, sans-serif; }
+h1, h2, h3 { font-family: "Space Grotesk", Inter, sans-serif; line-height: 1.2; margin: 0 0 .5rem; }
+h1 { font-size: 1.8rem; } h2 { font-size: 1.2rem; } h3 { font-size: 1.05rem; }
+a { color: var(--accent); }
+p { margin: 0 0 .75rem; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .8rem 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+.brand { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; }
+.who { display: flex; align-items: center; gap: .75rem; color: var(--muted); font-size: .9rem; }
+main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem; box-shadow: var(--shadow); }
+.card + .card, .stack > * + * { margin-top: .9rem; }
+.narrow { max-width: 420px; margin: 2rem auto; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+.row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.between { justify-content: space-between; }
+.end { justify-content: flex-end; }
+.grow { flex: 1; min-width: 180px; }
+.muted { color: var(--muted); }
+.hint { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
+.alert { background: var(--soft); border-radius: 8px; padding: .6rem .8rem; }
+
+label { display: block; font-weight: 500; font-size: .9rem; }
+label > input, label > textarea, label > select { margin-top: .25rem; }
+input, textarea, select { width: 100%; font: inherit; color: var(--ink); background: var(--field);
+  border: 1px solid var(--line); border-radius: 8px; padding: .5rem .6rem; }
+textarea { resize: vertical; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+label.check { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
+label.check input { width: auto; margin: 0; }
+
+button { font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px; padding: .5rem .9rem;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .55; cursor: progress; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.ghost { background: transparent; }
+button.danger { color: var(--danger); }
+button.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+button.small { padding: .3rem .65rem; font-size: .85rem; }
+button.icon { padding: .25rem .55rem; line-height: 1; }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline; }
+
+.crumbs { display: flex; flex-wrap: wrap; gap: .4rem; font-size: .9rem; margin-bottom: .6rem; color: var(--muted); }
+.crumbs a { text-decoration: none; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { border-top: 1px solid var(--line); }
+.list li:first-child { border-top: 0; }
+.list a.item { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 0; color: var(--ink); text-decoration: none; flex-wrap: wrap; }
+.list a.item:hover strong { color: var(--accent); }
+.item-sub { display: block; color: var(--muted); font-size: .85rem; }
+.tag { display: inline-block; font-size: .75rem; font-weight: 600; padding: .1rem .5rem; border-radius: 99px;
+  background: var(--soft); color: var(--ink); white-space: nowrap; }
+.tag.ok { background: transparent; border: 1px solid var(--ok); color: var(--ok); }
+
+.note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
+.feed h2 + .note-wrap { border-top: 0; }
+.note-wrap p { margin: .2rem 0 0; }
+
+/* Plans */
+.plan-head { margin-bottom: 1.2rem; }
+.week { margin-top: 1.6rem; }
+.week > h2 { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+.week > h2 .muted { font: 400 .9rem Inter, sans-serif; }
+.session { margin-top: .8rem; }
+.prose { white-space: normal; }
+table.ex { width: 100%; border-collapse: collapse; margin: .6rem 0; font-size: .92rem; }
+table.ex th { text-align: left; font-weight: 600; color: var(--muted); font-size: .8rem; padding: .3rem .5rem .3rem 0; border-bottom: 1px solid var(--line); }
+table.ex td { padding: .45rem .5rem .45rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.ex td:first-child { font-weight: 600; }
+@media (max-width: 600px) {
+  table.ex thead { display: none; }
+  table.ex tr { display: block; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+  table.ex td { display: block; border: 0; padding: .1rem 0; }
+  table.ex td:empty { display: none; }
+  table.ex td:not(:first-child)::before { content: attr(data-l) ": "; color: var(--muted); }
+}
+
+/* Notes */
+details.notes { margin-top: .8rem; border-top: 1px dashed var(--line); padding-top: .6rem; }
+details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--accent); }
+.note { margin-top: .6rem; padding: .55rem .7rem; border-radius: 8px; background: var(--bg); }
+.note.coach { background: var(--soft); }
+.note p { margin: .2rem 0 0; }
+.note-meta { font-size: .8rem; color: var(--muted); }
+.note-form { margin-top: .6rem; display: grid; gap: .4rem; justify-items: start; }
+
+/* Plan editor */
+.savebar { position: sticky; top: .5rem; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+#saveState.warn { color: var(--warn); font-weight: 600; }
+.session-edit .wk { width: 90px; }
+.ex-head, .ex-row { display: grid; grid-template-columns: 2fr .7fr 1.1fr .8fr 2fr auto; gap: .4rem; align-items: center; }
+.ex-head { font-size: .8rem; font-weight: 600; color: var(--muted); margin-top: .8rem; }
+.ex-head span:last-child { width: 2rem; }
+.ex-row { margin-top: .4rem; }
+@media (max-width: 700px) {
+  .ex-head { display: none; }
+  .ex-row { grid-template-columns: 1fr 1fr 1fr auto; padding: .5rem 0; border-top: 1px solid var(--line); }
+  .ex-row > [data-f="name"], .ex-row > [data-f="notes"] { grid-column: 1 / -1; }
+  .ex-row > button { grid-column: 4; grid-row: 2; }
+}
+.danger-zone { margin-top: 2rem; }
+
+#flash { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); max-width: calc(100% - 32px);
+  background: var(--ink); color: var(--bg); padding: .6rem 1rem; border-radius: 8px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+#flash.error { background: var(--danger); color: #fff; }
+
+dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink);
+  padding: 1.2rem; width: min(440px, calc(100% - 32px)); }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+dialog .row { margin-top: 1rem; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/"></a>
+  <div class="who"><span id="whoName"></span><button id="signOut" class="ghost small" hidden>Sign Out</button></div>
+</header>
+<main id="app"></main>
+<div id="flash" role="status" hidden></div>
+<dialog id="dlg"></dialog>
+
+<script>
+// ---- Fill these in from Supabase (see SETUP.md) ----
+const CONFIG = {
+  siteName: "Bouldering Coaching",
+  supabaseUrl: "",   // e.g. https://abcd1234.supabase.co
+  supabaseKey: "",   // the publishable (or "anon") key. Never the secret key.
+};
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const app = $('#app');
+const BASE = location.origin + location.pathname;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const para = s => esc(s).replace(/\n/g, '<br>');
+const must = ({ data, error }) => { if (error) throw error; return data; };
+const loading = '<p class="muted">Loading…</p>';
+
+document.title = CONFIG.siteName;
+$('.brand').textContent = CONFIG.siteName;
+
+let sb, mailer;
+let me = null;               // {user, isAdmin, student}
+let wantsPassword = new URLSearchParams(location.search).has('setpw');
+let linkError = null;        // from an expired or used email link
+let dirty = false;           // unsaved plan edits
+let draft = null;            // plan open in the editor
+let notesCtx = { notes: [], studentName: '' };
+let currentHash = location.hash;
+let navToken = 0;
+
+if (location.hash && !location.hash.startsWith('#/')) {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Get a new one below.';
+  else if (h.get('error_description')) linkError = h.get('error_description');
+}
+
+// ---------- Helpers ----------
+
+function view(html, { keepScroll = false } = {}) {
+  app.oninput = app.onchange = app.onclick = null;
+  app.innerHTML = html;
+  if (!keepScroll) window.scrollTo(0, 0);
+}
+
+let flashTimer;
+function flash(msg, kind = 'ok') {
+  const f = $('#flash');
+  f.textContent = msg; f.className = kind; f.hidden = false;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { f.hidden = true; }, kind === 'error' ? 7000 : 3500);
+}
+
+function msgOf(e) {
+  const m = e?.message || String(e);
+  if (/invalid login credentials/i.test(m)) return "That email and password don't match. Never set a password? Use “First Time Here” below.";
+  if (/failed to fetch/i.test(m)) return "Couldn't reach the server. Check your connection and try again.";
+  if (/does not exist|could not find the function/i.test(m)) return m + ' (Has supabase/schema.sql been run?)';
+  return m;
+}
+
+async function busy(btn, fn) {
+  btn.disabled = true;
+  try { return await fn(); }
+  catch (e) { flash(msgOf(e), 'error'); }
+  finally { btn.disabled = false; }
+}
+
+// Returns the form's FormData when confirmed, or null. Settles on submit, not close.
+function ask({ title, body = '', ok = 'OK', warn = false }) {
+  const d = $('#dlg');
+  d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
+    <div class="row end"><button value="cancel" formnovalidate class="ghost">Cancel</button>
+    <button value="ok" class="primary${warn ? ' danger' : ''}">${esc(ok)}</button></div></form>`;
+  return new Promise(resolve => {
+    const f = d.querySelector('form');
+    f.addEventListener('submit', e => resolve(e.submitter?.value === 'ok' ? new FormData(f) : null), { once: true });
+    d.addEventListener('cancel', () => resolve(null), { once: true });
+    d.showModal();
+  });
+}
+
+function crumbs(items) {
+  return `<nav class="crumbs">${items.map(([label, href]) =>
+    href ? `<a href="${href}">${esc(label)}</a>` : `<span>${esc(label)}</span>`).join('<span>/</span>')}</nav>`;
+}
+
+const day = d => new Date(d + 'T00:00');
+const fmtDate = d => day(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+const fmtWhen = t => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+function weekRange(start, w) {
+  if (!start) return '';
+  const a = day(start); a.setDate(a.getDate() + 7 * (w - 1));
+  const b = new Date(a); b.setDate(b.getDate() + 6);
+  const f = x => x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${f(a)} – ${f(b)}`;
+}
+
+// Sign-in links (invites, first time, forgot password) go through a separate
+// client that never stores a session, so sending one can't touch the coach's.
+function sendLink(email) {
+  return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: BASE + '?setpw=1' } });
+}
+
+// ---------- Start-up & routing ----------
+
+async function boot() {
+  if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey || !window.supabase) {
+    view(`<section class="card narrow"><h1>Almost There</h1>
+      <p>This site isn't connected to Supabase yet. Follow <strong>SETUP.md</strong>, then fill in
+      <code>supabaseUrl</code> and <code>supabaseKey</code> near the top of the script in <code>index.html</code>.</p></section>`);
+    return;
+  }
+  sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, { auth: { flowType: 'implicit' } });
+  mailer = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
+    auth: { flowType: 'implicit', persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'mailer' },
+  });
+  sb.auth.onAuthStateChange(event => {
+    if (event === 'PASSWORD_RECOVERY') wantsPassword = true;
+    if (event === 'SIGNED_OUT' && me) { me = null; dirty = false; setTimeout(route); }
+  });
+
+  const { data: { session } } = await sb.auth.getSession();   // also reads a link's token from the URL
+  if (location.search || !location.hash.startsWith('#/')) history.replaceState(null, '', BASE + '#/');
+  currentHash = location.hash;
+
+  if (session) {
+    try { await loadMe(session.user); }
+    catch (e) { showError(e); return; }
+  }
+  window.addEventListener('hashchange', onHashChange);
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  route();
+}
+
+async function loadMe(user) {
+  const isAdmin = await sb.rpc('is_admin').then(must);
+  let student = null;
+  if (!isAdmin) {
+    await sb.rpc('claim_student').then(must);
+    student = await sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must);
+  }
+  me = { user, isAdmin: !!isAdmin, student };
+}
+
+async function onHashChange() {
+  if (location.hash === currentHash) return;
+  if (dirty) {
+    const ok = await ask({ title: 'Leave Without Saving?', body: "<p>Your changes to this plan haven't been saved.</p>", ok: 'Leave', warn: true });
+    if (!ok) { history.replaceState(null, '', currentHash); return; }
+    dirty = false;
+  }
+  currentHash = location.hash;
+  route();
+}
+
+function route() {
+  $('#whoName').textContent = me ? (me.isAdmin ? 'Coach' : (me.student?.name || me.user.email)) : '';
+  $('#signOut').hidden = !me;
+  if (!me) return viewLogin();
+  if (wantsPassword || (!me.isAdmin && !me.user.user_metadata?.password_set)) return viewSetPassword();
+  const [, page, id] = location.hash.split('/');
+  const go = me.isAdmin
+    ? (page === 'student' && id ? adminStudent(id) : page === 'plan' && id ? adminPlan(id) : adminHome())
+    : !me.student ? viewNoAccess()
+    : (page === 'plan' && id ? studentPlan(id) : studentHome());
+  Promise.resolve(go).catch(showError);
+}
+
+function showError(e) {
+  view(`<section class="card narrow"><h1>Something Went Wrong</h1><p>${esc(msgOf(e))}</p><p><a href="#/">Back to the start</a></p></section>`);
+}
+
+$('#signOut').onclick = async () => {
+  if (dirty && !await ask({ title: 'Sign Out Without Saving?', body: "<p>Your changes to this plan haven't been saved.</p>", ok: 'Sign Out', warn: true })) return;
+  dirty = false;
+  await sb.auth.signOut();
+  me = null;
+  history.replaceState(null, '', BASE + '#/');
+  currentHash = location.hash;
+  route();
+};
+
+// ---------- Sign-in pages ----------
+
+function viewLogin() {
+  view(`<section class="card narrow">
+    <h1>Sign In</h1>
+    ${linkError ? `<p class="alert">${esc(linkError)}</p>` : ''}
+    <form id="loginForm" class="stack">
+      <label>Email<input type="email" name="email" autocomplete="email" required></label>
+      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="primary">Sign In</button>
+    </form>
+  </section>
+  <section class="card narrow">
+    <details ${linkError ? 'open' : ''}>
+      <summary><strong>First Time Here or Forgot Your Password?</strong></summary>
+      <p class="hint">Enter the email your coach has for you and we'll send a sign-in link. After you click it, you'll choose a password.</p>
+      <form id="linkForm" class="stack"><label>Email<input type="email" name="email" autocomplete="email" required></label>
+        <button>Email Me a Link</button></form>
+    </details>
+  </section>`);
+
+  $('#loginForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.auth.signInWithPassword({ email: f.get('email').trim(), password: f.get('password') });
+      if (error) throw error;
+      await loadMe(data.user);
+      linkError = null;
+      route();
+    });
+  };
+  $('#linkForm').onsubmit = e => {
+    e.preventDefault();
+    const email = new FormData(e.target).get('email').trim().toLowerCase();
+    busy(e.submitter, async () => {
+      const { error } = await sendLink(email);
+      // An email that isn't on the list is refused by the database; don't reveal that.
+      if (error && !/database error/i.test(error.message)) throw error;
+      flash("If that email is on the student list, a link is on its way. Check your inbox.");
+    });
+  };
+}
+
+function viewSetPassword() {
+  view(`<section class="card narrow"><h1>Choose a Password</h1>
+    <p class="muted">You'll sign in with ${esc(me.user.email)} and this password from now on.</p>
+    <form id="pwForm" class="stack">
+      <label>New Password<input type="password" name="pw" minlength="8" autocomplete="new-password" required></label>
+      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required></label>
+      <p class="hint">At least 8 characters.</p>
+      <button class="primary">Save Password</button>
+    </form></section>`);
+  $('#pwForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    if (f.get('pw') !== f.get('pw2')) { flash("The two passwords don't match.", 'error'); return; }
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.auth.updateUser({ password: f.get('pw'), data: { password_set: true } });
+      if (error) throw error;
+      me.user = data.user;
+      wantsPassword = false;
+      flash('Password saved.');
+      route();
+    });
+  };
+}
+
+function viewNoAccess() {
+  view(`<section class="card narrow"><h1>No Plan Linked Yet</h1>
+    <p>You're signed in as ${esc(me.user.email)}, but this account isn't on the student list.
+    Ask your coach to check which email they have for you.</p></section>`);
+}
+
+// ---------- Coach: students ----------
+
+async function adminHome() {
+  const t = ++navToken;
+  view(loading);
+  const [students, recent] = await Promise.all([
+    sb.from('students').select('id,name,email,user_id,plans(id,title,active)').order('name').then(must),
+    sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,student:students(name)))')
+      .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
+  ]);
+  if (t !== navToken) return;
+
+  const rows = students.map(s => {
+    const current = s.plans.filter(p => p.active).map(p => p.title).join(', ');
+    return `<li><a class="item" href="#/student/${s.id}">
+      <span><strong>${esc(s.name)}</strong><span class="item-sub">${esc(s.email)}</span></span>
+      <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
+      ${s.user_id ? '<span class="tag ok">Active</span>' : '<span class="tag">Invited</span>'}</span></a></li>`;
+  }).join('');
+  const feed = recent.map(n => `<div class="note-wrap"><div class="note-meta">
+      <strong>${esc(n.session?.plan?.student?.name)}</strong> · ${fmtWhen(n.created_at)} ·
+      <a href="#/plan/${n.session?.plan?.id}">${esc(n.session?.plan?.title)}, Week ${n.session?.week}</a></div>
+      <p>${para(n.body)}</p></div>`).join('');
+
+  view(`<h1>Students</h1>
+  <div class="grid2">
+    <section class="card">${students.length ? `<ul class="list">${rows}</ul>` : '<p class="muted">No students yet. Add your first one.</p>'}</section>
+    <aside>
+      <section class="card"><h2>Add a Student</h2>
+        <form id="addForm" class="stack">
+          <label>Name<input name="name" required autocomplete="off"></label>
+          <label>Email<input type="email" name="email" required autocomplete="off"></label>
+          <button class="primary">Add &amp; Send Invite</button>
+        </form>
+        <p class="hint">They'll get an email with a link to choose their password.</p>
+      </section>
+      <section class="card feed"><h2>Latest Student Notes</h2>${feed || '<p class="muted">No notes yet.</p>'}</section>
+    </aside>
+  </div>`);
+
+  $('#addForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const name = f.get('name').trim(), email = f.get('email').trim().toLowerCase();
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.from('students').insert({ name, email }).select('id').single();
+      if (error) throw error.code === '23505' ? new Error('A student with that email is already on your list.') : error;
+      const { error: mailErr } = await sendLink(email);
+      if (mailErr) flash(`${name} was added, but the invite didn't send: ${mailErr.message}`, 'error');
+      else flash(`Invite sent to ${email}.`);
+      location.hash = '#/student/' + data.id;
+    });
+  };
+}
+
+async function adminStudent(id) {
+  const t = ++navToken;
+  view(loading);
+  const s = await sb.from('students').select('*, plans(id,title,active,start_date,updated_at)').eq('id', id).maybeSingle().then(must);
+  if (t !== navToken) return;
+  if (!s) { location.hash = '#/'; return; }
+  s.plans.sort((a, b) => (b.active - a.active) || b.updated_at.localeCompare(a.updated_at));
+
+  const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
+    <span><strong>${esc(p.title)}</strong><span class="item-sub">${p.start_date ? 'Starts ' + fmtDate(p.start_date) : 'No start date'}</span></span>
+    ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
+
+  view(`${crumbs([['Students', '#/'], [s.name]])}
+  <h1>${esc(s.name)}</h1>
+  <div class="grid2">
+    <section class="card">
+      <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">New Plan</button></div>
+      ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
+    </section>
+    <aside>
+      <section class="card"><h2>Details</h2>
+        <form id="stuForm" class="stack">
+          <label>Name<input name="name" value="${esc(s.name)}" required></label>
+          <label>Email<input type="email" name="email" value="${esc(s.email)}" required></label>
+          ${s.user_id ? '<p class="hint">They already have an account, so changing this doesn\'t change the email they sign in with.</p>' : ''}
+          <label>Goal<textarea name="goal" rows="2" placeholder="e.g. Send a V5 by spring">${esc(s.goal)}</textarea></label>
+          <p class="hint">The goal shows at the top of their page.</p>
+          <button class="primary">Save Details</button>
+        </form>
+      </section>
+      <section class="card"><h2>Account</h2>
+        <p>${s.user_id ? 'Has signed in.' : "Invited, but hasn't signed in yet."}</p>
+        <div class="row"><button data-act="send-link">${s.user_id ? 'Send Sign-In Link' : 'Resend Invite'}</button>
+        <button class="ghost danger" data-act="del-student">Delete Student</button></div>
+      </section>
+    </aside>
+  </div>`);
+
+  $('#stuForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    busy(e.submitter, async () => {
+      const { error } = await sb.from('students').update({
+        name: f.get('name').trim(), email: f.get('email').trim().toLowerCase(), goal: f.get('goal').trim(),
+      }).eq('id', id);
+      if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
+      flash('Details saved.');
+      adminStudent(id);
+    });
+  };
+
+  app.onclick = async e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'new-plan') busy(b, async () => {
+      const p = await sb.from('plans').insert({ student_id: id, title: 'New Plan' }).select('id').single().then(must);
+      location.hash = '#/plan/' + p.id;
+    });
+    if (b.dataset.act === 'send-link') busy(b, async () => {
+      const { error } = await sendLink(s.email);
+      if (error) throw error;
+      flash(`Link sent to ${s.email}.`);
+    });
+    if (b.dataset.act === 'del-student') {
+      const n = s.plans.length;
+      const ok = await ask({ title: `Delete ${s.name}?`, warn: true, ok: 'Delete Student',
+        body: `<p>This deletes ${n ? `their ${n} plan${n > 1 ? 's' : ''} and all notes` : 'them from your list'}.
+        They won't see anything if they sign in. This can't be undone.</p>` });
+      if (ok) busy(b, async () => {
+        must(await sb.from('students').delete().eq('id', id));
+        flash(`${s.name} deleted.`);
+        location.hash = '#/';
+      });
+    }
+  };
+}
+
+// ---------- Coach: plan editor ----------
+
+const blankEx = () => ({ name: '', sets: '', reps: '', rest: '', notes: '' });
+const blankSession = week => ({ id: crypto.randomUUID(), week, title: '', details: '', exercises: [blankEx()] });
+
+async function adminPlan(id) {
+  const t = ++navToken;
+  view(loading);
+  const [plan, sessions] = await Promise.all([
+    sb.from('plans').select('*, student:students(id,name)').eq('id', id).maybeSingle().then(must),
+    sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
+  ]);
+  if (t !== navToken) return;
+  if (!plan) { location.hash = '#/'; return; }
+  const notes = sessions.length
+    ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
+  if (t !== navToken) return;
+
+  draft = { plan, sessions, savedIds: new Set(sessions.map(s => s.id)), preview: false };
+  notesCtx = { notes, studentName: plan.student.name };
+  dirty = false;
+  renderEditor();
+  window.scrollTo(0, 0);
+}
+
+function displayOrder() {
+  const S = draft.sessions;
+  return S.map((_, i) => i).sort((a, b) => (S[a].week - S[b].week) || (a - b));
+}
+
+function byWeek(list) {
+  const weeks = new Map();
+  for (const x of list) {
+    if (!weeks.has(x.week)) weeks.set(x.week, []);
+    weeks.get(x.week).push(x);
+  }
+  return [...weeks];
+}
+
+function markDirty() {
+  dirty = true;
+  const el = $('#saveState');
+  if (el) { el.textContent = 'Unsaved changes'; el.classList.add('warn'); }
+}
+
+function sessionEditHTML(s, i) {
+  const f = (field, ph, e) => `<input data-s="${i}"${e != null ? ` data-e="${e}"` : ''} data-f="${field}" placeholder="${ph}" aria-label="${ph}"
+    value="${esc(e != null ? s.exercises[e][field] : s[field])}">`;
+  return `<article class="card session-edit">
+    <div class="row">
+      <label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>
+      <label class="grow">Session<input data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Limit bouldering"></label>
+    </div>
+    <label style="margin-top:.6rem">Details<textarea data-s="${i}" data-f="details" rows="2"
+      placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
+    ${s.exercises.length ? '<div class="ex-head"><span>Exercise</span><span>Sets</span><span>Reps / Time</span><span>Rest</span><span>Notes</span><span></span></div>' : ''}
+    ${s.exercises.map((_, e) => `<div class="ex-row">${f('name', 'Exercise', e)}${f('sets', 'Sets', e)}${f('reps', 'Reps / Time', e)}${f('rest', 'Rest', e)}${f('notes', 'Notes', e)}
+      <button class="icon ghost" data-act="del-ex" data-s="${i}" data-e="${e}" title="Remove exercise" aria-label="Remove exercise">×</button></div>`).join('')}
+    <div class="row between" style="margin-top:.7rem">
+      <button class="ghost small" data-act="add-ex" data-s="${i}">+ Add Exercise</button>
+      <div class="row">
+        <button class="icon ghost" data-act="up" data-s="${i}" title="Move up" aria-label="Move up">↑</button>
+        <button class="icon ghost" data-act="down" data-s="${i}" title="Move down" aria-label="Move down">↓</button>
+        <button class="ghost small" data-act="dup" data-s="${i}">Duplicate</button>
+        <button class="ghost small danger" data-act="del-session" data-s="${i}">Remove</button>
+      </div>
+    </div>
+    ${draft.savedIds.has(s.id) ? notesHTML(s.id) : ''}
+  </article>`;
+}
+
+function renderEditor() {
+  const p = draft.plan;
+  const order = displayOrder();
+  let body;
+  if (draft.preview) {
+    body = planReadHTML(p, order.map(i => draft.sessions[i]), { notes: false });
+  } else {
+    const weeks = byWeek(order.map(i => ({ week: draft.sessions[i].week, i })));
+    body = `<section class="card stack">
+      <label>Plan Title<input data-p="title" value="${esc(p.title)}" required></label>
+      <div class="row">
+        <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}"></label>
+        <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current plan (shown first to the student)</label>
+      </div>
+      <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
+    </section>
+    ${weeks.length ? '' : '<p class="muted" style="margin-top:1rem">No sessions yet. Add the first week below.</p>'}
+    ${weeks.map(([w, list]) => `<section class="week">
+      <h2>Week ${w} <span class="muted">${weekRange(p.start_date, w)}</span></h2>
+      ${list.map(({ i }) => sessionEditHTML(draft.sessions[i], i)).join('')}
+      <button class="ghost" style="margin-top:.8rem" data-act="add-session" data-week="${w}">+ Add Session to Week ${w}</button>
+    </section>`).join('')}
+    <div class="row" style="margin-top:1.4rem"><button data-act="add-week">+ Add Week</button></div>
+    <section class="card danger-zone row between">
+      <button data-act="copy">Copy to a Student</button>
+      <button class="ghost danger" data-act="del-plan">Delete Plan</button>
+    </section>`;
+  }
+
+  view(`${crumbs([['Students', '#/'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
+    <div class="card savebar">
+      <span id="saveState" class="${dirty ? 'warn' : 'muted'}">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+      <div class="row"><button data-act="preview">${draft.preview ? 'Back to Editing' : 'Student View'}</button>
+      <button class="primary" data-act="save">Save Plan</button></div>
+    </div>
+    ${body}`, { keepScroll: true });
+
+  app.oninput = e => {
+    const t = e.target, d = t.dataset;
+    if (d.p && t.type !== 'checkbox') draft.plan[d.p] = t.value;
+    else if (d.s != null && d.f !== 'week') {
+      const s = draft.sessions[+d.s];
+      if (d.e != null) s.exercises[+d.e][d.f] = t.value; else s[d.f] = t.value;
+    } else return;
+    markDirty();
+  };
+  app.onchange = e => {
+    const t = e.target, d = t.dataset;
+    if (d.p === 'active') { draft.plan.active = t.checked; markDirty(); }
+    if (d.p === 'start_date') renderEditor();          // week date ranges
+    if (d.f === 'week') {
+      const [s] = draft.sessions.splice(+d.s, 1);      // goes to the end of its new week
+      s.week = Math.max(1, parseInt(t.value, 10) || 1);
+      draft.sessions.push(s);
+      markDirty(); renderEditor();
+    }
+  };
+  app.onclick = async e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const S = draft.sessions, i = +b.dataset.s;
+    switch (b.dataset.act) {
+      case 'add-ex': S[i].exercises.push(blankEx()); break;
+      case 'del-ex': S[i].exercises.splice(+b.dataset.e, 1); break;
+      case 'add-session': S.push(blankSession(+b.dataset.week)); break;
+      case 'add-week': S.push(blankSession(Math.max(0, ...S.map(s => s.week)) + 1)); break;
+      case 'dup': S.splice(i + 1, 0, { ...structuredClone(S[i]), id: crypto.randomUUID() }); break;
+      case 'del-session': {
+        const n = notesCtx.notes.filter(x => x.session_id === S[i].id).length;
+        if (n && !await ask({ title: 'Remove This Session?', warn: true, ok: 'Remove',
+          body: `<p>It has ${n} note${n > 1 ? 's' : ''}, which will be deleted when you save the plan.</p>` })) return;
+        S.splice(i, 1); break;
+      }
+      case 'up': case 'down': {
+        const order = displayOrder(), j = order[order.indexOf(i) + (b.dataset.act === 'up' ? -1 : 1)];
+        if (j == null || S[j].week !== S[i].week) return;
+        [S[i], S[j]] = [S[j], S[i]]; break;
+      }
+      case 'preview': draft.preview = !draft.preview; renderEditor(); window.scrollTo(0, 0); return;
+      case 'save': return savePlan(b);
+      case 'copy': return copyPlan(b);
+      case 'del-plan': return deletePlan(b);
+      default: return;
+    }
+    markDirty();
+    renderEditor();
+  };
+}
+
+function sessionRows(planId, keepIds) {
+  return displayOrder().map((i, position) => {
+    const s = draft.sessions[i];
+    return {
+      id: keepIds ? s.id : crypto.randomUUID(), plan_id: planId, week: s.week, position,
+      title: s.title.trim(), details: s.details.trim(),
+      exercises: s.exercises.filter(x => Object.values(x).some(v => String(v).trim())),
+    };
+  });
+}
+
+function savePlan(btn) {
+  const p = draft.plan;
+  if (!p.title.trim()) { flash('Give the plan a title first.', 'error'); return; }
+  return busy(btn, async () => {
+    const rows = sessionRows(p.id, true);
+    must(await sb.from('plans').update({
+      title: p.title.trim(), overview: p.overview.trim(), start_date: p.start_date || null,
+      active: p.active, updated_at: new Date().toISOString(),
+    }).eq('id', p.id));
+    if (rows.length) must(await sb.from('sessions').upsert(rows));
+    const gone = [...draft.savedIds].filter(id => !rows.some(r => r.id === id));
+    if (gone.length) must(await sb.from('sessions').delete().in('id', gone));
+    draft.sessions = rows;
+    draft.savedIds = new Set(rows.map(r => r.id));
+    notesCtx.notes = notesCtx.notes.filter(n => draft.savedIds.has(n.session_id));
+    dirty = false;
+    flash('Plan saved.');
+    renderEditor();
+  });
+}
+
+async function copyPlan(btn) {
+  const students = await sb.from('students').select('id,name').order('name').then(must).catch(e => { flash(msgOf(e), 'error'); });
+  if (!students) return;
+  const f = await ask({ title: 'Copy Plan to a Student', ok: 'Copy Plan',
+    body: `<p>Makes a new copy of this plan${dirty ? ', including your unsaved changes,' : ''} for the student you choose.
+      Notes and the start date aren't copied.</p>
+      <label>Student<select name="to">${students.map(s => `<option value="${s.id}" ${s.id === draft.plan.student.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` });
+  if (!f) return;
+  const to = students.find(s => s.id === f.get('to'));
+  busy(btn, async () => {
+    const np = await sb.from('plans').insert({
+      student_id: to.id, title: draft.plan.title.trim() || 'New Plan', overview: draft.plan.overview.trim(),
+    }).select('id').single().then(must);
+    const rows = sessionRows(np.id, false);
+    if (rows.length) must(await sb.from('sessions').insert(rows));
+    flash(`Copied to ${to.name}.`);
+  });
+}
+
+async function deletePlan(btn) {
+  const p = draft.plan;
+  if (!await ask({ title: 'Delete This Plan?', warn: true, ok: 'Delete Plan',
+    body: `<p>“${esc(p.title)}” and all its notes will be deleted for good.</p>` })) return;
+  busy(btn, async () => {
+    must(await sb.from('plans').delete().eq('id', p.id));
+    dirty = false;
+    flash('Plan deleted.');
+    location.hash = '#/student/' + p.student.id;
+  });
+}
+
+// ---------- Plans as the student sees them ----------
+
+function planReadHTML(plan, sessions, { notes = true } = {}) {
+  const weeks = byWeek(sessions);
+  return `<header class="plan-head">
+      <div class="row"><h1>${esc(plan.title)}</h1>${plan.active ? '' : '<span class="tag">Past Plan</span>'}</div>
+      ${plan.start_date ? `<p class="muted">Starts ${fmtDate(plan.start_date)}</p>` : ''}
+      ${plan.overview ? `<div class="card prose">${para(plan.overview)}</div>` : ''}
+    </header>
+    ${weeks.length ? weeks.map(([w, list]) => `<section class="week">
+      <h2>Week ${w} <span class="muted">${weekRange(plan.start_date, w)}</span></h2>
+      ${list.map(s => sessionReadHTML(s, notes)).join('')}</section>`).join('')
+    : '<p class="muted">No sessions in this plan yet.</p>'}`;
+}
+
+function sessionReadHTML(s, withNotes) {
+  const ex = (s.exercises || []).filter(x => Object.values(x).some(v => String(v).trim()));
+  return `<article class="card session">
+    <h3>${esc(s.title || 'Session')}</h3>
+    ${s.details ? `<p class="prose">${para(s.details)}</p>` : ''}
+    ${ex.length ? `<table class="ex"><thead><tr><th>Exercise</th><th>Sets</th><th>Reps / Time</th><th>Rest</th><th>Notes</th></tr></thead>
+      <tbody>${ex.map(x => `<tr><td>${esc(x.name)}</td><td data-l="Sets">${esc(x.sets)}</td><td data-l="Reps / Time">${esc(x.reps)}</td>
+      <td data-l="Rest">${esc(x.rest)}</td><td data-l="Notes">${esc(x.notes)}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${withNotes ? notesHTML(s.id) : ''}
+  </article>`;
+}
+
+async function studentHome() {
+  const t = ++navToken;
+  view(loading);
+  const plans = await sb.from('plans').select('id,title,active,start_date')
+    .order('active', { ascending: false }).order('created_at', { ascending: false }).then(must);
+  if (t !== navToken) return;
+  const current = plans.filter(p => p.active);
+  if (current.length === 1) return studentPlan(current[0].id, plans);
+
+  const first = (me.student.name || '').split(' ')[0];
+  view(`<h1>Hi ${esc(first)}</h1>${goalHTML()}
+    ${plans.length ? `<section class="card"><h2>Your Plans</h2><ul class="list">${planLinks(plans)}</ul></section>`
+      : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}`);
+}
+
+const goalHTML = () => me.student.goal ? `<p class="alert"><strong>Your goal:</strong> ${esc(me.student.goal)}</p>` : '';
+const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title)}</strong>
+  ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
+
+async function studentPlan(id, allPlans) {
+  const t = ++navToken;
+  view(loading);
+  const [plan, sessions] = await Promise.all([
+    sb.from('plans').select('*').eq('id', id).maybeSingle().then(must),
+    sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
+  ]);
+  if (t !== navToken) return;
+  if (!plan) { view(`<section class="card narrow"><h1>Plan Not Found</h1><p><a href="#/">Back to your plans</a></p></section>`); return; }
+  const notes = sessions.length
+    ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
+  if (t !== navToken) return;
+  notesCtx = { notes, studentName: me.student.name };
+  const others = allPlans?.filter(p => p.id !== id) || [];
+  view(`${allPlans ? '' : crumbs([['My Plans', '#/'], [plan.title]])}
+    ${allPlans ? goalHTML() : ''}
+    ${planReadHTML(plan, sessions)}
+    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2><ul class="list">${planLinks(others)}</ul></section>` : ''}`);
+}
+
+// ---------- Notes (shared by the student's view and the coach's editor) ----------
+
+function notesHTML(sid) {
+  const list = notesCtx.notes.filter(n => n.session_id === sid);
+  const canDelete = n => me.isAdmin || (n.author_id === me.user.id && !n.from_coach);
+  return `<details class="notes" data-notes="${sid}" ${list.length ? 'open' : ''}>
+    <summary>${list.length ? `Notes (${list.length})` : 'Add a Note'}</summary>
+    ${list.map(n => `<div class="note${n.from_coach ? ' coach' : ''}">
+      <div class="note-meta"><strong>${n.from_coach ? 'Coach' : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}
+      ${canDelete(n) ? ` · <button type="button" class="link" data-del-note="${n.id}">Delete</button>` : ''}</div>
+      <p>${para(n.body)}</p></div>`).join('')}
+    <form class="note-form" data-note-form="${sid}">
+      <textarea name="body" rows="2" maxlength="4000" required
+        placeholder="${me.isAdmin ? 'Reply to your student…' : 'How did it go? Grades sent, how it felt, questions…'}"></textarea>
+      <button class="small">Post Note</button>
+    </form>
+  </details>`;
+}
+
+function refreshNotes(sid) {
+  const el = app.querySelector(`[data-notes="${sid}"]`);
+  if (el) { el.outerHTML = notesHTML(sid); app.querySelector(`[data-notes="${sid}"]`).open = true; }
+}
+
+app.addEventListener('submit', e => {
+  const f = e.target.closest('[data-note-form]');
+  if (!f) return;
+  e.preventDefault();
+  const body = f.elements.body.value.trim();
+  if (!body) return;
+  busy(e.submitter, async () => {
+    const n = await sb.from('notes').insert({ session_id: f.dataset.noteForm, body, from_coach: me.isAdmin }).select().single().then(must);
+    notesCtx.notes.push(n);
+    refreshNotes(n.session_id);
+  });
+});
+
+app.addEventListener('click', async e => {
+  const b = e.target.closest('[data-del-note]');
+  if (!b) return;
+  if (!await ask({ title: 'Delete This Note?', body: "<p>This can't be undone.</p>", ok: 'Delete', warn: true })) return;
+  const id = b.dataset.delNote, n = notesCtx.notes.find(x => x.id === id);
+  busy(b, async () => {
+    must(await sb.from('notes').delete().eq('id', id));
+    notesCtx.notes = notesCtx.notes.filter(x => x.id !== id);
+    refreshNotes(n.session_id);
+  });
+});
+
+boot();
+</script>
+</body>
+</html>

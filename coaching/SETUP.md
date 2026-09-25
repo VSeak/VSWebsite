@@ -1,4 +1,4 @@
-# Setup
+# Coaching App Setup
 
 About 30 minutes, once. Everything here is free.
 
@@ -33,14 +33,14 @@ Then, under **Authentication → Emails → Templates**, edit **Confirm signup**
 
 **Authentication → URL Configuration:**
 
-- **Site URL:** your site's address, e.g. `https://your-name-climbing.netlify.app` (use `http://localhost:3000` until it's hosted).
+- **Site URL:** your site's address, e.g. `https://your-site.netlify.app` (use `http://localhost:3000` until it's hosted).
 - **Redirect URLs:** add `http://localhost:3000/**` and, once hosted, `https://your-site-address/**`.
 
 Leave **Authentication → Sign In / Providers → Email** on, and leave "Allow new users to sign up" **on**. The database only lets emails on your student list create an account, so strangers can't sign up.
 
 ## 6. Connect the site
 
-**Project Settings → API Keys.** Copy the **Project URL** and the **publishable key** (or the key labelled `anon`), and paste them into `CONFIG` near the top of the script in `index.html`:
+**Project Settings → API Keys.** Copy the **Project URL** and the **publishable key** (or the key labelled `anon`), and paste them into `CONFIG` near the top of the script in `coaching/index.html`:
 
 ```js
 const CONFIG = {
@@ -54,17 +54,23 @@ The publishable key is meant to be public. **Never** paste the secret or `servic
 
 ## 7. Try it locally
 
-Sign-in links need a real web address, so run the site with a local server rather than double-clicking the file. With Node.js installed:
+Sign-in links need a real web address, so run the site with a local server rather than double-clicking the file. With Node.js installed, run this from the repo root (the folder above `coaching/`):
 
 ```bash
 npx serve .
 ```
 
-Open http://localhost:3000, sign in as the coach, and add yourself as a test student with a second address (a Gmail alias like `you+student@gmail.com` works). Open the invite in a private window to check you only see that student's plan.
+Open http://localhost:3000/coaching/, sign in as the coach, and add yourself as a test student with a second address (a Gmail alias like `you+student@gmail.com` works). Open the invite in a private window to check you only see that student's plan.
 
 ## 8. Put it online
 
-Easiest: [Netlify Drop](https://app.netlify.com/drop). Drag the whole folder onto the page, then sign up to keep the site. It gives you an address like `something.netlify.app`, which you can rename or point your own domain at. To update the site later, drag the folder onto the site's **Deploys** tab.
+Since the site is on GitHub, let Netlify publish it straight from there, and every push updates the live site:
+
+1. Sign up at [netlify.com](https://www.netlify.com) with your GitHub account.
+2. **Add new site → Import an existing project → GitHub**, and pick `VSWebsite`. Netlify needs permission to read that repo; for a private repo, grant it just that one.
+3. Leave the build command empty and set the publish directory to `.` (the repo root). Deploy.
+
+You get an address like `something.netlify.app`, which you can rename or point your own domain at. The coaching app is at `/coaching/`.
 
 Then go back to step 5 and add the new address.
 

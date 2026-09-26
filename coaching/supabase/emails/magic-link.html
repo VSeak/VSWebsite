@@ -1,7 +1,9 @@
-<!-- Supabase → Authentication → Emails → Templates → Confirm signup.
-     Subject: Private Coaching: Your Training Plan Is Ready 🧗
+<!-- Supabase → Authentication → Emails → Templates → Magic Link.
+     Sent when the coach clicks Send Sign-In Link for a student who already has an account
+     (usually a forgotten password). The link leads to "Choose a Password".
+     Subject: Private Coaching: Your Sign-In Link 🧗
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
-     {{ .Data.first_name }} is the student's first name, sent by the page with the invite (sendLink in index.html). -->
+     {{ .Data.first_name }} was saved on the student's login with their invite (sendLink in index.html). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,7 +11,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>Private Coaching: Your Training Plan Is Ready</title>
+<title>Private Coaching: Your Sign-In Link</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0; padding:0; background:#F4F1EC;">
@@ -30,15 +32,15 @@
           <td style="background:#FFFFFF; border:1px solid #E2DDD4; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#1F1D1A;">
 
             <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#1F1D1A;">
-              Your Training Plan Is Ready
+              Your Sign-In Link
             </h1>
 
             <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
               Hi {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},
             </p>
             <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
-              It's Vittia, your bouldering coach. I've set you up on my coaching site, where you'll find your training plan and can leave notes on each session for me.
-              Tap the button below to confirm your email and create a password for your account. You'll use it to sign in from then on.
+              Here's a new link to get back into your training plan. Tap the button below to sign in, then set a new password.
+              You'll use it to sign in from then on.
             </p>
 
             <!-- Button -->
@@ -47,7 +49,7 @@
                 <td align="center" bgcolor="#C0503A" style="border-radius:8px;">
                   <a href="{{ .ConfirmationURL }}" target="_blank"
                      style="display:inline-block; padding:14px 28px; font-family:Inter, Arial, sans-serif; font-size:16px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:8px;">
-                    Confirm Email and Get Started
+                    Sign In
                   </a>
                 </td>
               </tr>
@@ -69,7 +71,7 @@
         <!-- Footer -->
         <tr>
           <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#6B665E;">
-            This email was sent to {{ .Email }} because Vittia added you as a student. If you weren't expecting it, you can ignore it.
+            This email was sent to {{ .Email }} because Vittia sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.
           </td>
         </tr>
 

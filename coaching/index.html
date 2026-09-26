@@ -191,7 +191,7 @@ let navToken = 0;
 
 if (location.hash && !location.hash.startsWith('#/')) {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Get a new one below.';
+  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Ask your coach to send a new one.';
   else if (h.get('error_description')) linkError = h.get('error_description');
 }
 
@@ -213,7 +213,7 @@ function flash(msg, kind = 'ok') {
 
 function msgOf(e) {
   const m = e?.message || String(e);
-  if (/invalid login credentials/i.test(m)) return "That email and password don't match. Never set a password? Use “First Time Here” below.";
+  if (/invalid login credentials/i.test(m)) return "That email and password don't match. Forgot your password? Ask your coach for a new sign-in link.";
   if (/failed to fetch/i.test(m)) return "Couldn't reach the server. Check your connection and try again.";
   if (/does not exist|could not find the function/i.test(m)) return m + ' (Has supabase/schema.sql been run?)';
   return m;
@@ -256,7 +256,7 @@ function weekRange(start, w) {
   return `${f(a)} – ${f(b)}`;
 }
 
-// Sign-in links (invites, first time, forgot password) go through a separate
+// Sign-in links (only ever sent by the coach: invites and new sign-in links) go through a separate
 // client that never stores a session, so sending one can't touch the coach's.
 // firstName (from the coach's invite) is saved on a new login, and the Confirm
 // signup email shows it as {{ .Data.first_name }}.
@@ -355,14 +355,7 @@ function viewLogin() {
       <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
       <button class="primary">Sign In</button>
     </form>
-  </section>
-  <section class="card narrow">
-    <details ${linkError ? 'open' : ''}>
-      <summary><strong>First Time Here or Forgot Your Password?</strong></summary>
-      <p class="hint">Enter the email your coach has for you and we'll send a sign-in link. After you click it, you'll choose a password.</p>
-      <form id="linkForm" class="stack"><label>Email<input type="email" name="email" autocomplete="email" required></label>
-        <button>Email Me a Link</button></form>
-    </details>
+    <p class="hint">Forgot your password? Ask your coach for a new sign-in link.</p>
   </section>`);
 
   $('#loginForm').onsubmit = e => {
@@ -374,16 +367,6 @@ function viewLogin() {
       await loadMe(data.user);
       linkError = null;
       route();
-    });
-  };
-  $('#linkForm').onsubmit = e => {
-    e.preventDefault();
-    const email = new FormData(e.target).get('email').trim().toLowerCase();
-    busy(e.submitter, async () => {
-      const { error } = await sendLink(email);
-      // An email that isn't on the list is refused by the database; don't reveal that.
-      if (error && !/database error/i.test(error.message)) throw error;
-      flash("If that email is on the student list, a link is on its way. Check your inbox.");
     });
   };
 }

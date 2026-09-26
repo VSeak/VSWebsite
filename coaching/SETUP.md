@@ -27,7 +27,7 @@ Supabase's built-in email only sends to members of your Supabase team, so studen
 - **Gmail:** turn on 2-step verification for your Google account, create an **App password** (Google Account → Security → App passwords), then use host `smtp.gmail.com`, port `465`, username = your Gmail address, password = the app password.
 - **Brevo** (free, 300 emails a day): sign up, verify your sender email, and copy the SMTP details from **SMTP & API**.
 
-Then, under **Authentication → Emails → Templates**, edit **Confirm signup** and **Magic Link** so they sound like you. For example: subject "Your bouldering training plan", with a line like "Click below to open your plan and choose a password." Keep the `{{ .ConfirmationURL }}` link in both.
+Then, under **Authentication → Emails → Templates**, replace **Confirm signup** and **Magic Link** with `supabase/emails/confirm-signup.html` and `supabase/emails/magic-link.html`. Each file starts with a note giving its subject line. Change the name in them to yours.
 
 ## 5. Tell Supabase where the site lives
 

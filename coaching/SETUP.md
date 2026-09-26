@@ -33,7 +33,7 @@ Then, under **Authentication → Emails → Templates**, replace **Confirm signu
 
 **Authentication → URL Configuration:**
 
-- **Site URL:** your site's address, e.g. `https://your-site.netlify.app` (use `http://localhost:3000` until it's hosted).
+- **Site URL:** your site's address, e.g. `https://your-name.github.io/VSWebsite/coaching/` (use `http://localhost:3000` until it's hosted).
 - **Redirect URLs:** add `http://localhost:3000/**` and, once hosted, `https://your-site-address/**`.
 
 Leave **Authentication → Sign In / Providers → Email** on, and leave "Allow new users to sign up" **on**. The database only lets emails on your student list create an account, so strangers can't sign up.
@@ -64,15 +64,13 @@ Open http://localhost:3000/coaching/, sign in as the coach, and add a test stude
 
 ## 8. Put it online
 
-Since the site is on GitHub, let Netlify publish it straight from there, and every push updates the live site:
+GitHub Pages publishes the site straight from the repo, free, and every push to `main` updates the live site:
 
-1. Sign up at [netlify.com](https://www.netlify.com) with your GitHub account.
-2. **Add new site → Import an existing project → GitHub**, and pick `VSWebsite`. Netlify needs permission to read that repo; for a private repo, grant it just that one.
-3. Leave the build command empty and set the publish directory to `.` (the repo root). Deploy.
+1. The repo must be **public** (free GitHub accounts only get Pages on public repos). That's safe: the only key in it is the publishable key.
+2. In the repo on GitHub: **Settings → Pages → Build and deployment**. Source: **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
+3. After a minute or two the page shows the address, like `https://your-name.github.io/VSWebsite/`. The coaching app is at `/VSWebsite/coaching/`. The `.nojekyll` file in the repo root tells Pages to serve the files as they are.
 
-You get an address like `something.netlify.app`, which you can rename or point your own domain at. The coaching app is at `/coaching/`.
-
-Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `coaching/index.html`) to it, e.g. `https://something.netlify.app/coaching/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
+Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `coaching/index.html`) to it, e.g. `https://your-name.github.io/VSWebsite/coaching/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
 
 ## Good to know
 

@@ -258,8 +258,11 @@ function weekRange(start, w) {
 
 // Sign-in links (invites, first time, forgot password) go through a separate
 // client that never stores a session, so sending one can't touch the coach's.
-function sendLink(email) {
-  return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
+// firstName (from the coach's invite) is saved on a new login, and the Confirm
+// signup email shows it as {{ .Data.first_name }}.
+function sendLink(email, firstName = '') {
+  const data = firstName ? { first_name: firstName } : undefined;
+  return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, data, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
 }
 
 // ---------- Start-up & routing ----------
@@ -449,7 +452,8 @@ async function adminHome() {
     <aside>
       <section class="card"><h2>Add a Student</h2>
         <form id="addForm" class="stack">
-          <label>Name<input name="name" required autocomplete="off"></label>
+          <label>First Name<input name="first_name" required autocomplete="off"></label>
+          <label>Last Name<input name="last_name" autocomplete="off"></label>
           <button class="primary">Add Student</button>
         </form>
         <p class="hint">Build their plan first, then add their email and send the invite from their page.</p>
@@ -461,10 +465,10 @@ async function adminHome() {
   $('#addForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const name = f.get('name').trim();
+    const first_name = f.get('first_name').trim(), last_name = f.get('last_name').trim();
     busy(e.submitter, async () => {
-      const data = await sb.from('students').insert({ name }).select('id').single().then(must);
-      flash(`${name} added. Make their plan, then send the invite when it's ready.`);
+      const data = await sb.from('students').insert({ first_name, last_name }).select('id').single().then(must);
+      flash(`${first_name} added. Make their plan, then send the invite when it's ready.`);
       location.hash = '#/student/' + data.id;
     });
   };
@@ -492,7 +496,9 @@ async function adminStudent(id) {
     <aside>
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">
-          <label>Name<input name="name" value="${esc(s.name)}" required></label>
+          <label>First Name<input name="first_name" value="${esc(s.first_name)}" required></label>
+          <label>Last Name<input name="last_name" value="${esc(s.last_name)}"></label>
+          <p class="hint">Emails and their page greet them by first name.</p>
           <label>Goal<textarea name="goal" rows="2" placeholder="e.g. Send a V5 by spring">${esc(s.goal)}</textarea></label>
           <p class="hint">The goal shows at the top of their page.</p>
           <button class="primary">Save Details</button>
@@ -518,7 +524,9 @@ async function adminStudent(id) {
     e.preventDefault();
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
-      must(await sb.from('students').update({ name: f.get('name').trim(), goal: f.get('goal').trim() }).eq('id', id));
+      must(await sb.from('students').update({
+        first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), goal: f.get('goal').trim(),
+      }).eq('id', id));
       flash('Details saved.');
       adminStudent(id);
     });
@@ -534,7 +542,7 @@ async function adminStudent(id) {
         const { error } = await sb.from('students').update({ email }).eq('id', id);
         if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
       }
-      const { error } = await sendLink(email);
+      const { error } = await sendLink(email, s.first_name);
       if (error) throw error;
       must(await sb.from('students').update({ invited_at: new Date().toISOString() }).eq('id', id));
       flash(`Invite sent to ${email}.`);
@@ -827,8 +835,7 @@ async function studentHome() {
   const current = plans.filter(p => p.active);
   if (current.length === 1) return studentPlan(current[0].id, plans);
 
-  const first = (me.student.name || '').split(' ')[0];
-  view(`<h1>Hi ${esc(first)}</h1>${goalHTML()}
+  view(`<h1>Hi ${esc(me.student.first_name)}</h1>${goalHTML()}
     ${plans.length ? `<section class="card"><h2>Your Plans</h2><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}`);
 }

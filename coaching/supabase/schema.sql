@@ -13,7 +13,9 @@ create table public.admins (
 -- invited_at is set when an invite goes out; user_id the first time they sign in.
 create table public.students (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  first_name text not null,
+  last_name text not null default '',
+  name text generated always as (trim(first_name || ' ' || last_name)) stored,
   email text unique check (email = lower(email)),
   goal text not null default '',
   invited_at timestamptz,

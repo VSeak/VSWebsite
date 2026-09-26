@@ -19,7 +19,7 @@ A personal site for a bouldering coach. The coach (admin) signs in to manage stu
 
 ## Data
 
-- `students(id, name, email, goal, invited_at, user_id)`: `email` is null until the coach adds it.
+- `students(id, first_name, last_name, name, email, goal, invited_at, user_id)`: `name` is generated from first + last (read it for display; write the two parts). First and last are separate so a first name with a space greets correctly. `email` is null until the coach adds it.
 - `plans(id, student_id, title, overview, start_date, active)`: `active` = current plan. A student with exactly one current plan sees it straight away.
 - `sessions(id, plan_id, week, position, title, details, exercises)`: `exercises` is JSON `[{name, sets, reps, rest, notes}]`.
 - `notes(id, session_id, author_id, from_coach, body)`: students can add and delete their own. The coach can do anything.

@@ -165,6 +165,7 @@ const CONFIG = {
   siteName: "Bouldering Coaching",
   supabaseUrl: "https://loxyrqffevvdhwltccxr.supabase.co",   // e.g. https://abcd1234.supabase.co
   supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxveHlycWZmZXZ2ZGh3bHRjY3hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNzc5NzAsImV4cCI6MjEwNTk1Mzk3MH0.czgnKpu18kuEghIC3Ixy6jR-AFvBHQVH7rDDqmFF_EI",   // the publishable (or "anon") key. Never the secret key.
+  siteUrl: "https://vseak.netlify.app/coaching/",   // where emailed sign-in links go, even when sent from localhost. Leave "" to use the current address.
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -258,7 +259,7 @@ function weekRange(start, w) {
 // Sign-in links (invites, first time, forgot password) go through a separate
 // client that never stores a session, so sending one can't touch the coach's.
 function sendLink(email) {
-  return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: BASE + '?setpw=1' } });
+  return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
 }
 
 // ---------- Start-up & routing ----------

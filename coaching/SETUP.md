@@ -72,7 +72,7 @@ Since the site is on GitHub, let Netlify publish it straight from there, and eve
 
 You get an address like `something.netlify.app`, which you can rename or point your own domain at. The coaching app is at `/coaching/`.
 
-Then go back to step 5 and add the new address.
+Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `coaching/index.html`) to it, e.g. `https://something.netlify.app/coaching/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
 
 ## Good to know
 

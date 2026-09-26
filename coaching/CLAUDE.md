@@ -14,7 +14,7 @@ A personal site for a bouldering coach. The coach (admin) signs in to manage stu
 - Coach = an email in `public.admins` (no API access to that table). `is_admin()` checks the signed-in email.
 - Students are invited: the coach adds a row to `students`, and the page calls `signInWithOtp` to email a link. The `gate_signup` trigger on `auth.users` refuses any sign-up whose email isn't in `students` or `admins`, so sign-ups can stay enabled.
 - Links go through `mailer`, a second client with no stored session, so sending one never touches the coach's session. Both clients use the implicit flow, so a link works on any device.
-- Links redirect to `?setpw=1`. After sign-in, `claim_student()` links the account to the student row (`students.user_id`). A student without `user_metadata.password_set` is sent to "Choose a Password".
+- Links redirect to `CONFIG.siteUrl` (the live site, so links sent from localhost still work on a phone), or the current address if it is empty, plus `?setpw=1`. After sign-in, `claim_student()` links the account to the student row (`students.user_id`). A student without `user_metadata.password_set` is sent to "Choose a Password".
 
 ## Data
 

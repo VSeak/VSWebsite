@@ -20,15 +20,16 @@ A personal site for a bouldering coach. The coach (admin) signs in to manage stu
 
 ## Data
 
-- `students(id, first_name, last_name, name, email, goal, invited_at, user_id)`: `name` is generated from first + last (read it for display; write the two parts). First and last are separate so a first name with a space greets correctly. `email` is null until the coach adds it.
+- `students(id, first_name, last_name, name, email, invited_at, user_id)`: `name` is generated from first + last (read it for display; write the two parts). First and last are separate so a first name with a space greets correctly. `email` is null until the coach adds it.
 - `plans(id, student_id, title, overview, start_date, active)`: `active` = current plan. A student with exactly one current plan sees it straight away.
 - `sessions(id, plan_id, week, position, title, details, exercises)`: `exercises` is JSON `[{name, sets, reps, rest, notes}]`.
+- `goals(id, student_id, body, status, done_at)`: `status` is `current`, `achieved` or `archived`; `done_at` is when it left `current`. The coach adds, edits, marks achieved, archives, restores and deletes them on the student page (the Goals card re-renders in place). Students see current goals at the top of their home page and a Goals Achieved card at the bottom; RLS hides archived goals from them.
 - `notes(id, session_id, author_id, from_coach, body)`: students can add and delete their own. The coach can do anything.
 
 ## Pages (hash routes, `route()`)
 
-- Coach: `#/` students + add student + latest student notes; `#/student/<id>` details, plans, account; `#/plan/<id>` plan editor.
-- Student: `#/` their current plan (or a list); `#/plan/<id>` one plan.
+- Coach: `#/` students + add student + latest student notes; `#/student/<id>` plans, goals, details, account; `#/plan/<id>` plan editor.
+- Student: `#/` their goals and current plan (or a list), then achieved goals; `#/plan/<id>` one plan.
 - The plan editor keeps a `draft` and saves on **Save Plan** (upserts sessions, deletes removed ones). Session ids are made in the browser so notes stay attached. `dirty` drives the leave check (`onHashChange`, `beforeunload`, Sign Out). **Student View** previews the draft.
 
 ## Conventions

@@ -17,7 +17,6 @@ create table public.students (
   last_name text not null default '',
   name text generated always as (trim(first_name || ' ' || last_name)) stored,
   email text unique check (email = lower(email)),
-  goal text not null default '',
   invited_at timestamptz,
   user_id uuid unique references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
@@ -56,6 +55,17 @@ create table public.notes (
   created_at timestamptz not null default now()
 );
 create index on public.notes (session_id);
+
+-- The coach marks a goal achieved (done_at = when) or archives it.
+create table public.goals (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  body text not null check (length(trim(body)) between 1 and 500),
+  status text not null default 'current' check (status in ('current', 'achieved', 'archived')),
+  done_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index on public.goals (student_id);
 
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
@@ -119,7 +129,8 @@ $$;
 
 -- 3. Access rules -------------------------------------------------------------
 -- The coach can do everything. A student can read their own row, plans and
--- sessions, read notes on their sessions, and add or delete their own notes.
+-- sessions, read their current and achieved goals (not archived ones), read
+-- notes on their sessions, and add or delete their own notes.
 -- admins has no rules at all, so nobody can read or change it from the site.
 
 alter table public.admins   enable row level security;
@@ -127,9 +138,10 @@ alter table public.students enable row level security;
 alter table public.plans    enable row level security;
 alter table public.sessions enable row level security;
 alter table public.notes    enable row level security;
+alter table public.goals    enable row level security;
 
 grant select, insert, update, delete
-  on public.students, public.plans, public.sessions, public.notes
+  on public.students, public.plans, public.sessions, public.notes, public.goals
   to authenticated;
 
 create policy "coach: everything" on public.students for all to authenticated
@@ -155,6 +167,11 @@ create policy "student: add notes" on public.notes for insert to authenticated
   with check (author_id = auth.uid() and not from_coach and public.owns_session(session_id));
 create policy "student: delete own notes" on public.notes for delete to authenticated
   using (author_id = auth.uid() and not from_coach);
+
+create policy "coach: everything" on public.goals for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+create policy "student: own goals" on public.goals for select to authenticated
+  using (student_id = public.my_student_id() and status <> 'archived');
 
 -- 4. Sign-up gate ---------------------------------------------------------------
 -- Only emails on the student list (or the admins list) can create an account.

@@ -92,6 +92,14 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); fon
   background: var(--soft); color: var(--ink); white-space: nowrap; }
 .tag.ok { background: transparent; border: 1px solid var(--ok); color: var(--ok); }
 
+/* Goals */
+.goal { display: flex; justify-content: space-between; align-items: flex-start; gap: .4rem .8rem; flex-wrap: wrap; padding: .6rem 0; }
+.goal-text { flex: 1; min-width: 180px; }
+.goal-text p { margin: 0; }
+.goal-group { margin-top: 1.1rem; }
+details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--accent); }
+.alert ul { margin: .3rem 0 0; padding-left: 1.2rem; }
+
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
 .feed h2 + .note-wrap { border-top: 0; }
 .note-wrap p { margin: .2rem 0 0; }
@@ -457,13 +465,44 @@ async function adminHome() {
   };
 }
 
+// ---------- Goals (current → achieved or archived) ----------
+
+const fmtDay = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+// Current goals oldest first; achieved and archived newest first.
+const sortGoals = goals => goals.sort((a, b) =>
+  ((b.status === 'current') - (a.status === 'current')) ||
+  (a.status === 'current' ? a.created_at.localeCompare(b.created_at) : (b.done_at || '').localeCompare(a.done_at || '')));
+const goalItem = (g, sub, right) => `<li class="goal"><div class="goal-text"><p>${para(g.body)}</p>
+  ${sub ? `<span class="item-sub">${sub}</span>` : ''}</div>${right}</li>`;
+
+function coachGoalsHTML(goals) {
+  const by = st => goals.filter(g => g.status === st);
+  const cur = by('current'), won = by('achieved'), old = by('archived');
+  const btns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]) =>
+    `<button type="button" class="small ${cls || 'ghost'}" data-act="${act}" data-goal="${g.id}">${label}</button>`).join('')}</div>`;
+  return `<h2>Goals</h2>
+    ${cur.length ? `<ul class="list">${cur.map(g => goalItem(g, '',
+      btns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']))).join('')}</ul>`
+      : '<p class="muted">No current goals.</p>'}
+    <form id="goalForm" class="row" style="margin-top:.6rem">
+      <input name="body" class="grow" maxlength="500" required autocomplete="off" placeholder="e.g. Send a V5 by spring">
+      <button class="primary">Add Goal</button>
+    </form>
+    <p class="hint">They see current and achieved goals on their page. Archived goals are hidden from them.</p>
+    ${won.length ? `<h3 class="goal-group">Achieved</h3><ul class="list">${won.map(g => goalItem(g, 'Achieved ' + fmtDay(g.done_at),
+      btns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive']))).join('')}</ul>` : ''}
+    ${old.length ? `<details class="goal-group"><summary>Archived (${old.length})</summary><ul class="list">${old.map(g =>
+      goalItem(g, 'Archived ' + fmtDay(g.done_at), btns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))).join('')}</ul></details>` : ''}`;
+}
+
 async function adminStudent(id) {
   const t = ++navToken;
   view(loading);
-  const s = await sb.from('students').select('*, plans(id,title,active,start_date,updated_at)').eq('id', id).maybeSingle().then(must);
+  const s = await sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/'; return; }
   s.plans.sort((a, b) => (b.active - a.active) || b.updated_at.localeCompare(a.updated_at));
+  sortGoals(s.goals);
 
   const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
     <span><strong>${esc(p.title)}</strong><span class="item-sub">${p.start_date ? 'Starts ' + fmtDate(p.start_date) : 'No start date'}</span></span>
@@ -472,18 +511,19 @@ async function adminStudent(id) {
   view(`${crumbs([['Students', '#/'], [s.name]])}
   <h1>${esc(s.name)}</h1>
   <div class="grid2">
-    <section class="card">
-      <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">New Plan</button></div>
-      ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
-    </section>
+    <div>
+      <section class="card">
+        <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">New Plan</button></div>
+        ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
+      </section>
+      <section class="card" id="goalsCard"></section>
+    </div>
     <aside>
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required></label>
           <label>Last Name<input name="last_name" value="${esc(s.last_name)}"></label>
           <p class="hint">Emails and their page greet them by first name.</p>
-          <label>Goal<textarea name="goal" rows="2" placeholder="e.g. Send a V5 by spring">${esc(s.goal)}</textarea></label>
-          <p class="hint">The goal shows at the top of their page.</p>
           <button class="primary">Save Details</button>
         </form>
       </section>
@@ -508,12 +548,36 @@ async function adminStudent(id) {
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
       must(await sb.from('students').update({
-        first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), goal: f.get('goal').trim(),
+        first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(),
       }).eq('id', id));
       flash('Details saved.');
       adminStudent(id);
     });
   };
+
+  // Goals change in place, so the rest of the page (and the scroll) stays put.
+  function renderGoals(focusAdd) {
+    $('#goalsCard').innerHTML = coachGoalsHTML(s.goals);
+    const form = $('#goalForm');
+    if (focusAdd) form.elements.body.focus();
+    form.onsubmit = e => {
+      e.preventDefault();
+      const body = form.elements.body.value.trim();
+      if (!body) return;
+      busy(e.submitter, async () => {
+        s.goals.push(await sb.from('goals').insert({ student_id: id, body }).select().single().then(must));
+        sortGoals(s.goals);
+        renderGoals(true);
+      });
+    };
+  }
+  const saveGoal = (b, g, patch, msg) => busy(b, async () => {
+    Object.assign(g, await sb.from('goals').update(patch).eq('id', g.id).select().single().then(must));
+    sortGoals(s.goals);
+    renderGoals();
+    if (msg) flash(msg);
+  });
+  renderGoals();
 
   const inviteForm = $('#inviteForm');
   if (inviteForm) inviteForm.onsubmit = e => {
@@ -536,6 +600,27 @@ async function adminStudent(id) {
   app.onclick = async e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
+    const act = b.dataset.act, g = s.goals.find(x => x.id === b.dataset.goal);
+    if (g) {
+      if (act === 'goal-edit') {
+        const f = await ask({ title: 'Edit Goal', ok: 'Save Goal',
+          body: `<label>Goal<textarea name="body" rows="3" maxlength="500" required>${esc(g.body)}</textarea></label>` });
+        const body = f?.get('body').trim();
+        if (body) saveGoal(b, g, { body });
+      } else if (act === 'goal-delete') {
+        if (await ask({ title: 'Delete This Goal?', body: "<p>This can't be undone. To just hide it, keep it archived.</p>", ok: 'Delete', warn: true }))
+          busy(b, async () => {
+            must(await sb.from('goals').delete().eq('id', g.id));
+            s.goals = s.goals.filter(x => x !== g);
+            renderGoals();
+          });
+      } else {
+        const status = { 'goal-achieved': 'achieved', 'goal-archive': 'archived', 'goal-current': 'current' }[act];
+        saveGoal(b, g, { status, done_at: status === 'current' ? null : new Date().toISOString() },
+          { achieved: 'Goal marked achieved.', archived: 'Goal archived.', current: 'Goal is current again.' }[status]);
+      }
+      return;
+    }
     if (b.dataset.act === 'new-plan') busy(b, async () => {
       const p = await sb.from('plans').insert({ student_id: id, title: 'New Plan' }).select('id').single().then(must);
       location.hash = '#/plan/' + p.id;
@@ -812,22 +897,36 @@ function sessionReadHTML(s, withNotes) {
 async function studentHome() {
   const t = ++navToken;
   view(loading);
-  const plans = await sb.from('plans').select('id,title,active,start_date')
-    .order('active', { ascending: false }).order('created_at', { ascending: false }).then(must);
+  const [plans, goals] = await Promise.all([
+    sb.from('plans').select('id,title,active,start_date')
+      .order('active', { ascending: false }).order('created_at', { ascending: false }).then(must),
+    sb.from('goals').select('*').then(must).then(sortGoals),   // RLS leaves out archived goals
+  ]);
   if (t !== navToken) return;
   const current = plans.filter(p => p.active);
-  if (current.length === 1) return studentPlan(current[0].id, plans);
+  if (current.length === 1) return studentPlan(current[0].id, plans, goals);
 
-  view(`<h1>Hi ${esc(me.student.first_name)}</h1>${goalHTML()}
+  view(`<h1>Hi ${esc(me.student.first_name)}</h1>${goalHTML(goals)}
     ${plans.length ? `<section class="card"><h2>Your Plans</h2><ul class="list">${planLinks(plans)}</ul></section>`
-      : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}`);
+      : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
+    ${achievedHTML(goals)}`);
 }
 
-const goalHTML = () => me.student.goal ? `<p class="alert"><strong>Your goal:</strong> ${esc(me.student.goal)}</p>` : '';
+function goalHTML(goals) {
+  const cur = goals.filter(g => g.status === 'current');
+  if (!cur.length) return '';
+  if (cur.length === 1) return `<p class="alert"><strong>Your goal:</strong> ${esc(cur[0].body)}</p>`;
+  return `<div class="alert"><strong>Your goals:</strong><ul>${cur.map(g => `<li>${esc(g.body)}</li>`).join('')}</ul></div>`;
+}
+function achievedHTML(goals) {
+  const won = goals.filter(g => g.status === 'achieved');
+  return won.length ? `<section class="card" style="margin-top:2rem"><h2>Goals Achieved</h2><ul class="list">${won.map(g =>
+    goalItem(g, fmtDay(g.done_at), '<span class="tag ok">Achieved</span>')).join('')}</ul></section>` : '';
+}
 const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title)}</strong>
   ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
-async function studentPlan(id, allPlans) {
+async function studentPlan(id, allPlans, goals) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions] = await Promise.all([
@@ -842,9 +941,10 @@ async function studentPlan(id, allPlans) {
   notesCtx = { notes, studentName: me.student.name };
   const others = allPlans?.filter(p => p.id !== id) || [];
   view(`${allPlans ? '' : crumbs([['My Plans', '#/'], [plan.title]])}
-    ${allPlans ? goalHTML() : ''}
+    ${goals ? goalHTML(goals) : ''}
     ${planReadHTML(plan, sessions)}
-    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2><ul class="list">${planLinks(others)}</ul></section>` : ''}`);
+    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2><ul class="list">${planLinks(others)}</ul></section>` : ''}
+    ${goals ? achievedHTML(goals) : ''}`);
 }
 
 // ---------- Notes (shared by the student's view and the coach's editor) ----------

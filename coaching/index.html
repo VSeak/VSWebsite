@@ -64,6 +64,10 @@ input, textarea, select { width: 100%; font: inherit; color: var(--ink); backgro
   border: 1px solid var(--line); border-radius: 8px; padding: .5rem .6rem; }
 textarea { resize: vertical; }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+[aria-invalid="true"] { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--field)); }
+[aria-invalid="true"]:focus { outline-color: var(--danger); }
+.field-error { display: block; color: var(--danger); font-size: .85rem; font-weight: 500; margin-top: .3rem; }
+.stack > .field-error { margin-top: .3rem; }
 label.check { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
 label.check input { width: auto; margin: 0; }
 
@@ -234,6 +238,46 @@ async function busy(btn, fn) {
   finally { btn.disabled = false; }
 }
 
+// Field errors: a red field with a message under it, instead of the browser's pop-up.
+// Each required field says what to do in data-need. Typing in the field clears it.
+function fieldError(el, msg) {
+  clearFieldError(el);
+  el.setAttribute('aria-invalid', 'true');
+  const err = document.createElement('span');
+  err.className = 'field-error';
+  err.id = 'err-' + Math.random().toString(36).slice(2);
+  err.textContent = msg;
+  el.setAttribute('aria-describedby', err.id);
+  const label = el.closest('label'), row = el.parentElement.closest('.row');
+  (label || row || el).after(err);
+}
+function clearFieldError(el) {
+  if (el.getAttribute('aria-invalid') !== 'true') return;
+  el.removeAttribute('aria-invalid');
+  document.getElementById(el.getAttribute('aria-describedby'))?.remove();
+  el.removeAttribute('aria-describedby');
+}
+function validityMsg(el) {
+  const v = el.validity;
+  if (v.valueMissing || v.customError) return el.dataset.need || 'Fill this in.';
+  if (v.typeMismatch && el.type === 'email') return 'Enter a full email address, like name@example.com.';
+  if (v.tooShort) return `Use at least ${el.minLength} characters.`;
+  return el.validationMessage;
+}
+let focusedError = false;
+document.addEventListener('invalid', e => {
+  e.preventDefault();
+  fieldError(e.target, validityMsg(e.target));
+  if (!focusedError) { focusedError = true; e.target.focus(); setTimeout(() => { focusedError = false; }); }
+}, true);
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el.matches?.('input, textarea')) return;
+  // Only spaces counts as empty.
+  if (el.required && el.type !== 'password') el.setCustomValidity(el.value && !el.value.trim() ? 'empty' : '');
+  clearFieldError(el);
+}, true);
+
 // Returns the form's FormData when confirmed, or null. Settles on submit, not close.
 function ask({ title, body = '', ok = 'OK', warn = false }) {
   const d = $('#dlg');
@@ -359,8 +403,8 @@ function viewLogin() {
     <h1>Sign In</h1>
     ${linkError ? `<p class="alert">${esc(linkError)}</p>` : ''}
     <form id="loginForm" class="stack">
-      <label>Email<input type="email" name="email" autocomplete="email" required></label>
-      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+      <label>Email<input type="email" name="email" autocomplete="email" required data-need="Enter your email."></label>
+      <label>Password<input type="password" name="password" autocomplete="current-password" required data-need="Enter your password."></label>
       <button class="primary">Sign In</button>
     </form>
     <p class="hint">Forgot your password? Ask your coach for a new sign-in link.</p>
@@ -383,15 +427,15 @@ function viewSetPassword() {
   view(`<section class="card narrow"><h1>Choose a Password</h1>
     <p class="muted">You'll sign in with ${esc(me.user.email)} and this password from now on.</p>
     <form id="pwForm" class="stack">
-      <label>New Password<input type="password" name="pw" minlength="8" autocomplete="new-password" required></label>
-      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required></label>
+      <label>New Password<input type="password" name="pw" minlength="8" autocomplete="new-password" required data-need="Choose a password."></label>
+      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required data-need="Enter the same password again."></label>
       <p class="hint">At least 8 characters.</p>
       <button class="primary">Save Password</button>
     </form></section>`);
   $('#pwForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    if (f.get('pw') !== f.get('pw2')) { flash("The two passwords don't match.", 'error'); return; }
+    if (f.get('pw') !== f.get('pw2')) { const el = e.target.elements.pw2; fieldError(el, "The passwords don't match."); el.focus(); return; }
     busy(e.submitter, async () => {
       let { data, error } = await sb.auth.updateUser({ password: f.get('pw'), data: { password_set: true } });
       // Already their password (e.g. used a sign-in link to get back in): that's fine, keep it.
@@ -443,7 +487,7 @@ async function adminHome() {
     <aside>
       <section class="card"><h2>Add a Student</h2>
         <form id="addForm" class="stack">
-          <label>First Name<input name="first_name" required autocomplete="off"></label>
+          <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
           <button class="primary">Add Student</button>
         </form>
@@ -485,7 +529,7 @@ function coachGoalsHTML(goals) {
       btns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']))).join('')}</ul>`
       : '<p class="muted">No current goals.</p>'}
     <form id="goalForm" class="row" style="margin-top:.6rem">
-      <input name="body" class="grow" maxlength="500" required autocomplete="off" placeholder="e.g. Send a V5 by spring">
+      <input name="body" class="grow" maxlength="500" required data-need="Write the goal first." autocomplete="off" placeholder="e.g. Send a V5 by spring">
       <button class="primary">Add Goal</button>
     </form>
     <p class="hint">They see current and achieved goals on their page. Archived goals are hidden from them.</p>
@@ -521,7 +565,7 @@ async function adminStudent(id) {
     <aside>
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">
-          <label>First Name<input name="first_name" value="${esc(s.first_name)}" required></label>
+          <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter their first name."></label>
           <label>Last Name<input name="last_name" value="${esc(s.last_name)}"></label>
           <p class="hint">Emails and their page greet them by first name.</p>
           <button class="primary">Save Details</button>
@@ -534,7 +578,7 @@ async function adminStudent(id) {
         <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
         <form id="inviteForm" class="stack">
           <p>${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
-          <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required autocomplete="off"></label>
+          <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required data-need="Enter their email to send the invite." autocomplete="off"></label>
           <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email saying their plan is ready, with a link to choose a password."}</p>
           <div class="row"><button class="primary">${s.invited_at ? 'Resend Invite' : 'Send Invite'}</button>
           <button type="button" class="ghost danger" data-act="del-student">Delete Student</button></div>
@@ -604,7 +648,7 @@ async function adminStudent(id) {
     if (g) {
       if (act === 'goal-edit') {
         const f = await ask({ title: 'Edit Goal', ok: 'Save Goal',
-          body: `<label>Goal<textarea name="body" rows="3" maxlength="500" required>${esc(g.body)}</textarea></label>` });
+          body: `<label>Goal<textarea name="body" rows="3" maxlength="500" required data-need="Write the goal.">${esc(g.body)}</textarea></label>` });
         const body = f?.get('body').trim();
         if (body) saveGoal(b, g, { body });
       } else if (act === 'goal-delete') {
@@ -724,7 +768,7 @@ function renderEditor() {
   } else {
     const weeks = byWeek(order.map(i => ({ week: draft.sessions[i].week, i })));
     body = `<section class="card stack">
-      <label>Plan Title<input data-p="title" value="${esc(p.title)}" required></label>
+      <label>Plan Title<input data-p="title" value="${esc(p.title)}" required data-need="Give the plan a title."></label>
       <div class="row">
         <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}"></label>
         <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current plan (shown first to the student)</label>
@@ -817,7 +861,13 @@ function sessionRows(planId, keepIds) {
 
 function savePlan(btn) {
   const p = draft.plan;
-  if (!p.title.trim()) { flash('Give the plan a title first.', 'error'); return; }
+  if (!p.title.trim()) {
+    if (draft.preview) { draft.preview = false; renderEditor(); }
+    const el = $('[data-p="title"]');
+    fieldError(el, el.dataset.need);
+    el.focus();
+    return;
+  }
   return busy(btn, async () => {
     const rows = sessionRows(p.id, true);
     must(await sb.from('plans').update({
@@ -959,7 +1009,7 @@ function notesHTML(sid) {
       ${canDelete(n) ? ` · <button type="button" class="link" data-del-note="${n.id}">Delete</button>` : ''}</div>
       <p>${para(n.body)}</p></div>`).join('')}
     <form class="note-form" data-note-form="${sid}">
-      <textarea name="body" rows="2" maxlength="4000" required
+      <textarea name="body" rows="2" maxlength="4000" required data-need="Write your note first."
         placeholder="${me.isAdmin ? 'Reply to your student…' : 'How did it go? Grades sent, how it felt, questions…'}"></textarea>
       <button class="small">Post Note</button>
     </form>

@@ -9,12 +9,14 @@ create table public.admins (
   email text primary key check (email = lower(email))
 );
 
--- One row per student. user_id is filled in the first time they sign in.
+-- One row per student. email can wait until the coach is ready to invite them.
+-- invited_at is set when an invite goes out; user_id the first time they sign in.
 create table public.students (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  email text not null unique check (email = lower(email)),
+  email text unique check (email = lower(email)),
   goal text not null default '',
+  invited_at timestamptz,
   user_id uuid unique references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
 );

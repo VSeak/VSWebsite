@@ -60,7 +60,7 @@ Sign-in links need a real web address, so run the site with a local server rathe
 npx serve .
 ```
 
-Open http://localhost:3000/coaching/, sign in as the coach, and add yourself as a test student with a second address (a Gmail alias like `you+student@gmail.com` works). Open the invite in a private window to check you only see that student's plan.
+Open http://localhost:3000/coaching/, sign in as the coach, and add a test student by name. On their page, send the invite to a second address of yours (a Gmail alias like `you+student@gmail.com` works). Open the invite in a private window to check you only see that student's plan.
 
 ## 8. Put it online
 
@@ -76,6 +76,7 @@ Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (i
 
 ## Good to know
 
+- **Updates to the database:** `schema.sql` is for a new project. If your project was set up earlier, run any new files in `supabase/migrations` (oldest first) in the SQL Editor.
 - **Removing a student** removes their plans and notes. Their login still exists but sees nothing. To remove the login too: **Authentication → Users**, find the email, and delete it.
 - **Free-plan pause:** Supabase pauses free projects after a week with no activity. Signing in once a week keeps it awake, or restore it from the dashboard in a click.
 - **Backups:** **Database → Backups** on paid plans. On free, you can export tables as CSV from the Table Editor.

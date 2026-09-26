@@ -417,11 +417,13 @@ function viewNoAccess() {
 
 // ---------- Coach: students ----------
 
+const accountStatus = s => s.user_id ? 'Active' : s.invited_at ? 'Invited' : 'Not Invited';
+
 async function adminHome() {
   const t = ++navToken;
   view(loading);
   const [students, recent] = await Promise.all([
-    sb.from('students').select('id,name,email,user_id,plans(id,title,active)').order('name').then(must),
+    sb.from('students').select('id,name,email,invited_at,user_id,plans(id,title,active)').order('name').then(must),
     sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,student:students(name)))')
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
   ]);
@@ -430,9 +432,9 @@ async function adminHome() {
   const rows = students.map(s => {
     const current = s.plans.filter(p => p.active).map(p => p.title).join(', ');
     return `<li><a class="item" href="#/student/${s.id}">
-      <span><strong>${esc(s.name)}</strong><span class="item-sub">${esc(s.email)}</span></span>
+      <span><strong>${esc(s.name)}</strong><span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
-      ${s.user_id ? '<span class="tag ok">Active</span>' : '<span class="tag">Invited</span>'}</span></a></li>`;
+      <span class="tag${s.user_id ? ' ok' : ''}">${accountStatus(s)}</span></span></a></li>`;
   }).join('');
   const feed = recent.map(n => `<div class="note-wrap"><div class="note-meta">
       <strong>${esc(n.session?.plan?.student?.name)}</strong> · ${fmtWhen(n.created_at)} ·
@@ -446,10 +448,9 @@ async function adminHome() {
       <section class="card"><h2>Add a Student</h2>
         <form id="addForm" class="stack">
           <label>Name<input name="name" required autocomplete="off"></label>
-          <label>Email<input type="email" name="email" required autocomplete="off"></label>
-          <button class="primary">Add &amp; Send Invite</button>
+          <button class="primary">Add Student</button>
         </form>
-        <p class="hint">They'll get an email with a link to choose their password.</p>
+        <p class="hint">Build their plan first, then add their email and send the invite from their page.</p>
       </section>
       <section class="card feed"><h2>Latest Student Notes</h2>${feed || '<p class="muted">No notes yet.</p>'}</section>
     </aside>
@@ -458,13 +459,10 @@ async function adminHome() {
   $('#addForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const name = f.get('name').trim(), email = f.get('email').trim().toLowerCase();
+    const name = f.get('name').trim();
     busy(e.submitter, async () => {
-      const { data, error } = await sb.from('students').insert({ name, email }).select('id').single();
-      if (error) throw error.code === '23505' ? new Error('A student with that email is already on your list.') : error;
-      const { error: mailErr } = await sendLink(email);
-      if (mailErr) flash(`${name} was added, but the invite didn't send: ${mailErr.message}`, 'error');
-      else flash(`Invite sent to ${email}.`);
+      const data = await sb.from('students').insert({ name }).select('id').single().then(must);
+      flash(`${name} added. Make their plan, then send the invite when it's ready.`);
       location.hash = '#/student/' + data.id;
     });
   };
@@ -493,17 +491,23 @@ async function adminStudent(id) {
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">
           <label>Name<input name="name" value="${esc(s.name)}" required></label>
-          <label>Email<input type="email" name="email" value="${esc(s.email)}" required></label>
-          ${s.user_id ? '<p class="hint">They already have an account, so changing this doesn\'t change the email they sign in with.</p>' : ''}
           <label>Goal<textarea name="goal" rows="2" placeholder="e.g. Send a V5 by spring">${esc(s.goal)}</textarea></label>
           <p class="hint">The goal shows at the top of their page.</p>
           <button class="primary">Save Details</button>
         </form>
       </section>
       <section class="card"><h2>Account</h2>
-        <p>${s.user_id ? 'Has signed in.' : "Invited, but hasn't signed in yet."}</p>
-        <div class="row"><button data-act="send-link">${s.user_id ? 'Send Sign-In Link' : 'Resend Invite'}</button>
-        <button class="ghost danger" data-act="del-student">Delete Student</button></div>
+        ${s.user_id ? `
+        <p>Signs in as ${esc(s.email)}.</p>
+        <div class="row"><button data-act="send-link">Send Sign-In Link</button>
+        <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
+        <form id="inviteForm" class="stack">
+          <p>${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
+          <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required autocomplete="off"></label>
+          <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email saying their plan is ready, with a link to choose a password."}</p>
+          <div class="row"><button class="primary">${s.invited_at ? 'Resend Invite' : 'Send Invite'}</button>
+          <button type="button" class="ghost danger" data-act="del-student">Delete Student</button></div>
+        </form>`}
       </section>
     </aside>
   </div>`);
@@ -512,11 +516,26 @@ async function adminStudent(id) {
     e.preventDefault();
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
-      const { error } = await sb.from('students').update({
-        name: f.get('name').trim(), email: f.get('email').trim().toLowerCase(), goal: f.get('goal').trim(),
-      }).eq('id', id);
-      if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
+      must(await sb.from('students').update({ name: f.get('name').trim(), goal: f.get('goal').trim() }).eq('id', id));
       flash('Details saved.');
+      adminStudent(id);
+    });
+  };
+
+  const inviteForm = $('#inviteForm');
+  if (inviteForm) inviteForm.onsubmit = e => {
+    e.preventDefault();
+    const email = new FormData(e.target).get('email').trim().toLowerCase();
+    busy(e.submitter, async () => {
+      // Save the email first: the sign-up gate only lets listed emails create an account.
+      if (email !== s.email) {
+        const { error } = await sb.from('students').update({ email }).eq('id', id);
+        if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
+      }
+      const { error } = await sendLink(email);
+      if (error) throw error;
+      must(await sb.from('students').update({ invited_at: new Date().toISOString() }).eq('id', id));
+      flash(`Invite sent to ${email}.`);
       adminStudent(id);
     });
   };

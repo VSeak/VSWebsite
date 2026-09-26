@@ -12,13 +12,13 @@ A personal site for a bouldering coach. The coach (admin) signs in to manage stu
 ## Accounts
 
 - Coach = an email in `public.admins` (no API access to that table). `is_admin()` checks the signed-in email.
-- Students are invited: the coach adds a row to `students`, and the page calls `signInWithOtp` to email a link. The `gate_signup` trigger on `auth.users` refuses any sign-up whose email isn't in `students` or `admins`, so sign-ups can stay enabled.
+- Students are added by name first (`email` and `invited_at` start empty), so the coach can build their plan before inviting. The Account card on the student page saves the email, calls `signInWithOtp` to email a link, then sets `invited_at`. The list shows Not Invited, Invited or Active. The `gate_signup` trigger on `auth.users` refuses any sign-up whose email isn't in `students` or `admins`, so sign-ups can stay enabled.
 - Links go through `mailer`, a second client with no stored session, so sending one never touches the coach's session. Both clients use the implicit flow, so a link works on any device.
 - Links redirect to `CONFIG.siteUrl` (the live site, so links sent from localhost still work on a phone), or the current address if it is empty, plus `?setpw=1`. After sign-in, `claim_student()` links the account to the student row (`students.user_id`). A student without `user_metadata.password_set` is sent to "Choose a Password".
 
 ## Data
 
-- `students(id, name, email, goal, user_id)`
+- `students(id, name, email, goal, invited_at, user_id)`: `email` is null until the coach adds it.
 - `plans(id, student_id, title, overview, start_date, active)`: `active` = current plan. A student with exactly one current plan sees it straight away.
 - `sessions(id, plan_id, week, position, title, details, exercises)`: `exercises` is JSON `[{name, sets, reps, rest, notes}]`.
 - `notes(id, session_id, author_id, from_coach, body)`: students can add and delete their own. The coach can do anything.

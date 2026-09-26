@@ -13,6 +13,7 @@ A personal site for a bouldering coach. The coach (admin) signs in to manage stu
 
 - Coach = an email in `public.admins` (no API access to that table). `is_admin()` checks the signed-in email.
 - Students are added by name first (`email` and `invited_at` start empty), so the coach can build their plan before inviting. The Account card on the student page saves the email, calls `signInWithOtp` to email a link, then sets `invited_at`. The list shows Not Invited, Invited or Active. The `gate_signup` trigger on `auth.users` refuses any sign-up whose email isn't in `students` or `admins`, so sign-ups can stay enabled.
+- **Delete Student** calls `delete_student()`, which removes the row and the matching `auth.users` login (never a coach's). Without that, re-adding the email would find the old login: Supabase sends the Magic Link email instead of Confirm signup, and the old password stays.
 - Links go through `mailer`, a second client with no stored session, so sending one never touches the coach's session. Both clients use the implicit flow, so a link works on any device.
 - Links redirect to `CONFIG.siteUrl` (the live site, so links sent from localhost still work on a phone), or the current address if it is empty, plus `?setpw=1`. After sign-in, `claim_student()` links the account to the student row (`students.user_id`). A student without `user_metadata.password_set` is sent to "Choose a Password".
 

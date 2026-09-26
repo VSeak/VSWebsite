@@ -96,6 +96,25 @@ language sql volatile security definer set search_path = '' as $$
     and not exists (select 1 from public.students where user_id = auth.uid());
 $$;
 
+-- Called by the coach's Delete Student button: removes the student and their
+-- login (never a coach's), so re-adding the same email starts fresh.
+create function public.delete_student(p_id uuid) returns void
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  s public.students;
+begin
+  if not public.is_admin() then
+    raise exception 'Only the coach can delete students.';
+  end if;
+  delete from public.students where id = p_id returning * into s;
+  if s.id is null then return; end if;
+  -- Their login: the claimed one, or one made by an invite they never opened.
+  delete from auth.users u
+  where (u.id = s.user_id or (s.email is not null and lower(u.email) = s.email))
+    and not exists (select 1 from public.admins a where a.email = lower(u.email));
+end;
+$$;
+
 -- 3. Access rules -------------------------------------------------------------
 -- The coach can do everything. A student can read their own row, plans and
 -- sessions, read notes on their sessions, and add or delete their own notes.
@@ -155,6 +174,8 @@ create trigger gate_signup before insert on auth.users
 
 -- 5. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.claim_student() from anon;
+revoke execute on function public.delete_student(uuid) from public, anon;
+grant execute on function public.delete_student(uuid) to authenticated;
 
 -- 6. Make yourself the coach. Change this to the email you'll sign in with.
 insert into public.admins (email) values (lower('you@example.com'));

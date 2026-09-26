@@ -399,7 +399,9 @@ function viewSetPassword() {
     const f = new FormData(e.target);
     if (f.get('pw') !== f.get('pw2')) { flash("The two passwords don't match.", 'error'); return; }
     busy(e.submitter, async () => {
-      const { data, error } = await sb.auth.updateUser({ password: f.get('pw'), data: { password_set: true } });
+      let { data, error } = await sb.auth.updateUser({ password: f.get('pw'), data: { password_set: true } });
+      // Already their password (e.g. used a sign-in link to get back in): that's fine, keep it.
+      if (error?.code === 'same_password') ({ data, error } = await sb.auth.updateUser({ data: { password_set: true } }));
       if (error) throw error;
       me.user = data.user;
       wantsPassword = false;
@@ -555,10 +557,10 @@ async function adminStudent(id) {
     if (b.dataset.act === 'del-student') {
       const n = s.plans.length;
       const ok = await ask({ title: `Delete ${s.name}?`, warn: true, ok: 'Delete Student',
-        body: `<p>This deletes ${n ? `their ${n} plan${n > 1 ? 's' : ''} and all notes` : 'them from your list'}.
-        They won't see anything if they sign in. This can't be undone.</p>` });
+        body: `<p>This deletes ${n ? `their ${n} plan${n > 1 ? 's' : ''}, all notes` : 'them from your list'}
+        and their login. This can't be undone.</p>` });
       if (ok) busy(b, async () => {
-        must(await sb.from('students').delete().eq('id', id));
+        must(await sb.rpc('delete_student', { p_id: id }));
         flash(`${s.name} deleted.`);
         location.hash = '#/';
       });

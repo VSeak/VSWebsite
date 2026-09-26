@@ -70,6 +70,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .stack > .field-error { margin-top: .3rem; }
 label.check { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
 label.check input { width: auto; margin: 0; }
+fieldset.roles { border: 0; margin: 0; padding: 0; display: grid; gap: .4rem; }
+fieldset.roles legend { font-weight: 500; font-size: .9rem; padding: 0; margin-bottom: .3rem; }
+fieldset.roles label.check { align-items: flex-start; }
+fieldset.roles label.check input { margin-top: .3rem; }
 
 button { font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px; padding: .5rem .9rem;
   border: 1px solid var(--line); background: var(--card); color: var(--ink); }
@@ -98,6 +102,8 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); fon
 .tag.ok { border-color: color-mix(in srgb, var(--ok) 45%, transparent);
   background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .tag.ok::before { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: currentColor; }
+.tag.accent { border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 
 /* Coach home */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
@@ -203,7 +209,7 @@ document.title = CONFIG.siteName;
 $('.brand').textContent = CONFIG.siteName;
 
 let sb, mailer;
-let me = null;               // {user, isAdmin, student}
+let me = null;               // {user, roles, isStaff, isCoach, isAdmin, student}. roles: staff roles, e.g. ['admin', 'coach']; [] for a student
 let wantsPassword = new URLSearchParams(location.search).has('setpw');
 let linkError = null;        // from an expired or used email link
 let dirty = false;           // unsaved plan edits
@@ -323,8 +329,9 @@ function weekRange(start, w) {
 // client that never stores a session, so sending one can't touch the coach's.
 // firstName (from the coach's invite) is saved on a new login, and the Confirm
 // signup email shows it as {{ .Data.first_name }}.
-function sendLink(email, firstName = '') {
-  const data = firstName ? { first_name: firstName } : undefined;
+// staff: true marks a coach or admin invite, so the emails use their staff wording ({{ if .Data.staff }}).
+function sendLink(email, firstName = '', staff = false) {
+  const data = firstName || staff ? { ...(firstName && { first_name: firstName }), ...(staff && { staff: true }) } : undefined;
   return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, data, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
 }
 
@@ -360,13 +367,13 @@ async function boot() {
 }
 
 async function loadMe(user) {
-  const isAdmin = await sb.rpc('is_admin').then(must);
+  const roles = await sb.rpc('my_roles').then(must);
   let student = null;
-  if (!isAdmin) {
+  if (!roles) {
     await sb.rpc('claim_student').then(must);
     student = await sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must);
   }
-  me = { user, isAdmin: !!isAdmin, student };
+  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student };
 }
 
 async function onHashChange() {
@@ -381,13 +388,15 @@ async function onHashChange() {
 }
 
 function route() {
-  $('#whoName').textContent = me ? (me.isAdmin ? 'Coach' : (me.student?.name || me.user.email)) : '';
+  $('#whoName').textContent = me ? (me.isStaff ? rolesText(me.roles) : (me.student?.name || me.user.email)) : '';
   $('#signOut').hidden = !me;
   if (!me) return viewLogin();
-  if (wantsPassword || (!me.isAdmin && !me.user.user_metadata?.password_set)) return viewSetPassword();
+  if (wantsPassword || (!me.isStaff && !me.user.user_metadata?.password_set)) return viewSetPassword();
   const [, page, id] = location.hash.split('/');
-  const go = me.isAdmin
-    ? (page === 'students' ? adminStudents() : page === 'student' && id ? adminStudent(id) : page === 'plan' && id ? adminPlan(id) : adminHome())
+  const go = me.isStaff
+    ? (me.isCoach && page === 'students' ? adminStudents() : me.isCoach && page === 'student' && id ? adminStudent(id)
+      : me.isCoach && page === 'plan' && id ? adminPlan(id)
+      : me.isAdmin && page === 'users' ? adminUsers() : me.isAdmin && page === 'user' && id ? adminUser(id) : adminHome())
     : !me.student ? viewNoAccess()
     : (page === 'plan' && id ? studentPlan(id) : studentHome());
   Promise.resolve(go).catch(showError);
@@ -466,28 +475,231 @@ function viewNoAccess() {
     Ask your coach to check which email they have for you.</p></section>`);
 }
 
-// ---------- Coach: home ----------
+// ---------- Staff: home ----------
 
-// One tile per coach page. Add new pages here. stat() is optional and returns a short line for the tile.
+// One tile per staff page. Add new pages here. stat() is optional and returns a short line for the tile.
+// role says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page.
 const ADMIN_PAGES = [
-  { href: '#/students', title: 'Students', blurb: 'Add students, build their plans and goals, and send invites.',
+  { href: '#/students', title: 'Students', role: 'coach', blurb: 'Add students, build their plans and goals, and send invites.',
     stat: async () => {
       const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true });
       if (error) throw error;
       return count === 1 ? '1 student' : `${count} students`;
     } },
+  { href: '#/users', title: 'Users', role: 'admin', blurb: 'See and edit everyone who can sign in: admins, coaches and students.',
+    stat: async () => {
+      const users = await sb.rpc('list_users').select('id').then(must);
+      return users.length === 1 ? '1 user' : `${users.length} users`;
+    } },
 ];
 
 async function adminHome() {
   const t = ++navToken;
-  view(`<h1>Coach Home</h1>
-    <div class="tiles">${ADMIN_PAGES.map((p, i) => `<a class="card tile" href="${p.href}">
+  const pages = ADMIN_PAGES.filter(p => me.roles.includes(p.role));
+  view(`<h1>${me.isCoach ? 'Coach Home' : 'Admin Home'}</h1>
+    <div class="tiles">${pages.map((p, i) => `<a class="card tile" href="${p.href}">
       <h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p>
       ${p.stat ? `<p class="tile-stat" data-stat="${i}">&nbsp;</p>` : ''}</a>`).join('')}</div>`);
-  ADMIN_PAGES.forEach((p, i) => p.stat?.().then(text => {
+  pages.forEach((p, i) => p.stat?.().then(text => {
     const el = t === navToken && app.querySelector(`[data-stat="${i}"]`);
     if (el) el.textContent = text;
   }).catch(() => {}));
+}
+
+// ---------- Admin: users ----------
+
+// Staff roles are separate, and one person can have several (staff.roles in schema.sql).
+// To add a role: allow it in the staff.roles check, then add it to ROLE_LABEL, ROLE_PLURAL, ROLE_HINT and STAFF_ROLES.
+const ROLE_LABEL = { admin: 'Admin', coach: 'Coach', student: 'Student' };
+const ROLE_PLURAL = { admin: 'Admins', coach: 'Coaches', student: 'Students' };
+const ROLE_HINT = { admin: 'Sees and edits every user.', coach: 'Manages students, plans and goals.' };
+const STAFF_ROLES = ['admin', 'coach'];
+const rolesText = roles => roles.map(r => ROLE_LABEL[r] || r).join(' · ');
+const roleTags = roles => roles.map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
+const userStatus = u => u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
+const roleOrder = u => Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
+const isMine = u => u.kind === 'staff' && u.email === me.user.email?.toLowerCase();
+
+async function adminUsers() {
+  const t = ++navToken;
+  view(loading);
+  const users = await sb.rpc('list_users').then(must);
+  if (t !== navToken) return;
+  users.sort((a, b) => (roleOrder(a) - roleOrder(b)) || (a.name || a.email || '').localeCompare(b.name || b.email || ''));
+
+  const count = r => users.filter(u => u.roles.includes(r)).length;
+  view(`${crumbs([['Home', '#/'], ['Users']])}
+  <h1>Users</h1>
+  <div class="grid2">
+    <section class="card">
+      <div class="row">
+        <input id="userSearch" class="grow" type="search" placeholder="Search by name or email" aria-label="Search by name or email" autocomplete="off">
+        <select id="userRole" aria-label="Role" style="width:auto">
+          <option value="">Everyone (${users.length})</option>
+          ${Object.keys(ROLE_LABEL).map(r => `<option value="${r}">${ROLE_PLURAL[r]} (${count(r)})</option>`).join('')}
+        </select>
+      </div>
+      <ul class="list" id="userList" style="margin-top:.6rem"></ul>
+    </section>
+    <aside>
+      <section class="card"><h2>Add Staff</h2>
+        <form id="addStaff" class="stack">
+          <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
+          <label>Last Name<input name="last_name" autocomplete="off"></label>
+          <label>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
+          ${rolesFieldset(['coach'])}
+          <button class="primary">Add and Send Invite</button>
+        </form>
+        <p class="hint">Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
+      </section>
+    </aside>
+  </div>`);
+
+  const search = $('#userSearch'), role = $('#userRole');
+  function renderList() {
+    const q = search.value.trim().toLowerCase(), r = role.value;
+    const shown = users.filter(u => (!r || u.roles.includes(r)) &&
+      (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').includes(q)));
+    $('#userList').innerHTML = shown.map(u => `<li><a class="item" href="#/user/${u.id}">
+      <span><strong>${esc(u.name || u.email)}</strong>${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
+        <span class="item-sub">${u.email ? esc(u.email) : 'No email yet'}</span></span>
+      <span class="row">${roleTags(u.roles)}<span class="tag${u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span></span></a></li>`).join('')
+      || `<li><p class="muted" style="margin:.6rem 0">${users.length ? 'Nobody matches that search.' : 'No users yet.'}</p></li>`;
+  }
+  renderList();
+  search.oninput = role.onchange = renderList;
+
+  $('#addStaff').onsubmit = e => {
+    e.preventDefault();
+    const roles = checkedRoles(e.target);
+    if (!roles) return;
+    const f = new FormData(e.target);
+    const row = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), email: f.get('email').trim().toLowerCase(), roles };
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.from('staff').insert(row).select('id').single();
+      if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
+      location.hash = '#/user/' + data.id;
+      const { error: mailError } = await sendLink(row.email, row.first_name, true);
+      if (mailError) { flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error'); return; }
+      must(await sb.from('staff').update({ invited_at: new Date().toISOString() }).eq('id', data.id));
+      flash(`${row.first_name} added. Invite sent to ${row.email}.`);
+      if (location.hash === '#/user/' + data.id) adminUser(data.id);
+    });
+  };
+}
+
+// Role checkboxes for a staff form. locked roles stay ticked and can't be changed (your own Admin role).
+function rolesFieldset(current, locked = []) {
+  return `<fieldset class="roles"><legend>Roles</legend>
+    ${STAFF_ROLES.map(r => `<label class="check"><input type="checkbox" name="roles" value="${r}"
+      ${current.includes(r) ? 'checked' : ''} ${locked.includes(r) ? 'disabled' : ''}>
+      <span><strong>${ROLE_LABEL[r]}</strong> <span class="muted">${ROLE_HINT[r]}</span></span></label>`).join('')}
+  </fieldset>`;
+}
+// The ticked roles (disabled ones count), or null after showing an error when none are.
+function checkedRoles(form) {
+  const boxes = [...form.querySelectorAll('input[name="roles"]')];
+  const roles = boxes.filter(b => b.checked).map(b => b.value);
+  if (roles.length) return roles;
+  fieldError(boxes.at(-1), 'Pick at least one role.');
+  boxes[0].focus();
+  boxes.forEach(b => b.addEventListener('change', () => clearFieldError(boxes.at(-1)), { once: true }));
+  return null;
+}
+
+// One page for any user: staff (details, roles, account) or a student (details, account).
+async function adminUser(id) {
+  const t = ++navToken;
+  view(loading);
+  const u = await sb.rpc('list_users').eq('id', id).maybeSingle().then(must);
+  if (t !== navToken) return;
+  if (!u) { location.hash = '#/users'; return; }
+  const staff = u.kind === 'staff', table = staff ? 'staff' : 'students';
+  const mine = isMine(u), active = !!u.last_sign_in_at;
+  const title = u.name || u.email;
+  const removeBtn = mine ? '' : `<button type="button" class="ghost danger" data-act="remove">${staff ? 'Remove Access' : 'Delete Student'}</button>`;
+
+  view(`${crumbs([['Users', '#/users'], [title]])}
+  <div class="row"><h1>${esc(title)}</h1>${roleTags(u.roles)}</div>
+  <div class="grid2">
+    <section class="card"><h2>Details</h2>
+      <form id="userForm" class="stack">
+        <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter their first name."></label>
+        <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
+        ${staff ? rolesFieldset(u.roles, mine ? ['admin'] : [])
+          + (mine ? '<p class="hint">You can\'t remove your own Admin role. Ask another admin.</p>' : '')
+          : `<p class="hint">A student. ${me.isCoach ? `Their plans and goals are on <a href="#/student/${u.id}">their student page</a>.`
+            : 'Coaches manage their plans and goals.'}</p>`}
+        <button class="primary">Save Details</button>
+      </form>
+    </section>
+    <aside>
+      <section class="card"><h2>Account</h2>
+        ${active ? `
+        <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
+        <div class="row"><button data-act="send-link">Send Sign-In Link</button>${removeBtn}</div>` : `
+        <form id="inviteForm" class="stack">
+          <p>${u.invited_at ? `Invited ${fmtWhen(u.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
+          <label>Email<input type="email" name="email" value="${esc(u.email || '')}" required data-need="Enter their email to send the invite." autocomplete="off"></label>
+          <p class="hint">${u.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email with a link to choose a password."}</p>
+          <div class="row"><button class="primary">${u.invited_at ? 'Resend Invite' : 'Send Invite'}</button>${removeBtn}</div>
+        </form>`}
+      </section>
+    </aside>
+  </div>`);
+
+  $('#userForm').onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const patch = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim() };
+    if (staff && !(patch.roles = checkedRoles(e.target))) return;
+    busy(e.submitter, async () => {
+      must(await sb.from(table).update(patch).eq('id', id));
+      if (mine) { await loadMe(me.user); $('#whoName').textContent = rolesText(me.roles); }
+      flash('Details saved.');
+      adminUser(id);
+    });
+  };
+
+  const inviteForm = $('#inviteForm');
+  if (inviteForm) inviteForm.onsubmit = e => {
+    e.preventDefault();
+    const email = new FormData(e.target).get('email').trim().toLowerCase();
+    busy(e.submitter, async () => {
+      // Save the email first: the sign-up gate only lets listed emails create an account.
+      if (email !== u.email) {
+        const { error } = await sb.from(table).update({ email }).eq('id', id);
+        if (error) throw error.code === '23505' ? new Error(`Another ${staff ? 'staff member' : 'student'} already has that email.`) : error;
+      }
+      const { error } = await sendLink(email, u.first_name, staff);
+      if (error) throw error;
+      must(await sb.from(table).update({ invited_at: new Date().toISOString() }).eq('id', id));
+      flash(`Invite sent to ${email}.`);
+      adminUser(id);
+    });
+  };
+
+  app.onclick = async e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'send-link') busy(b, async () => {
+      const { error } = await sendLink(u.email);
+      if (error) throw error;
+      flash(`Link sent to ${u.email}.`);
+    });
+    if (b.dataset.act === 'remove') {
+      const ok = await ask(staff
+        ? { title: `Remove ${title}?`, warn: true, ok: 'Remove Access',
+            body: "<p>They won't be able to sign in, and their login is deleted. Students, plans and notes stay as they are.</p>" }
+        : { title: `Delete ${title}?`, warn: true, ok: 'Delete Student',
+            body: "<p>This deletes the student, all their plans, goals and notes, and their login. This can't be undone.</p>" });
+      if (ok) busy(b, async () => {
+        must(await sb.rpc(staff ? 'delete_staff' : 'delete_student', { p_id: id }));
+        flash(`${title} ${staff ? 'removed' : 'deleted'}.`);
+        location.hash = '#/users';
+      });
+    }
+  };
 }
 
 // ---------- Coach: students ----------
@@ -1037,7 +1249,7 @@ async function studentPlan(id, allPlans, goals) {
 
 function notesHTML(sid) {
   const list = notesCtx.notes.filter(n => n.session_id === sid);
-  const canDelete = n => me.isAdmin || (n.author_id === me.user.id && !n.from_coach);
+  const canDelete = n => me.isCoach || (n.author_id === me.user.id && !n.from_coach);
   return `<details class="notes" data-notes="${sid}" ${list.length ? 'open' : ''}>
     <summary>${list.length ? `Notes (${list.length})` : 'Add a Note'}</summary>
     ${list.map(n => `<div class="note${n.from_coach ? ' coach' : ''}">
@@ -1046,7 +1258,7 @@ function notesHTML(sid) {
       <p>${para(n.body)}</p></div>`).join('')}
     <form class="note-form" data-note-form="${sid}">
       <textarea name="body" rows="2" maxlength="4000" required data-need="Write your note first."
-        placeholder="${me.isAdmin ? 'Reply to your student…' : 'How did it go? Grades sent, how it felt, questions…'}"></textarea>
+        placeholder="${me.isCoach ? 'Reply to your student…' : 'How did it go? Grades sent, how it felt, questions…'}"></textarea>
       <button class="small">Post Note</button>
     </form>
   </details>`;
@@ -1064,7 +1276,7 @@ app.addEventListener('submit', e => {
   const body = f.elements.body.value.trim();
   if (!body) return;
   busy(e.submitter, async () => {
-    const n = await sb.from('notes').insert({ session_id: f.dataset.noteForm, body, from_coach: me.isAdmin }).select().single().then(must);
+    const n = await sb.from('notes').insert({ session_id: f.dataset.noteForm, body, from_coach: me.isCoach }).select().single().then(must);
     notesCtx.notes.push(n);
     refreshNotes(n.session_id);
   });

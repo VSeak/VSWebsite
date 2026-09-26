@@ -1,12 +1,22 @@
 -- Bouldering coaching site: tables, access rules and the sign-up gate.
 -- Run once in Supabase: SQL Editor → New query → paste all of this → change
--- the email in step 6 to yours → Run.
+-- the email in step 7 to yours → Run.
 
 -- 1. Tables ------------------------------------------------------------------
 
--- Emails that get coach (admin) access.
-create table public.admins (
-  email text primary key check (email = lower(email))
+-- Staff sign in by email. Roles are separate and a person can have several:
+-- coach manages students, plans, goals and notes; admin sees and edits every
+-- user on the Users page (staff and students).
+create table public.staff (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique check (email = lower(email)),
+  first_name text not null default '',
+  last_name text not null default '',
+  name text generated always as (trim(first_name || ' ' || last_name)) stored,
+  roles text[] not null default '{coach}'
+    check (cardinality(roles) > 0 and roles <@ array['admin', 'coach']),
+  invited_at timestamptz,
+  created_at timestamptz not null default now()
 );
 
 -- One row per student. email can wait until the coach is ready to invite them.
@@ -69,10 +79,23 @@ create index on public.goals (student_id);
 
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
+-- The signed-in person's staff roles, e.g. {admin,coach}, or null for a student.
+create function public.my_roles() returns text[]
+language sql stable security definer set search_path = '' as $$
+  select roles from public.staff where email = lower(auth.jwt() ->> 'email');
+$$;
+
+create function public.is_coach() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.staff where email = lower(auth.jwt() ->> 'email') and 'coach' = any (roles)
+  );
+$$;
+
 create function public.is_admin() returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
-    select 1 from public.admins where email = lower(auth.jwt() ->> 'email')
+    select 1 from public.staff where email = lower(auth.jwt() ->> 'email') and 'admin' = any (roles)
   );
 $$;
 
@@ -115,25 +138,26 @@ language plpgsql volatile security definer set search_path = '' as $$
 declare
   s public.students;
 begin
-  if not public.is_admin() then
-    raise exception 'Only the coach can delete students.';
+  if not (public.is_coach() or public.is_admin()) then
+    raise exception 'Only a coach or an admin can delete students.';
   end if;
   delete from public.students where id = p_id returning * into s;
   if s.id is null then return; end if;
   -- Their login: the claimed one, or one made by an invite they never opened.
   delete from auth.users u
   where (u.id = s.user_id or (s.email is not null and lower(u.email) = s.email))
-    and not exists (select 1 from public.admins a where a.email = lower(u.email));
+    and not exists (select 1 from public.staff a where a.email = lower(u.email));
 end;
 $$;
 
 -- 3. Access rules -------------------------------------------------------------
--- The coach can do everything. A student can read their own row, plans and
--- sessions, read their current and achieved goals (not archived ones), read
--- notes on their sessions, and add or delete their own notes.
--- admins has no rules at all, so nobody can read or change it from the site.
+-- Coaches can do everything with students, plans, sessions, notes and goals.
+-- Admins can read and change the staff list and students (not plans or goals).
+-- A student can read their own row, plans and sessions, read their current and
+-- achieved goals (not archived ones), read notes on their sessions, and add or
+-- delete their own notes.
 
-alter table public.admins   enable row level security;
+alter table public.staff    enable row level security;
 alter table public.students enable row level security;
 alter table public.plans    enable row level security;
 alter table public.sessions enable row level security;
@@ -141,26 +165,31 @@ alter table public.notes    enable row level security;
 alter table public.goals    enable row level security;
 
 grant select, insert, update, delete
-  on public.students, public.plans, public.sessions, public.notes, public.goals
+  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals
   to authenticated;
 
+create policy "admin: everything" on public.staff for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
 create policy "coach: everything" on public.students for all to authenticated
+  using (public.is_coach()) with check (public.is_coach());
+create policy "admin: students" on public.students for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 create policy "student: own row" on public.students for select to authenticated
   using (user_id = auth.uid());
 
 create policy "coach: everything" on public.plans for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_coach()) with check (public.is_coach());
 create policy "student: own plans" on public.plans for select to authenticated
   using (student_id = public.my_student_id());
 
 create policy "coach: everything" on public.sessions for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_coach()) with check (public.is_coach());
 create policy "student: own sessions" on public.sessions for select to authenticated
   using (public.owns_plan(plan_id));
 
 create policy "coach: everything" on public.notes for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_coach()) with check (public.is_coach());
 create policy "student: read notes" on public.notes for select to authenticated
   using (public.owns_session(session_id));
 create policy "student: add notes" on public.notes for insert to authenticated
@@ -169,19 +198,19 @@ create policy "student: delete own notes" on public.notes for delete to authenti
   using (author_id = auth.uid() and not from_coach);
 
 create policy "coach: everything" on public.goals for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using (public.is_coach()) with check (public.is_coach());
 create policy "student: own goals" on public.goals for select to authenticated
   using (student_id = public.my_student_id() and status <> 'archived');
 
 -- 4. Sign-up gate ---------------------------------------------------------------
--- Only emails on the student list (or the admins list) can create an account.
+-- Only emails on the student list (or the staff list) can create an account.
 -- Anyone else gets an error, so an open sign-up can't be abused.
 
 create function public.gate_signup() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   if not exists (select 1 from public.students where email = lower(new.email))
-     and not exists (select 1 from public.admins where email = lower(new.email)) then
+     and not exists (select 1 from public.staff where email = lower(new.email)) then
     raise exception 'This email has not been invited.';
   end if;
   return new;
@@ -191,10 +220,59 @@ $$;
 create trigger gate_signup before insert on auth.users
   for each row execute function public.gate_signup();
 
--- 5. Nothing here needs the anonymous (signed-out) role.
+-- 5. Admins ------------------------------------------------------------------------
+
+-- There must always be an admin, so nobody can lock everyone out of the Users page.
+create function public.keep_an_admin() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not exists (select 1 from public.staff where 'admin' = any (roles)) then
+    raise exception 'There must always be at least one admin.';
+  end if;
+  return null;
+end;
+$$;
+create trigger keep_an_admin after update or delete on public.staff
+  for each statement execute function public.keep_an_admin();
+
+-- Everyone, staff and students, for admins only (others get no rows).
+-- last_sign_in_at comes from their login, so the page can tell who is active.
+create function public.list_users()
+returns table (kind text, id uuid, first_name text, last_name text, name text, email text,
+               roles text[], invited_at timestamptz, last_sign_in_at timestamptz)
+language sql stable security definer set search_path = '' as $$
+  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.email, s.roles, s.invited_at, u.last_sign_in_at
+  from public.staff s left join auth.users u on lower(u.email) = s.email
+  where public.is_admin()
+  union all
+  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.email, '{student}'::text[], st.invited_at, u.last_sign_in_at
+  from public.students st left join auth.users u on u.id = st.user_id
+  where public.is_admin();
+$$;
+
+-- Removes a staff member and their login (kept if they are also a student).
+create function public.delete_staff(p_id uuid) returns void
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  s public.staff;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can remove staff.';
+  end if;
+  delete from public.staff where id = p_id returning * into s;
+  if s.id is null then return; end if;
+  delete from auth.users u
+  where lower(u.email) = s.email
+    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = s.email);
+end;
+$$;
+
+-- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.claim_student() from anon;
 revoke execute on function public.delete_student(uuid) from public, anon;
-grant execute on function public.delete_student(uuid) to authenticated;
+revoke execute on function public.list_users() from public, anon;
+revoke execute on function public.delete_staff(uuid) from public, anon;
+grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid) to authenticated;
 
--- 6. Make yourself the coach. Change this to the email you'll sign in with.
-insert into public.admins (email) values (lower('you@example.com'));
+-- 7. Make yourself an admin and a coach. Change this to the email you'll sign in with.
+insert into public.staff (email, roles) values (lower('you@example.com'), '{admin,coach}');

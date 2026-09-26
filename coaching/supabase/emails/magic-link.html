@@ -1,5 +1,5 @@
 <!-- Supabase → Authentication → Emails → Templates → Magic Link.
-     Sent when the coach clicks Send Sign-In Link for a student who already has an account
+     Sent when the coach clicks Send Sign-In Link for a student (or an admin does, for anyone) who already has an account
      (usually a forgotten password). The link leads to "Choose a Password".
      Subject: Private Coaching: Your Sign-In Link 🧗
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
@@ -39,7 +39,7 @@
               Hi {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},
             </p>
             <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
-              Here's a new link to get back into your training plan. Tap the button below to sign in, then set a new password.
+              Here's a new link to get back into {{ if .Data.staff }}the coaching site{{ else }}your training plan{{ end }}. Tap the button below to sign in, then set a new password.
               You'll use it to sign in from then on.
             </p>
 

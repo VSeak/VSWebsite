@@ -14,7 +14,7 @@ About 30 minutes, once. Everything here is free.
 3. At the very bottom, change `you@example.com` to the email you'll sign in with as the coach.
 4. Press **Run**. You should see "Success. No rows returned".
 
-## 3. Create your coach account
+## 3. Create your account
 
 **Authentication → Users → Add user → Create new user**: your email (the same one as step 2), a password, and tick **Auto Confirm User**.
 

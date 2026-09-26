@@ -1,7 +1,9 @@
 <!-- Supabase → Authentication → Emails → Templates → Confirm signup.
-     Subject: Private Coaching: Your Training Plan Is Ready 🧗
+     Subject: Private Coaching: {{ if .Data.staff }}You're Invited{{ else }}Your Training Plan Is Ready{{ end }} 🧗
+     (If Supabase won't take the if in the subject, use: Private Coaching: Your Invite 🧗)
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
-     {{ .Data.first_name }} is the student's first name, sent by the page with the invite (sendLink in index.html). -->
+     {{ .Data.first_name }} is the student's first name, sent by the page with the invite (sendLink in index.html).
+     {{ .Data.staff }} is set when an admin invites a coach or admin, so the wording changes for them. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,14 +32,15 @@
           <td style="background:#FFFFFF; border:1px solid #DCE2E7; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#15202B;">
 
             <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#15202B;">
-              Your Training Plan Is Ready
+              {{ if .Data.staff }}You're Invited{{ else }}Your Training Plan Is Ready{{ end }}
             </h1>
 
             <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
               Hi {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},
             </p>
             <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
-              It's Vittia, your bouldering coach. I've set you up on my coaching site, where you'll find your training plan and can leave notes on each session for me.
+              {{ if .Data.staff }}It's Vittia. I've added you to the team on my bouldering coaching site.
+              {{ else }}It's Vittia, your bouldering coach. I've set you up on my coaching site, where you'll find your training plan and can leave notes on each session for me.{{ end }}
               Tap the button below to confirm your email and create a password for your account. You'll use it to sign in from then on.
             </p>
 
@@ -69,7 +72,7 @@
         <!-- Footer -->
         <tr>
           <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#5B6B78;">
-            This email was sent to {{ .Email }} because Vittia added you as a student. If you weren't expecting it, you can ignore it.
+            This email was sent to {{ .Email }} because Vittia added you as {{ if .Data.staff }}staff{{ else }}a student{{ end }}. If you weren't expecting it, you can ignore it.
           </td>
         </tr>
 

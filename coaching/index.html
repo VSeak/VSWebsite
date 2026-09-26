@@ -99,6 +99,14 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); fon
   background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .tag.ok::before { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: currentColor; }
 
+/* Coach home */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+a.tile { display: block; color: var(--ink); text-decoration: none; }
+a.tile:hover { border-color: var(--accent); }
+a.tile:hover h2 { color: var(--accent); }
+a.tile p { margin: 0; }
+.tile-stat { margin-top: .6rem !important; font-weight: 600; color: var(--accent); }
+
 /* Goals */
 .goal { display: flex; justify-content: space-between; align-items: flex-start; gap: .4rem .8rem; flex-wrap: wrap; padding: .6rem 0; }
 .goal-text { flex: 1; min-width: 180px; }
@@ -379,7 +387,7 @@ function route() {
   if (wantsPassword || (!me.isAdmin && !me.user.user_metadata?.password_set)) return viewSetPassword();
   const [, page, id] = location.hash.split('/');
   const go = me.isAdmin
-    ? (page === 'student' && id ? adminStudent(id) : page === 'plan' && id ? adminPlan(id) : adminHome())
+    ? (page === 'students' ? adminStudents() : page === 'student' && id ? adminStudent(id) : page === 'plan' && id ? adminPlan(id) : adminHome())
     : !me.student ? viewNoAccess()
     : (page === 'plan' && id ? studentPlan(id) : studentHome());
   Promise.resolve(go).catch(showError);
@@ -458,11 +466,35 @@ function viewNoAccess() {
     Ask your coach to check which email they have for you.</p></section>`);
 }
 
+// ---------- Coach: home ----------
+
+// One tile per coach page. Add new pages here. stat() is optional and returns a short line for the tile.
+const ADMIN_PAGES = [
+  { href: '#/students', title: 'Students', blurb: 'Add students, build their plans and goals, and send invites.',
+    stat: async () => {
+      const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true });
+      if (error) throw error;
+      return count === 1 ? '1 student' : `${count} students`;
+    } },
+];
+
+async function adminHome() {
+  const t = ++navToken;
+  view(`<h1>Coach Home</h1>
+    <div class="tiles">${ADMIN_PAGES.map((p, i) => `<a class="card tile" href="${p.href}">
+      <h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p>
+      ${p.stat ? `<p class="tile-stat" data-stat="${i}">&nbsp;</p>` : ''}</a>`).join('')}</div>`);
+  ADMIN_PAGES.forEach((p, i) => p.stat?.().then(text => {
+    const el = t === navToken && app.querySelector(`[data-stat="${i}"]`);
+    if (el) el.textContent = text;
+  }).catch(() => {}));
+}
+
 // ---------- Coach: students ----------
 
 const accountStatus = s => s.user_id ? 'Active' : s.invited_at ? 'Invited' : 'Not Invited';
 
-async function adminHome() {
+async function adminStudents() {
   const t = ++navToken;
   view(loading);
   const [students, recent] = await Promise.all([
@@ -484,7 +516,8 @@ async function adminHome() {
       <a href="#/plan/${n.session?.plan?.id}">${esc(n.session?.plan?.title)}, Week ${n.session?.week}</a></div>
       <p>${para(n.body)}</p></div>`).join('');
 
-  view(`<h1>Students</h1>
+  view(`${crumbs([['Home', '#/'], ['Students']])}
+  <h1>Students</h1>
   <div class="grid2">
     <section class="card">${students.length ? `<ul class="list">${rows}</ul>` : '<p class="muted">No students yet. Add your first one.</p>'}</section>
     <aside>
@@ -547,7 +580,7 @@ async function adminStudent(id) {
   view(loading);
   const s = await sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must);
   if (t !== navToken) return;
-  if (!s) { location.hash = '#/'; return; }
+  if (!s) { location.hash = '#/students'; return; }
   s.plans.sort((a, b) => (b.active - a.active) || b.updated_at.localeCompare(a.updated_at));
   sortGoals(s.goals);
 
@@ -555,7 +588,7 @@ async function adminStudent(id) {
     <span><strong>${esc(p.title)}</strong><span class="item-sub">${p.start_date ? 'Starts ' + fmtDate(p.start_date) : 'No start date'}</span></span>
     ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
-  view(`${crumbs([['Students', '#/'], [s.name]])}
+  view(`${crumbs([['Students', '#/students'], [s.name]])}
   <h1>${esc(s.name)}</h1>
   <div class="grid2">
     <div>
@@ -685,7 +718,7 @@ async function adminStudent(id) {
       if (ok) busy(b, async () => {
         must(await sb.rpc('delete_student', { p_id: id }));
         flash(`${s.name} deleted.`);
-        location.hash = '#/';
+        location.hash = '#/students';
       });
     }
   };
@@ -791,7 +824,7 @@ function renderEditor() {
     </section>`;
   }
 
-  view(`${crumbs([['Students', '#/'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
+  view(`${crumbs([['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
     <div class="card savebar">
       <span id="saveState" class="${dirty ? 'warn' : 'muted'}">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>
       <div class="row"><button data-act="preview">${draft.preview ? 'Back to Editing' : 'Student View'}</button>

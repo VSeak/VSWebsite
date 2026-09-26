@@ -28,7 +28,7 @@ A personal site for a bouldering coach. The coach (admin) signs in to manage stu
 
 ## Pages (hash routes, `route()`)
 
-- Coach: `#/` students + add student + latest student notes; `#/student/<id>` plans, goals, details, account; `#/plan/<id>` plan editor.
+- Coach: `#/` Coach Home, one tile per page from `ADMIN_PAGES` (add a new coach page there and in `route()`); `#/students` students + add student + latest student notes; `#/student/<id>` plans, goals, details, account; `#/plan/<id>` plan editor.
 - Student: `#/` their goals and current plan (or a list), then achieved goals; `#/plan/<id>` one plan.
 - The plan editor keeps a `draft` and saves on **Save Plan** (upserts sessions, deletes removed ones). Session ids are made in the browser so notes stay attached. `dirty` drives the leave check (`onHashChange`, `beforeunload`, Sign Out). **Student View** previews the draft.
 

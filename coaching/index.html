@@ -81,7 +81,9 @@ button:hover { border-color: var(--muted); }
 button:disabled { opacity: .55; cursor: progress; }
 button.ghost { background: transparent; }
 button.danger { color: var(--danger); }
-/* Primary buttons look like the rest until hovered */
+/* Primary buttons show only an accent edge until hovered */
+button.primary { border-color: var(--accent); }
+button.primary.danger { border-color: var(--danger); }
 button.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.primary.danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #fff; }
 button.small { padding: .3rem .65rem; font-size: .85rem; }

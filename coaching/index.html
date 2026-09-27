@@ -549,7 +549,7 @@ async function adminUsers() {
           <label>Last Name<input name="last_name" autocomplete="off"></label>
           <label>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
           ${rolesFieldset(['coach'])}
-          <button class="primary">Add and Send Invite</button>
+          <button class="primary">+ Add and Send Invite</button>
         </form>
         <p class="hint">Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
       </section>
@@ -738,7 +738,7 @@ async function adminStudents() {
         <form id="addForm" class="stack">
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
-          <button class="primary">Add Student</button>
+          <button class="primary">+ Add Student</button>
         </form>
         <p class="hint">Build their plan first, then add their email and send the invite from their page.</p>
       </section>
@@ -779,7 +779,7 @@ function coachGoalsHTML(goals) {
       : '<p class="muted">No current goals.</p>'}
     <form id="goalForm" class="row" style="margin-top:.6rem">
       <input name="body" class="grow" maxlength="500" required data-need="Write the goal first." autocomplete="off" placeholder="e.g. Send a V5 by spring">
-      <button class="primary">Add Goal</button>
+      <button class="primary">+ Add Goal</button>
     </form>
     <p class="hint">They see current and achieved goals on their page. Archived goals are hidden from them.</p>
     ${won.length ? `<h3 class="goal-group">Achieved</h3><ul class="list">${won.map(g => goalItem(g, 'Achieved ' + fmtDay(g.done_at),
@@ -806,7 +806,7 @@ async function adminStudent(id) {
   <div class="grid2">
     <div>
       <section class="card">
-        <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">New Plan</button></div>
+        <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">+ New Plan</button></div>
         ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>

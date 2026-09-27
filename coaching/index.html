@@ -463,6 +463,19 @@ async function okToLeave(signOut = false) {
   return !!ok;
 }
 
+// A page redraw after a save keeps unsaved edits in its other forms (not saved, the form just saved).
+// Returns a function that puts them back once the page is drawn again.
+function keepEdits(saved) {
+  const kept = [...app.querySelectorAll('form[id]')].filter(f => f !== saved).flatMap(f =>
+    [...f.querySelectorAll(':is(input, textarea, select)[name]')].filter(fieldChanged).map(el =>
+      ({ el, sel: `#${f.id} [name="${el.name}"]${el.type === 'checkbox' ? `[value="${el.value}"]` : ''}` })));
+  return () => kept.forEach(({ el, sel }) => {
+    const now = app.querySelector(sel);
+    if (!now || now.disabled) return;
+    if (el.type === 'checkbox') now.checked = el.checked; else now.value = el.value;
+  });
+}
+
 // Goes to another page without the leave check, after a save, add or delete that ends there.
 function goTo(hash) {
   dirty = false;
@@ -714,9 +727,11 @@ function checkedRoles(form) {
 }
 
 // One page for any user: staff (details, roles, account) or a student (details, account).
-// again: redraw after a save, without the Loading… step or a jump to the top.
+// again: redraw after a save, without the Loading… step or a jump to the top. It can be the form
+// just saved; unsaved edits in the other forms are kept (keepEdits).
 async function adminUser(id, again = false) {
   const t = ++navToken;
+  const restore = again && keepEdits(again);
   if (!again) view(loading);
   const u = await sb.rpc('list_users').eq('id', id).maybeSingle().then(must);
   if (t !== navToken) return;
@@ -790,6 +805,7 @@ async function adminUser(id, again = false) {
       </section>
     </aside>
   </div>`, { keepScroll: again });
+  if (restore) restore();
   if (!staff) bindTraining(id, stu, () => adminUser(id, true));
   if (!staff && !stu.training_ended_at) bindNextSession(id, stu);
   if (!ready) gateInvite(me.isCoach
@@ -805,7 +821,7 @@ async function adminUser(id, again = false) {
       must(await sb.from(table).update(patch).eq('id', id));
       if (mine) { await loadMe(me.user); setWho(); }
       flash('Details saved.');
-      adminUser(id, true);
+      adminUser(id, e.target);
     });
   };
 
@@ -817,7 +833,7 @@ async function adminUser(id, again = false) {
     busy(e.submitter, async () => {
       must(await sb.from('students').update({ coach_id }).eq('id', id));
       flash(coach_id ? 'Coach saved.' : 'Coach removed.');
-      adminUser(id, true);
+      adminUser(id, e.target);
     });
   };
 
@@ -836,7 +852,7 @@ async function adminUser(id, again = false) {
       if (error) throw error;
       must(await sb.from(table).update({ invited_at: new Date().toISOString() }).eq('id', id));
       flash(`Invite sent to ${email}.`);
-      adminUser(id, true);
+      adminUser(id, e.target);
     });
   };
 
@@ -1061,9 +1077,11 @@ function coachGoalsHTML(goals) {
       goalItem(g, 'Archived ' + fmtDay(g.done_at), btns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))).join('')}</ul></details>` : ''}`;
 }
 
-// again: redraw after a change, without the Loading… step or a jump to the top.
+// again: redraw after a change, without the Loading… step or a jump to the top. It can be the form
+// just saved; unsaved edits in the other forms are kept (keepEdits).
 async function adminStudent(id, again = false) {
   const t = ++navToken;
+  const restore = again && keepEdits(again);
   if (!again) view(loading);
   const [s, coaches] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
@@ -1129,7 +1147,7 @@ async function adminStudent(id, again = false) {
         first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(),
       }).eq('id', id));
       flash('Details saved.');
-      adminStudent(id);
+      adminStudent(id, e.target);
     });
   };
 
@@ -1140,10 +1158,13 @@ async function adminStudent(id, again = false) {
   };
 
   // Goals change in place, so the rest of the page (and the scroll) stays put.
+  // focusAdd: a goal was just added, so the box starts empty; otherwise a goal being typed stays.
   function renderGoals(focusAdd) {
     gateInvite(inviteNeed());
+    const typing = !focusAdd && $('#goalForm')?.elements.body.value;
     $('#goalsCard').innerHTML = coachGoalsHTML(s.goals);
     const form = $('#goalForm');
+    if (typing) form.elements.body.value = typing;
     if (focusAdd) form.elements.body.focus();
     form.onsubmit = e => {
       e.preventDefault();
@@ -1163,6 +1184,7 @@ async function adminStudent(id, again = false) {
     if (msg) flash(msg);
   });
   renderGoals();
+  if (restore) restore();
 
   const inviteForm = $('#inviteForm');
   if (inviteForm) inviteForm.onsubmit = e => {
@@ -1179,7 +1201,7 @@ async function adminStudent(id, again = false) {
       if (error) throw error;
       must(await sb.from('students').update({ invited_at: new Date().toISOString() }).eq('id', id));
       flash(`Invite sent to ${email}.`);
-      adminStudent(id);
+      adminStudent(id, e.target);
     });
   };
 

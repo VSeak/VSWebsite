@@ -44,7 +44,7 @@ Leave **Authentication → Sign In / Providers → Email** on, and leave "Allow 
 
 ```js
 const CONFIG = {
-  siteName: "Bouldering Coaching",
+  siteName: "Private Coaching",
   supabaseUrl: "https://abcd1234.supabase.co",
   supabaseKey: "sb_publishable_…",
 };

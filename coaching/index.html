@@ -3,30 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bouldering Coaching</title>
+<title>Private Coaching</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#FFFDF9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#201C17" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=Sora:wght@600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
-  --bg: #F4F6F8; --card: #FFFFFF; --field: #FFFFFF; --ink: #15202B; --muted: #5B6B78;
-  --line: #DCE2E7; --accent: #0E7C7B; --accent-ink: #FFFFFF; --soft: #E0F1F0;
-  --danger: #B42318; --warn: #9A5B00; --ok: #2F7D4F; --shadow: 0 1px 2px rgba(21,32,43,.06);
+  --bg: #F3F0EA; --card: #FFFDF9; --field: #FFFEFC; --ink: #2C2620; --muted: #766B60;
+  --line: #E1DAD0; --accent: #4F6441; --accent-ink: #F5FAF0; --soft: #E2E9DA;
+  --danger: #B42318; --warn: #9A5B00; --ok: #2F7D4F; --shadow: 0 1px 2px rgba(44,38,32,.06);
   --radius: 10px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0E1417; --card: #172026; --field: #121A1E; --ink: #E6EDF1; --muted: #93A3AE;
-    --line: #29343B; --accent: #3CC7C1; --accent-ink: #06201F; --soft: #16302F;
+    --bg: #15130F; --card: #201C17; --field: #1A1713; --ink: #ECE5DB; --muted: #A69A8B;
+    --line: #352F27; --accent: #A4BA8F; --accent-ink: #17220D; --soft: #2C3322;
     --danger: #F97066; --warn: #E3AE5A; --ok: #74C295; --shadow: none;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0E1417; --card: #172026; --field: #121A1E; --ink: #E6EDF1; --muted: #93A3AE;
-  --line: #29343B; --accent: #3CC7C1; --accent-ink: #06201F; --soft: #16302F;
+  --bg: #15130F; --card: #201C17; --field: #1A1713; --ink: #ECE5DB; --muted: #A69A8B;
+  --line: #352F27; --accent: #A4BA8F; --accent-ink: #17220D; --soft: #2C3322;
   --danger: #F97066; --warn: #E3AE5A; --ok: #74C295; --shadow: none;
   color-scheme: dark;
 }
@@ -41,7 +45,10 @@ p { margin: 0 0 .75rem; }
 
 .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   padding: .8rem 16px; border-bottom: 1px solid var(--line); background: var(--card); }
-.brand { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; }
+.brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); text-decoration: none; }
+.brand svg { width: 32px; height: 32px; flex: none; color: var(--accent); }
+.brand-name { font: 600 1.1rem/1.05 Sora, Inter, sans-serif; }
+.brand-name small { display: block; margin-top: .15rem; font-size: .66rem; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
 .who { display: flex; min-width: 0; margin-left: auto; white-space: nowrap; color: var(--muted); font-size: .9rem; }
 #whoName { overflow: hidden; text-overflow: ellipsis; }
 #whoRoles:not(:empty)::before { content: "·"; margin: 0 .4rem; }
@@ -307,7 +314,7 @@ dialog .row { margin-top: 1rem; }
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="#/"></a>
+  <a class="brand" href="#/"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M6.5 22.5 13 9.5l4 6.5 3-4 5.5 10.5z" fill="currentColor"/></svg><span class="brand-name"></span></a>
   <div class="who" hidden><span id="whoName"></span><span id="whoRoles"></span></div>
   <button id="signOut" class="ghost small" hidden>Sign Out</button>
 </header>
@@ -320,7 +327,7 @@ dialog .row { margin-top: 1rem; }
 <script>
 // ---- Fill these in from Supabase (see SETUP.md) ----
 const CONFIG = {
-  siteName: "Bouldering Coaching",
+  siteName: "Private Coaching",
   supabaseUrl: "https://loxyrqffevvdhwltccxr.supabase.co",   // e.g. https://abcd1234.supabase.co
   supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxveHlycWZmZXZ2ZGh3bHRjY3hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNzc5NzAsImV4cCI6MjEwNTk1Mzk3MH0.czgnKpu18kuEghIC3Ixy6jR-AFvBHQVH7rDDqmFF_EI",   // the publishable (or "anon") key. Never the secret key.
   siteUrl: "https://vseak.github.io/VSWebsite/coaching/",   // where emailed sign-in links go, even when sent from localhost. Leave "" to use the current address.
@@ -335,7 +342,11 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 const loading = '<p class="muted">Loading…</p>';
 
 document.title = CONFIG.siteName;
-$('.brand').textContent = CONFIG.siteName;
+{ // "Private Coaching" → "Private" over a small "COACHING"
+  const [first, ...rest] = CONFIG.siteName.split(' ');
+  $('.brand-name').innerHTML = esc(first) + (rest.length ? `<small>${esc(rest.join(' '))}</small>` : '');
+  $('.brand').setAttribute('aria-label', CONFIG.siteName);
+}
 
 let sb, mailer;
 let me = null;               // {user, roles, isStaff, isCoach, isAdmin, student}. roles: staff roles, e.g. ['admin', 'coach']; [] for a student

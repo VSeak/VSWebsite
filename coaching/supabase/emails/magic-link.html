@@ -15,24 +15,24 @@
 <title>Private Coaching: Your Sign-In Link</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
 </head>
-<body style="margin:0; padding:0; background:#F4F6F8;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F6F8;">
+<body style="margin:0; padding:0; background:#F3F0EA;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F0EA;">
   <tr>
     <td align="center" style="padding:32px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
 
         <!-- Brand -->
         <tr>
-          <td style="padding:0 4px 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:15px; font-weight:700; letter-spacing:.02em; color:#0E7C7B;">
+          <td style="padding:0 4px 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:15px; font-weight:700; letter-spacing:.02em; color:#4F6441;">
             Private Coaching
           </td>
         </tr>
 
         <!-- Card -->
         <tr>
-          <td style="background:#FFFFFF; border:1px solid #DCE2E7; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#15202B;">
+          <td style="background:#FFFDF9; border:1px solid #E1DAD0; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#2C2620;">
 
-            <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#15202B;">
+            <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#2C2620;">
               Your Sign-In Link
             </h1>
 
@@ -47,7 +47,7 @@
             <!-- Button -->
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
               <tr>
-                <td align="center" bgcolor="#0E7C7B" style="border-radius:8px;">
+                <td align="center" bgcolor="#4F6441" style="border-radius:8px;">
                   <a href="{{ .ConfirmationURL }}" target="_blank"
                      style="display:inline-block; padding:14px 28px; font-family:Inter, Arial, sans-serif; font-size:16px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:8px;">
                     Sign In
@@ -56,7 +56,7 @@
               </tr>
             </table>
 
-            <p style="margin:0 0 24px; font-size:14px; line-height:1.6; color:#5B6B78;">
+            <p style="margin:0 0 24px; font-size:14px; line-height:1.6; color:#766B60;">
               The button works once. If it has expired, just let me know and I'll send a new one.
             </p>
 
@@ -71,7 +71,7 @@
 
         <!-- Footer -->
         <tr>
-          <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#5B6B78;">
+          <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#766B60;">
             This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.
           </td>
         </tr>

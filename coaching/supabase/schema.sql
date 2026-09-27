@@ -209,6 +209,21 @@ begin
 end;
 $$;
 
+-- Emails sign off with the sender's first name ({{ .Data.sent_by }}). Supabase ignores a link's data for a login
+-- that already exists, so the page stamps it here before each send. The name comes from the caller's staff row.
+create function public.stamp_sender(p_email text) returns void
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  sender text;
+begin
+  select first_name into sender from public.staff where email = lower(auth.jwt() ->> 'email')
+    and ('coach' = any (roles) or 'admin' = any (roles));
+  if sender is null then raise exception 'Only a coach or an admin can send sign-in links.'; end if;
+  update auth.users set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('sent_by', sender)
+  where lower(email) = lower(trim(p_email));
+end;
+$$;
+
 -- 3. Access rules -------------------------------------------------------------
 -- Coaches can do everything with students, plans, sessions, notes and goals.
 -- Admins can read and change the staff list and students (not plans or goals).
@@ -473,8 +488,9 @@ revoke execute on function public.list_users() from public, anon;
 revoke execute on function public.delete_staff(uuid) from public, anon;
 revoke execute on function public.student_ready(uuid) from public, anon;
 revoke execute on function public.coaches_of(uuid), public.my_staff_id() from public, anon;
+revoke execute on function public.stamp_sender(text) from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
-  public.coaches_of(uuid), public.my_staff_id(), public.update_my_pronouns(text) to authenticated;
+  public.coaches_of(uuid), public.my_staff_id(), public.update_my_pronouns(text), public.stamp_sender(text) to authenticated;
 
 -- 8. Make yourself an admin, a coach and the owner. Change this to the email you'll sign in with.
 insert into public.staff (email, roles, owner) values (lower('you@example.com'), '{admin,coach}', true);

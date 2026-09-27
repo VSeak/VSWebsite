@@ -177,7 +177,7 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 .next-session { margin: 0 0 .8rem; }
 
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
-.feed h2 + .note-wrap { border-top: 0; }
+.feed :is(h2, .hint) + .note-wrap { border-top: 0; }
 .note-wrap p { margin: .2rem 0 0; }
 
 /* Plans */
@@ -471,8 +471,12 @@ function weekRange(start, w) {
 // firstName (from the coach's invite) is saved on a new login, and the Confirm
 // signup email shows it as {{ .Data.first_name }}.
 // staff: true marks a coach or admin invite, so the emails use their staff wording ({{ if .Data.staff }}).
-function sendLink(email, firstName = '', staff = false) {
-  const data = firstName || staff ? { ...(firstName && { first_name: firstName }), ...(staff && { staff: true }) } : undefined;
+// Emails sign off with the sender's first name ({{ .Data.sent_by }}). A new login gets it from data; Supabase ignores
+// data for a login that already exists, so stamp_sender() writes it there first (from the sender's own staff row).
+async function sendLink(email, firstName = '', staff = false) {
+  const { error } = await sb.rpc('stamp_sender', { p_email: email });
+  if (error) return { error };
+  const data = { ...(me.firstName && { sent_by: me.firstName }), ...(firstName && { first_name: firstName }), ...(staff && { staff: true }) };
   return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, data, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
 }
 
@@ -1018,6 +1022,12 @@ async function adminUser(id, again = false) {
 
 const accountStatus = s => s.user_id ? 'Active' : s.invited_at ? 'Invited' : 'Not Invited';
 
+// One student note in a feed: who (on the Students list; left out on a student's own page), when, and its plan and week.
+const noteFeedItem = (n, name) => `<div class="note-wrap"><div class="note-meta">
+    ${name ? `<strong>${esc(name)}</strong> · ` : ''}${fmtWhen(n.created_at)} ·
+    <a href="#/plan/${n.session?.plan?.id}">${esc(n.session?.plan?.title || 'Untitled Plan')}, Week ${n.session?.week}</a></div>
+    <p>${para(n.body)}</p></div>`;
+
 async function adminStudents() {
   const t = ++navToken;
   view(loading);
@@ -1041,10 +1051,7 @@ async function adminStudents() {
   const section = (title, list, hint, none) => `<section class="card"><h2>${title} (${list.length})</h2>
     <p class="hint">${hint}</p>
     ${list.length ? `<ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
-  const feed = recent.map(n => `<div class="note-wrap"><div class="note-meta">
-      <strong>${esc(n.session?.plan?.student?.name)}</strong> · ${fmtWhen(n.created_at)} ·
-      <a href="#/plan/${n.session?.plan?.id}">${esc(n.session?.plan?.title)}, Week ${n.session?.week}</a></div>
-      <p>${para(n.body)}</p></div>`).join('');
+  const feed = recent.map(n => noteFeedItem(n, n.session?.plan?.student?.name)).join('');
 
   view(`${crumbs([['Home', '#/'], ['Students']])}
   <h1>Students</h1>
@@ -1222,9 +1229,12 @@ async function adminStudent(id, again = false) {
   const t = ++navToken;
   const restore = again && keepEdits(again);
   if (!again) view(loading);
-  const [s, coaches] = await Promise.all([
+  const [s, coaches, notes] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
+    // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
+    sb.from('notes').select('id,body,created_at,session:sessions!inner(week,plan:plans!inner(id,title,student_id))')
+      .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).limit(10).then(must),
   ]);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/students'; return; }
@@ -1245,6 +1255,9 @@ async function adminStudent(id, again = false) {
         ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>
+      <section class="card feed"><h2>Notes</h2>
+        <p class="hint">${p.Their} latest notes on ${p.their} sessions. Open one to reply in the plan.</p>
+        ${notes.map(n => noteFeedItem(n)).join('') || `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
       ${trainingCardHTML(s)}
     </div>
     <aside>

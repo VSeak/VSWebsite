@@ -3,7 +3,8 @@
      (usually a forgotten password). The link leads to "Choose a Password".
      Subject: Private Coaching: Your Sign-In Link 🧗
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
-     {{ .Data.first_name }} was saved on the student's login with their invite (sendLink in index.html). -->
+     {{ .Data.first_name }} was saved on the student's login with their invite (sendLink in index.html).
+     {{ .Data.sent_by }} is the first name of the coach or admin who sent this link (stamp_sender writes it just before). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -62,7 +63,7 @@
             <!-- Signature -->
             <p style="margin:0; font-size:16px; line-height:1.6;">
               {{ if .Data.staff }}Thanks for being on the team!{{ else }}Happy training!{{ end }}<br>
-              <strong style="font-family:'Space Grotesk', Arial, sans-serif;">Vittia</strong>
+              <strong style="font-family:'Space Grotesk', Arial, sans-serif;">{{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }}</strong>
             </p>
 
           </td>
@@ -71,7 +72,7 @@
         <!-- Footer -->
         <tr>
           <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#5B6B78;">
-            This email was sent to {{ .Email }} because Vittia sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.
+            This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.
           </td>
         </tr>
 

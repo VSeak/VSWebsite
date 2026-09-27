@@ -915,7 +915,8 @@ async function adminStudent(id) {
       return;
     }
     if (b.dataset.act === 'new-plan') busy(b, async () => {
-      const p = await sb.from('plans').insert({ student_id: id, title: 'New Plan' }).select('id').single().then(must);
+      const p = await sb.from('plans').insert({ student_id: id, title: 'New Plan', active: !s.plans.some(x => x.active) })
+        .select('id').single().then(must);
       location.hash = '#/plan/' + p.id;
     });
     if (b.dataset.act === 'send-link') busy(b, async () => {
@@ -1020,7 +1021,7 @@ function renderEditor() {
       <label>Plan Title<input data-p="title" value="${esc(p.title)}" required data-need="Give the plan a title."></label>
       <div class="row">
         <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}"></label>
-        <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current plan (shown first to the student)</label>
+        <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan (shown first to the student; replaces their other current plan)</label>
       </div>
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
     </section>
@@ -1119,6 +1120,9 @@ function savePlan(btn) {
   }
   return busy(btn, async () => {
     const rows = sessionRows(p.id, true);
+    // The database turns the student's other current plan into a past plan; name it in the message.
+    const closed = p.active ? await sb.from('plans').select('title')
+      .eq('student_id', p.student.id).eq('active', true).neq('id', p.id).then(must) : [];
     must(await sb.from('plans').update({
       title: p.title.trim(), overview: p.overview.trim(), start_date: p.start_date || null,
       active: p.active, updated_at: new Date().toISOString(),
@@ -1130,7 +1134,7 @@ function savePlan(btn) {
     draft.savedIds = new Set(rows.map(r => r.id));
     notesCtx.notes = notesCtx.notes.filter(n => draft.savedIds.has(n.session_id));
     dirty = false;
-    flash('Plan saved.');
+    flash(closed.length ? `Plan saved. “${closed[0].title}” is now a past plan.` : 'Plan saved.');
     renderEditor();
   });
 }
@@ -1145,8 +1149,11 @@ async function copyPlan(btn) {
   if (!f) return;
   const to = students.find(s => s.id === f.get('to'));
   busy(btn, async () => {
+    // The copy is the student's current plan only if they don't have one yet.
+    const hasCurrent = (await sb.from('plans').select('id').eq('student_id', to.id).eq('active', true).then(must)).length > 0;
     const np = await sb.from('plans').insert({
       student_id: to.id, title: draft.plan.title.trim() || 'New Plan', overview: draft.plan.overview.trim(),
+      active: !hasCurrent,
     }).select('id').single().then(must);
     const rows = sessionRows(np.id, false);
     if (rows.length) must(await sb.from('sessions').insert(rows));

@@ -38,11 +38,27 @@ create table public.plans (
   title text not null,
   overview text not null default '',
   start_date date,
-  active boolean not null default true,
+  active boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 create index on public.plans (student_id);
+
+-- At most one current plan per student: making a plan current turns their
+-- other current plan into a past plan. No current plan is fine.
+create function public.one_current_plan() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.active then
+    update public.plans set active = false
+    where student_id = new.student_id and active and id <> new.id;
+  end if;
+  return new;
+end;
+$$;
+create trigger one_current_plan before insert or update of active, student_id on public.plans
+  for each row execute function public.one_current_plan();
+create unique index plans_one_current on public.plans (student_id) where active;
 
 -- exercises: [{name, sets, reps, rest, notes}]
 create table public.sessions (

@@ -2457,7 +2457,7 @@ async function studentPlan(id, allPlans, goals, coaches, next, history) {
   if (t !== navToken) return;
   notesCtx = { notes, studentName: me.student.name };
   const others = allPlans?.filter(p => p.id !== id) || [];
-  view(`${allPlans ? '' : crumbs([['Home', '#/'], [plan.title || 'Untitled Plan']])}
+  view(`${allPlans ? `<h1>${welcome()}</h1>` : crumbs([['Home', '#/'], [plan.title || 'Untitled Plan']])}
     ${nextSessionAlert(next)}
     ${goals ? goalHTML(goals) : ''}
     ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}

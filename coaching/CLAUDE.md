@@ -50,7 +50,7 @@ A personal site for a bouldering coach. Coaches sign in to manage students and w
 
 - Colors are tokens on `:root`, with dark mode under `prefers-color-scheme` and `[data-theme]`. Don't hard-code colors.
 - Look: muted "moss and bark" colors (moss green accent on warm sand/bark neutrals). Fonts: Space Grotesk for headings, Inter for body text, Sora for the brand in the header ("Private" over a small spaced-out "COACHING", split from `CONFIG.siteName`).
-- Logo: a ring with two sharp peaks, the left one higher. It is inline SVG in the header (and on the root home page card) using `currentColor`, and `icon.svg` is the favicon (moss, lighter in dark mode). `apple-touch-icon.png` (180px, light mark on moss) is for phone home screens; it was drawn with PowerShell System.Drawing, so redraw it the same way if the mark changes. The emails use the same colors as hex values.
+- Logo: a ring with two sharp peaks, the left one higher. It is inline SVG in the header (and on the root home page card) using `currentColor`, and `icon.svg` is the favicon (moss, lighter in dark mode). `apple-touch-icon.png` (180px, light mark on moss) is for phone home screens; it was drawn with PowerShell System.Drawing, so redraw it the same way if the mark changes. `email-badge.png` (96px, moss on transparent, shown at 32px) is the badge in both emails, loaded from the live site since email apps don't show SVG; the emails use the same colors as hex values.
 - Must work at phone width (~400px). Exercise tables become stacked cards under 600px.
 - Buttons, headings and labels use title case; hints and messages use sentence case.
 - Confirmations use `ask()` (one `<dialog>`), which settles on submit.

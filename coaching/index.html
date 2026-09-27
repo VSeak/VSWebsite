@@ -164,6 +164,15 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .ex-head { font-size: .8rem; font-weight: 600; color: var(--muted); margin-top: .8rem; }
 .ex-head span:last-child { width: 2rem; }
 .ex-row { margin-top: .4rem; }
+/* Exercise name picker (the master list), in place of the browser's datalist popup */
+.combo-menu { position: absolute; z-index: 20; margin: 0; padding: .3rem; list-style: none; max-height: 16rem; overflow: hidden auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.combo-menu li { display: flex; align-items: baseline; gap: .8rem; padding: .45rem .6rem; border-radius: 6px; cursor: pointer; }
+.combo-menu li > :first-child { flex: 1; }
+.combo-menu li .muted { font-size: .8rem; max-width: 50%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-menu li:hover { background: color-mix(in srgb, var(--soft) 60%, transparent); }
+.combo-menu li[aria-selected="true"] { background: var(--soft); }
+.combo-menu mark { background: none; color: var(--accent); font-weight: 600; }
 @media (max-width: 700px) {
   .ex-head { display: none; }
   .ex-row { grid-template-columns: 1fr 1fr 1fr auto; padding: .5rem 0; border-top: 1px solid var(--line); }
@@ -231,6 +240,7 @@ if (location.hash && !location.hash.startsWith('#/')) {
 
 function view(html, { keepScroll = false } = {}) {
   app.oninput = app.onchange = app.onclick = null;
+  $('#exMenu')?.setAttribute('hidden', '');   // its field is about to go
   app.innerHTML = html;
   if (!keepScroll) window.scrollTo(0, 0);
 }
@@ -1051,12 +1061,73 @@ async function addToMasterList(rows) {
   const added = await sb.from('exercises').upsert([...add.values()], { onConflict: 'name_key', ignoreDuplicates: true })
     .select().then(must);
   draft.library.push(...added);
-  const picker = $('#exNames');
-  if (picker) picker.innerHTML = exOptionsHTML();
   return added.length;
 }
-const exOptionsHTML = () => [...draft.library].sort((a, b) => a.name_key.localeCompare(b.name_key))
-  .map(x => `<option value="${esc(x.name)}">`).join('');
+
+// The exercise name picker: one menu under whichever name field has focus, listing master
+// exercises that contain what's typed (names starting with it first). Picking one sets the
+// field and fires an input event, so the editor's oninput fills in the values as for typing.
+const exMenu = Object.assign(document.createElement('ul'), { id: 'exMenu', className: 'combo-menu', role: 'listbox', hidden: true });
+exMenu.setAttribute('aria-label', 'Exercises');
+document.body.append(exMenu);
+let exMenuFor = null, exMatches = [], exActive = -1;
+
+function exMenuOpen(input) {
+  const q = exKey(input.value);
+  exMatches = (draft?.library ?? []).filter(x => x.name_key.includes(q))
+    .sort((a, b) => (b.name_key.startsWith(q) - a.name_key.startsWith(q)) || a.name_key.localeCompare(b.name_key));
+  if (!exMatches.length || (exMatches.length === 1 && exMatches[0].name_key === q)) return exMenuClose();
+  exMenuFor = input; exActive = -1;
+  const hit = s => { const i = s.toLowerCase().indexOf(q);
+    return q && i >= 0 ? `${esc(s.slice(0, i))}<mark>${esc(s.slice(i, i + q.length))}</mark>${esc(s.slice(i + q.length))}` : esc(s); };
+  exMenu.innerHTML = exMatches.map((x, k) => {
+    const sum = [x.sets && x.reps ? `${x.sets} × ${x.reps}` : x.sets || x.reps, x.rest].filter(Boolean).join(' · ');
+    return `<li id="exOpt${k}" role="option" data-k="${k}"><span>${hit(x.name)}</span>${sum ? `<span class="muted">${esc(sum)}</span>` : ''}</li>`;
+  }).join('');
+  const r = input.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth, w = Math.min(Math.max(r.width, 320), vw - 16);
+  Object.assign(exMenu.style, { left: Math.max(8, Math.min(r.left, vw - w - 8)) + scrollX + 'px', top: r.bottom + scrollY + 4 + 'px', width: w + 'px' });
+  exMenu.hidden = false; exMenu.scrollTop = 0;
+  input.setAttribute('aria-expanded', 'true');
+  input.removeAttribute('aria-activedescendant');
+}
+
+function exMenuClose() {
+  exMenu.hidden = true;
+  exMenuFor?.setAttribute('aria-expanded', 'false');
+  exMenuFor?.removeAttribute('aria-activedescendant');
+  exMenuFor = null;
+}
+
+function exMenuMove(k) {
+  exActive = (k + exMatches.length) % exMatches.length;
+  exMenu.querySelectorAll('li').forEach((li, j) => li.setAttribute('aria-selected', j === exActive));
+  const li = exMenu.children[exActive];
+  li.scrollIntoView({ block: 'nearest' });
+  exMenuFor.setAttribute('aria-activedescendant', li.id);
+}
+
+function exMenuPick(k) {
+  const input = exMenuFor;
+  input.value = exMatches[k].name;
+  exMenuClose();
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+document.addEventListener('focusin', e => { if (e.target.matches?.('[data-combo]')) exMenuOpen(e.target); });
+document.addEventListener('focusout', e => { if (e.target === exMenuFor) exMenuClose(); });
+document.addEventListener('input', e => { if (e.target.matches?.('[data-combo]') && e.isTrusted) exMenuOpen(e.target); });
+document.addEventListener('keydown', e => {
+  if (!e.target.matches?.('[data-combo]')) return;
+  if (e.target !== exMenuFor) { if (e.key === 'ArrowDown') { exMenuOpen(e.target); e.preventDefault(); } return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { exMenuMove(exActive + (e.key === 'ArrowDown' ? 1 : -1)); e.preventDefault(); }
+  else if (e.key === 'Enter' && exActive >= 0) { exMenuPick(exActive); e.preventDefault(); }
+  else if (e.key === 'Escape') { exMenuClose(); e.preventDefault(); }
+  else if (e.key === 'Tab') exMenuClose();
+});
+exMenu.addEventListener('mousedown', e => e.preventDefault());   // keep focus in the field
+exMenu.addEventListener('click', e => { const li = e.target.closest('li'); if (li) exMenuPick(+li.dataset.k); });
+addEventListener('resize', () => exMenuFor && exMenuOpen(exMenuFor));
 
 // ---------- Coach: plan editor ----------
 
@@ -1107,7 +1178,7 @@ function markDirty() {
 
 function sessionEditHTML(s, i) {
   const f = (field, ph, e) => `<input data-s="${i}"${e != null ? ` data-e="${e}"` : ''} data-f="${field}" placeholder="${ph}" aria-label="${ph}"
-    ${field === 'name' && e != null ? 'list="exNames" maxlength="200" autocomplete="off"' : ''}
+    ${field === 'name' && e != null ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
     value="${esc(e != null ? s.exercises[e][field] : s[field])}">`;
   return `<article class="card session-edit">
     <div class="row">
@@ -1158,8 +1229,7 @@ function renderEditor() {
     <section class="card danger-zone row between">
       <button data-act="copy">Copy to a Student</button>
       <button class="ghost danger" data-act="del-plan">Delete Plan</button>
-    </section>
-    <datalist id="exNames">${exOptionsHTML()}</datalist>`;
+    </section>`;
   }
 
   view(`${crumbs([['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}

@@ -160,6 +160,15 @@ form.unsaved button.primary:not([type="button"]):not(:disabled), .savebar.unsave
 body.has-bar main { padding-bottom: 8rem; }
 body.has-bar #flash { bottom: 5.5rem; }
 .card { scroll-margin-top: 1rem; }
+/* Foldable cards (applyFolds, inside [data-folds]): tap the heading to hide the rest of the card. The heading row stays,
+   so a folded card still shows its Unsaved or Needs Update tag. */
+[data-folds] .card > h2:first-child, [data-folds] .card > .row:first-child > h2 { display: flex; align-items: center; flex: 1; cursor: pointer; }
+button.fold { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: .5rem; border-radius: 6px; }
+button.fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.fold::before { content: ""; flex: none; width: .45em; height: .45em; border: solid var(--muted); border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-.1em, -.1em); transition: transform .15s; }
+.card.folded button.fold::before { transform: rotate(-45deg); }
+[data-folds] .card.folded > :not(:first-child) { display: none; }
 
 /* Coach home */
 /* Every tile the same size: rows share the tallest tile's height, and the stat sits at the bottom */
@@ -575,8 +584,44 @@ function markUnsaved() {
   }
   placeBar();
 }
+// Foldable cards: inside an element with data-folds="<page>", each card's heading becomes a button that folds the card
+// down to its heading row. Which headings are folded is remembered per page in this browser (so folding Details
+// on one student folds it on every student). A folded card's forms stay in the page, so the leave check still sees them.
+const foldKey = page => `coaching.folded.${page}`;
+function foldedOn(page) {
+  try { return new Set(JSON.parse(localStorage.getItem(foldKey(page)) || '[]')); } catch { return new Set(); }
+}
+const foldHead = card => card.querySelector(':scope > h2:first-child, :scope > .row:first-child > h2');
+function applyFolds() {
+  for (const box of app.querySelectorAll('[data-folds]')) {
+    const folded = foldedOn(box.dataset.folds);
+    for (const card of box.querySelectorAll('.card')) {
+      const h = foldHead(card);
+      if (!h) continue;
+      if (!h.querySelector('button.fold')) h.innerHTML = `<button type="button" class="fold">${h.innerHTML}</button>`;
+      const on = folded.has(h.textContent.trim());
+      card.classList.toggle('folded', on);
+      h.querySelector('button.fold').setAttribute('aria-expanded', String(!on));
+    }
+  }
+}
+function setFold(card, on) {
+  const box = card.closest('[data-folds]'), h = foldHead(card);
+  if (!box || !h) return;
+  const folded = foldedOn(box.dataset.folds), name = h.textContent.trim();
+  if (on) folded.add(name); else folded.delete(name);
+  try { localStorage.setItem(foldKey(box.dataset.folds), JSON.stringify([...folded])); } catch {}
+  applyFolds();
+  placeBar();
+}
+// The whole heading is the tap target (the button inside it is for the keyboard).
+app.addEventListener('click', e => {
+  const h = e.target.closest('[data-folds] .card > h2:first-child, [data-folds] .card > .row:first-child > h2');
+  if (h) setFold(h.closest('.card'), !h.closest('.card').classList.contains('folded'));
+});
+
 let markQueued = false;
-const queueMark = () => { if (!markQueued) { markQueued = true; requestAnimationFrame(() => { markQueued = false; markUnsaved(); }); } };
+const queueMark = () => { if (!markQueued) { markQueued = true; requestAnimationFrame(() => { markQueued = false; applyFolds(); markUnsaved(); }); } };
 new MutationObserver(queueMark).observe(app, { childList: true, subtree: true });
 ['input', 'change', 'reset'].forEach(t => app.addEventListener(t, queueMark));   // reset: a form cleared after + Add
 
@@ -597,7 +642,7 @@ function placeBar() {
   const typing = touch.matches && textFocused() && keyboardUp();
   document.body.classList.toggle('typing', typing);
   barForms = typing ? [] : [...app.querySelectorAll('form.unsaved')].filter(f => {
-    const r = submitOf(f).getBoundingClientRect();
+    const r = (f.closest('.card.folded') || submitOf(f)).getBoundingClientRect();   // a folded card's button is hidden
     return r.bottom < 0 || r.top > innerHeight - 90;
   });
   const names = barForms.map(f => f.closest('.card').querySelector('h2').textContent.trim());
@@ -613,6 +658,7 @@ function placeBar() {
 bar.addEventListener('click', e => {
   const b = e.target.closest('[data-bar]'), f = barForms[0];
   if (!b || !f) return;
+  if (f.closest('.card.folded')) setFold(f.closest('.card'), false);
   if (b.dataset.bar === 'save') f.requestSubmit(submitOf(f));
   else f.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
@@ -1255,7 +1301,7 @@ async function adminStudent(id, again = false) {
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
   <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
-  <div class="grid2 phone-order">
+  <div class="grid2 phone-order" data-folds="student">
     <div>
       <section class="card">
         <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">+ New Plan</button></div>

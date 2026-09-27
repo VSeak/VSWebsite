@@ -114,6 +114,20 @@ create table public.goals (
 );
 create index on public.goals (student_id);
 
+-- Coach Notes: private notes coaches keep on a student (students can't see them).
+-- session_date set = notes from that session; empty = a general note.
+create table public.coach_notes (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  author_id uuid default auth.uid() references auth.users (id) on delete set null,
+  author_name text not null default '',   -- stamp_coach_note, kept if the coach is removed
+  session_date date,
+  body text not null check (length(trim(body)) between 1 and 4000),
+  created_at timestamptz not null default now(),
+  edited_at timestamptz                    -- stamp_coach_note, on a change to the text or date
+);
+create index on public.coach_notes (student_id);
+
 -- The master exercise list: defaults a plan copies when the coach picks an
 -- exercise. Plans keep their own copy, so editing either never changes the other.
 -- name_key makes names unique ignoring case and spaces at the ends.
@@ -245,6 +259,26 @@ $$;
 create trigger stamp_note_author before insert or update on public.notes
   for each row execute function public.stamp_note_author();
 
+-- A coach note keeps who wrote it and when (nobody can change those), and when it was last edited.
+create function public.stamp_coach_note() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.author_id := old.author_id;
+    new.author_name := old.author_name;
+    new.created_at := old.created_at;
+    if (new.body, new.session_date) is distinct from (old.body, old.session_date) then new.edited_at := now(); end if;
+  else
+    new.author_id := auth.uid();
+    new.author_name := coalesce((select name from public.staff where email = lower(auth.jwt() ->> 'email')), '');
+    new.edited_at := null;
+  end if;
+  return new;
+end;
+$$;
+create trigger stamp_coach_note before insert or update on public.coach_notes
+  for each row execute function public.stamp_coach_note();
+
 -- 3. Access rules -------------------------------------------------------------
 -- Coaches can do everything with students, plans, sessions, notes and goals.
 -- Admins can read and change the staff list and students (not plans or goals).
@@ -252,6 +286,7 @@ create trigger stamp_note_author before insert or update on public.notes
 -- update_my_pronouns()), plans and sessions, read their current and
 -- achieved goals (not archived ones), read notes on their sessions, and add or
 -- delete their own notes.
+-- Coach notes are for coaches only: students and admin-only staff can't see them.
 -- Coaches and admins can do everything with the master exercise list. Students
 -- can't see it at all.
 
@@ -261,10 +296,11 @@ alter table public.plans    enable row level security;
 alter table public.sessions enable row level security;
 alter table public.notes    enable row level security;
 alter table public.goals    enable row level security;
+alter table public.coach_notes enable row level security;
 alter table public.exercises enable row level security;
 
 grant select, insert, update, delete
-  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.exercises
+  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.exercises
   to authenticated;
 
 create policy "admin: everything" on public.staff for all to authenticated
@@ -302,6 +338,9 @@ create policy "coach: everything" on public.goals for all to authenticated
   using (public.is_coach()) with check (public.is_coach());
 create policy "student: own goals" on public.goals for select to authenticated
   using (student_id = public.my_student_id() and status <> 'archived');
+
+create policy "coach: everything" on public.coach_notes for all to authenticated
+  using (public.is_coach()) with check (public.is_coach());
 
 create policy "staff: everything" on public.exercises for all to authenticated
   using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());

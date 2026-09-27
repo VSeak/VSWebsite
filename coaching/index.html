@@ -387,6 +387,7 @@ function validityMsg(el) {
   if (v.valueMissing || v.customError) return el.dataset.need || 'Fill this in.';
   if (v.typeMismatch && el.type === 'email') return 'Enter a full email address, like name@example.com.';
   if (v.rangeUnderflow && el.dataset.low) return el.dataset.low;
+  if (v.rangeOverflow && el.dataset.high) return el.dataset.high;
   if (v.tooShort) return `Use at least ${el.minLength} characters.`;
   return el.validationMessage;
 }
@@ -1297,23 +1298,65 @@ function coachGoalsHTML(goals, p) {
       goalItem(g, 'Archived ' + fmtDay(g.done_at), btns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))).join('')}</ul></details>` : ''}`;
 }
 
+// ---------- Coach Notes (coach_notes: coaches only; a session_date makes it notes from that session) ----------
+
+// Newest first, by the session's day (or the day a general note was written).
+const cnoteDay = n => n.session_date || new Date(n.created_at).toLocaleDateString('en-CA');
+const sortCoachNotes = list => list.sort((a, b) => cnoteDay(b).localeCompare(cnoteDay(a)) || b.created_at.localeCompare(a.created_at));
+const fmtSessionDay = d => day(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const CNOTE_FILTERS = [['all', 'All'], ['session', 'Sessions'], ['general', 'General']];
+const CNOTES_SHOWN = 5;   // the rest go under Older Notes
+const cnoteIn = (n, filter) => filter === 'all' || (filter === 'session') === !!n.session_date;
+const cnoteDateField = (value = '') => `<label>Session Date<input type="date" name="session_date" value="${esc(value)}"
+    max="${localToday()}" data-high="Pick today or an earlier day."></label>
+  <p class="hint">Leave it empty for a general note.</p>`;
+
+const coachNoteItem = n => `<div class="note-wrap"><div class="row between">
+    <strong>${n.session_date ? 'Session on ' + esc(fmtSessionDay(n.session_date)) : 'General Note'}</strong>
+    <div class="row"><button type="button" class="small ghost" data-act="cnote-edit" data-cnote="${n.id}">Edit</button>
+    <button type="button" class="small ghost danger" data-act="cnote-delete" data-cnote="${n.id}">Delete</button></div></div>
+    <p>${para(n.body)}</p>
+    <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>`;
+
+function coachNotesHTML(notes, s, filter) {
+  const p = pro(s.pronouns), shown = notes.filter(n => cnoteIn(n, filter));
+  // Once the next session is over, offer to write it up (until a note has that date).
+  const writeUp = nextOverdue(s) && !notes.some(n => n.session_date === s.next_date);
+  return `<h2>Coach Notes</h2>
+    <p class="hint">Private to coaches: ${p.they} never ${p.v('see', 'sees')} these. Give a note a session date to keep what came up in that session.</p>
+    ${writeUp ? `<div class="alert row between" style="margin-bottom:.8rem"><span>The session on ${esc(fmtSessionDay(s.next_date))} is over. Note how it went while it's fresh.</span>
+      <button type="button" class="small primary" data-act="cnote-session">Add Session Notes</button></div>` : ''}
+    <form id="cnoteForm" class="stack" data-save>
+      <label>Note<textarea name="body" rows="3" maxlength="4000" required data-need="Write the note first."></textarea></label>
+      ${cnoteDateField()}
+      <button class="primary">+ Add Note</button>
+    </form>
+    ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
+      `<label><input type="radio" name="cnote_filter" value="${k}"${k === filter ? ' checked' : ''}>${label} (${notes.filter(n => cnoteIn(n, k)).length})</label>`).join('')}</div>` : ''}
+    ${shown.slice(0, CNOTES_SHOWN).map(coachNoteItem).join('') || `<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
+    ${shown.length > CNOTES_SHOWN ? `<details class="goal-group"><summary>Older Notes (${shown.length - CNOTES_SHOWN})</summary>
+      ${shown.slice(CNOTES_SHOWN).map(coachNoteItem).join('')}</details>` : ''}`;
+}
+
 // again: redraw after a change, without the Loading… step or a jump to the top. It can be the form
 // just saved; unsaved edits in the other forms are kept (keepEdits).
 async function adminStudent(id, again = false) {
   const t = ++navToken;
   const restore = again && keepEdits(again);
   if (!again) view(loading);
-  const [s, coaches, notes] = await Promise.all([
+  const [s, coaches, notes, cnotes] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
     sb.from('notes').select('id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
       .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).limit(10).then(must),
+    sb.from('coach_notes').select('*').eq('student_id', id).then(must),
   ]);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/students'; return; }
   s.plans.sort((a, b) => (b.active - a.active) || b.updated_at.localeCompare(a.updated_at));
   sortGoals(s.goals);
+  sortCoachNotes(cnotes);
   const p = pro(s.pronouns);
 
   const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
@@ -1330,9 +1373,10 @@ async function adminStudent(id, again = false) {
         ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>
-      <section class="card feed"><h2>Notes</h2>
+      <section class="card feed"><h2>Student Notes</h2>
         <p class="hint">${p.Their} latest notes on ${p.their} sessions. Open one to reply in the plan.</p>
         ${notes.map(n => noteFeedItem(n)).join('') || `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
+      <section class="card" id="coachNotesCard"></section>
       ${trainingCardHTML(s)}
     </div>
     <aside>
@@ -1414,6 +1458,32 @@ async function adminStudent(id, again = false) {
     if (msg) flash(msg);
   });
   renderGoals();
+
+  // Coach Notes also change in place. added: a note was just added, so the form starts empty (and shows All,
+  // where the new note is); otherwise a note being typed stays.
+  let cnoteFilter = 'all';
+  function renderCoachNotes(added) {
+    const old = !added && $('#cnoteForm');
+    const typed = old && [old.elements.body.value, old.elements.session_date.value];
+    if (added) cnoteFilter = 'all';
+    $('#coachNotesCard').innerHTML = coachNotesHTML(cnotes, s, cnoteFilter);
+    const form = $('#cnoteForm');
+    if (typed) [form.elements.body.value, form.elements.session_date.value] = typed;
+    form.onsubmit = e => {
+      e.preventDefault();
+      const f = new FormData(form), body = f.get('body').trim();
+      if (!body) return;
+      busy(e.submitter, async () => {
+        cnotes.push(await sb.from('coach_notes').insert({ student_id: id, body, session_date: f.get('session_date') || null })
+          .select().single().then(must));
+        sortCoachNotes(cnotes);
+        renderCoachNotes(true);
+        flash('Note added.');
+      });
+    };
+    $('#coachNotesCard .seg')?.addEventListener('change', e => { cnoteFilter = e.target.value; renderCoachNotes(); });
+  }
+  renderCoachNotes();
   if (restore) restore();
 
   const inviteForm = $('#inviteForm');
@@ -1438,7 +1508,38 @@ async function adminStudent(id, again = false) {
   app.onclick = async e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
-    const act = b.dataset.act, g = s.goals.find(x => x.id === b.dataset.goal);
+    const act = b.dataset.act, g = s.goals.find(x => x.id === b.dataset.goal), cn = cnotes.find(x => x.id === b.dataset.cnote);
+    if (act === 'cnote-session') {
+      const form = $('#cnoteForm');
+      form.elements.session_date.value = s.next_date;
+      form.elements.session_date.dispatchEvent(new Event('input', { bubbles: true }));   // marks the card unsaved
+      form.elements.body.focus();
+      return;
+    }
+    if (cn) {
+      if (act === 'cnote-edit') {
+        const f = await ask({ title: 'Edit Note', ok: 'Save Note', body: `<div class="stack">
+          <label>Note<textarea name="body" rows="6" maxlength="4000" required data-need="Write the note.">${esc(cn.body)}</textarea></label>
+          ${cnoteDateField(cn.session_date || '')}</div>` });
+        const body = f?.get('body').trim();
+        if (body) busy(b, async () => {
+          Object.assign(cn, await sb.from('coach_notes').update({ body, session_date: f.get('session_date') || null })
+            .eq('id', cn.id).select().single().then(must));
+          sortCoachNotes(cnotes);
+          renderCoachNotes();
+          flash('Note saved.');
+        });
+      } else if (act === 'cnote-delete') {
+        if (await ask({ title: 'Delete This Note?', body: "<p>This can't be undone.</p>", ok: 'Delete', warn: true }))
+          busy(b, async () => {
+            must(await sb.from('coach_notes').delete().eq('id', cn.id));
+            cnotes.splice(cnotes.indexOf(cn), 1);
+            renderCoachNotes();
+            flash('Note deleted.');
+          });
+      }
+      return;
+    }
     if (g) {
       if (act === 'goal-edit') {
         const f = await ask({ title: 'Edit Goal', ok: 'Save Goal',

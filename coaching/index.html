@@ -509,7 +509,7 @@ function keepEdits(saved) {
 }
 
 // Unsaved marks: a form with data-save marks itself and its card .unsaved while a field differs from how the
-// page drew it. Add forms (+ Add …) have no data-save. Runs on every input and after any redraw of the page.
+// page drew it, including + Add forms (a typed goal is lost too). Runs on every input and after any redraw of the page.
 function markUnsaved() {
   for (const f of app.querySelectorAll('form[data-save]')) {
     const on = [...f.querySelectorAll('input, textarea, select')].some(fieldChanged);
@@ -521,7 +521,7 @@ function markUnsaved() {
 let markQueued = false;
 const queueMark = () => { if (!markQueued) { markQueued = true; requestAnimationFrame(() => { markQueued = false; markUnsaved(); }); } };
 new MutationObserver(queueMark).observe(app, { childList: true, subtree: true });
-['input', 'change'].forEach(t => app.addEventListener(t, queueMark));
+['input', 'change', 'reset'].forEach(t => app.addEventListener(t, queueMark));   // reset: a form cleared after + Add
 
 // The bar at the bottom of the screen names the unsaved cards whose Save buttons are out of view, with Show
 // (scrolls to the first) and, for just one card, its Save button. Hidden while typing on a phone, where the
@@ -749,7 +749,7 @@ async function adminUsers() {
     <aside>
       <section class="card"><h2>Add Staff</h2>
         <p class="hint">Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
-        <form id="addStaff" class="stack">
+        <form id="addStaff" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
           <label>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
@@ -1004,7 +1004,7 @@ async function adminStudents() {
     <aside>
       <section class="card"><h2>Add a Student</h2>
         <p class="hint">Build their plan and add a goal first, then add their email and send the invite from their page.</p>
-        <form id="addForm" class="stack">
+        <form id="addForm" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
           <button class="primary">+ Add Student</button>
@@ -1153,7 +1153,7 @@ function coachGoalsHTML(goals) {
     ${cur.length ? `<ul class="list">${cur.map(g => goalItem(g, '',
       btns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']))).join('')}</ul>`
       : '<p class="muted">No current goals.</p>'}
-    <form id="goalForm" class="row" style="margin-top:.6rem">
+    <form id="goalForm" class="row" data-save style="margin-top:.6rem">
       <input name="body" class="grow" maxlength="500" required data-need="Write the goal first." autocomplete="off" placeholder="e.g. Send a V5 by spring">
       <button class="primary">+ Add Goal</button>
     </form>
@@ -1370,7 +1370,7 @@ async function adminExercises() {
       <section class="card"><h2>Add Exercise</h2>
         <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
           New exercises typed into a plan are added here when the plan is saved.</p>
-        <form id="exAdd" class="stack">${exFieldsHTML()}<button class="primary">+ Add Exercise</button></form>
+        <form id="exAdd" class="stack" data-save>${exFieldsHTML()}<button class="primary">+ Add Exercise</button></form>
       </section>
     </aside>
   </div>`);

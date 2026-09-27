@@ -123,6 +123,13 @@ a.back:hover { border-color: var(--muted); }
 .tag.ok::before { content: ""; width: .4rem; height: .4rem; border-radius: 50%; background: currentColor; }
 .tag.accent { border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.tag.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+/* A next session that has ended: the card and a banner in the warn color, so the coach sets a new one. */
+.card.overdue { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
+.warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); border-left: 4px solid var(--warn);
+  border-radius: 8px; padding: .6rem .8rem; }
+.warn-box strong { color: var(--warn); }
 
 /* Coach home */
 /* Every tile the same size: rows share the tallest tile's height, and the stat sits at the bottom */
@@ -843,7 +850,7 @@ async function adminStudents() {
   const t = ++navToken;
   view(loading);
   const [students, recent] = await Promise.all([
-    sb.from('students').select('id,name,email,invited_at,user_id,plans(id,title,active)').order('name').then(must),
+    sb.from('students').select(`id,name,email,invited_at,user_id,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
     sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,student:students(name)))')
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
   ]);
@@ -854,6 +861,7 @@ async function adminStudents() {
     return `<li><a class="item" href="#/student/${s.id}">
       <span><strong>${esc(s.name)}</strong><span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
+      ${nextOverdue(s) ? '<span class="tag warn">Update Next Session</span>' : ''}
       <span class="tag${s.user_id ? ' ok' : ''}">${accountStatus(s)}</span></span></a></li>`;
   }).join('');
   const feed = recent.map(n => `<div class="note-wrap"><div class="note-meta">
@@ -908,15 +916,20 @@ function coachesHTML(coaches, none) {
 const NEXT_COLS = 'next_date,next_start,next_end,next_location';
 const fmtTime = t => new Date('1970-01-01T' + t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 const localToday = () => new Date().toLocaleDateString('en-CA');   // YYYY-MM-DD in local time
-// Once the day has gone by it isn't "next" any more: the student stops seeing it.
-const nextPassed = s => !s.next_date || s.next_date < localToday();
-const nextWhen = s => `${day(s.next_date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
-  · ${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}`;
+// Once it has ended it isn't "next" any more: the student stops seeing it and the coach is asked to set a new one.
+const nextPassed = s => !s.next_date || new Date(`${s.next_date}T${s.next_end}`) <= new Date();
+const nextOverdue = s => !!s.next_date && nextPassed(s);
+const nextDay = s => day(s.next_date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+const nextWhen = s => `${nextDay(s)} · ${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}`;
 
 function nextSessionCardHTML(s) {
   const hm = t => t ? t.slice(0, 5) : '';
-  return `<section class="card" id="nextCard"><h2>Next Session</h2>
-    ${s.next_date && nextPassed(s) ? '<p class="hint">This date has passed, so they no longer see it. Set the next one.</p>' : ''}
+  const overdue = nextOverdue(s);
+  return `<section class="card${overdue ? ' overdue' : ''}" id="nextCard">
+    <div class="row between"><h2>Next Session</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
+    ${overdue ? `<p class="warn-box" role="status"><strong>This session is over.</strong>
+      It ended on ${esc(nextDay(s))}, so they no longer see a next session. Pick the new date and time below.</p>`
+      : s.next_date ? '' : '<p class="muted">No next session set yet.</p>'}
     <form id="nextForm" class="stack">
       <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" min="${localToday()}"
         required data-need="Pick the day." data-low="Pick today or a later day."></label>
@@ -926,7 +939,7 @@ function nextSessionCardHTML(s) {
       </div>
       <label>Location<input name="next_location" value="${esc(s.next_location || '')}" maxlength="200" required
         data-need="Say where it is." autocomplete="off" placeholder="e.g. Gym/Wall"></label>
-      <p class="hint">They see it at the top of their page until the day has passed.</p>
+      <p class="hint">They see it at the top of their page until it ends.</p>
       <div class="row"><button class="primary">Save Session</button>
         ${s.next_date ? '<button type="button" class="ghost danger" data-act="next-clear">Clear</button>' : ''}</div>
     </form>

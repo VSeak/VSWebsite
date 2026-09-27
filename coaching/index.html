@@ -1206,10 +1206,11 @@ function pageOf(list, page, size) {
   const p = Math.min(Math.max(1, page), pageCount(list.length, size));
   return [list.slice((p - 1) * size, p * size), p];
 }
-const pagerHTML = (page, n, size) => n > size ? `<nav class="pager" aria-label="Pages">
-  <button type="button" class="small ghost" data-page="${page - 1}"${page > 1 ? '' : ' disabled'}>‹ Newer</button>
+// names: the buttons, for a list that isn't newest first.
+const pagerHTML = (page, n, size, names = ['Newer', 'Older']) => n > size ? `<nav class="pager" aria-label="Pages">
+  <button type="button" class="small ghost" data-page="${page - 1}"${page > 1 ? '' : ' disabled'}>‹ ${names[0]}</button>
   <span class="muted">Page ${page} of ${pageCount(n, size)}</span>
-  <button type="button" class="small ghost" data-page="${page + 1}"${page < pageCount(n, size) ? '' : ' disabled'}>Older ›</button></nav>` : '';
+  <button type="button" class="small ghost" data-page="${page + 1}"${page < pageCount(n, size) ? '' : ' disabled'}>${names[1]} ›</button></nav>` : '';
 // go(page) redraws box. The pager stays where it was on screen (under a thumb on a phone) and keeps the focus.
 function bindPager(box, go) {
   box.querySelector('.pager')?.addEventListener('click', e => {
@@ -1223,6 +1224,11 @@ function bindPager(box, go) {
     window.scrollBy(0, nb.getBoundingClientRect().top - top);
     (nb.disabled ? pager.querySelector('button:not(:disabled)') : nb)?.focus({ preventScroll: true });
   });
+}
+// A box that shows draw(page) and pages by itself. at: { page }, kept across redraws of the card around it.
+function pagedBox(box, at, draw) {
+  const go = n => { at.page = n; box.innerHTML = draw(at.page); bindPager(box, go); };
+  bindPager(box, go);
 }
 
 // ---------- Sessions card: Next Session (students.next_*) and Session History (session_history) ----------
@@ -1453,24 +1459,35 @@ const sortGoals = goals => goals.sort((a, b) =>
 const goalItem = (g, sub, right) => `<li class="goal"><div class="goal-text"><p>${para(g.body)}</p>
   ${sub ? `<span class="item-sub">${sub}</span>` : ''}</div>${right}</li>`;
 
-function coachGoalsHTML(goals, p) {
-  const by = st => goals.filter(g => g.status === st);
-  const cur = by('current'), won = by('achieved'), old = by('archived');
-  const btns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]) =>
-    `<button type="button" class="small ${cls || 'ghost'}" data-act="${act}" data-goal="${g.id}">${label}</button>`).join('')}</div>`;
+const GOALS_PAGE = 3;   // goals per page, in each group
+const goalBtns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]) =>
+  `<button type="button" class="small ${cls || 'ghost'}" data-act="${act}" data-goal="${g.id}">${label}</button>`).join('')}</div>`;
+// Each group pages by itself. Current goals are oldest first, so their buttons aren't Newer and Older.
+const GOAL_GROUPS = {
+  current: [g => goalItem(g, '', goalBtns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive'])),
+    ['Previous', 'Next']],
+  achieved: [g => goalItem(g, 'Achieved ' + fmtDay(g.done_at), goalBtns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive']))],
+  archived: [g => goalItem(g, 'Archived ' + fmtDay(g.done_at), goalBtns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))],
+};
+// One group's page (at[st].page, kept in range here), with its pager.
+function goalGroupHTML(goals, st, at) {
+  const list = goals.filter(g => g.status === st), [item, names] = GOAL_GROUPS[st], [shown, page] = pageOf(list, at[st].page, GOALS_PAGE);
+  at[st].page = page;
+  return `<ul class="list">${shown.map(item).join('')}</ul>${pagerHTML(page, list.length, GOALS_PAGE, names)}`;
+}
+
+function coachGoalsHTML(goals, p, at) {
+  const n = st => goals.filter(g => g.status === st).length;
+  const box = st => `<div data-goals="${st}">${goalGroupHTML(goals, st, at)}</div>`;
   return `<h2>Goals</h2>
     <p class="hint">${p.They} ${p.v('see', 'sees')} current and achieved goals on ${p.their} page. Archived goals are hidden from ${p.them}.</p>
-    ${cur.length ? `<ul class="list">${cur.map(g => goalItem(g, '',
-      btns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']))).join('')}</ul>`
-      : '<p class="muted">No current goals.</p>'}
+    ${n('current') ? box('current') : '<p class="muted">No current goals.</p>'}
     <form id="goalForm" class="row" data-save style="margin-top:.6rem">
       <input name="body" class="grow" maxlength="500" required data-need="Write the goal first." autocomplete="off" placeholder="e.g. Send a V5 by spring">
       <button class="primary">+ Add Goal</button>
     </form>
-    ${won.length ? `<h3 class="goal-group">Achieved</h3><ul class="list">${won.map(g => goalItem(g, 'Achieved ' + fmtDay(g.done_at),
-      btns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive']))).join('')}</ul>` : ''}
-    ${old.length ? `<details class="goal-group"><summary>Archived (${old.length})</summary><ul class="list">${old.map(g =>
-      goalItem(g, 'Archived ' + fmtDay(g.done_at), btns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))).join('')}</ul></details>` : ''}`;
+    ${n('achieved') ? `<h3 class="goal-group">Achieved</h3>${box('achieved')}` : ''}
+    ${n('archived') ? `<details class="goal-group"${at.archivedOpen ? ' open' : ''}><summary>Archived (${n('archived')})</summary>${box('archived')}</details>` : ''}`;
 }
 
 // ---------- Coach Notes (coach_notes: coaches only; a session_date makes it notes from that session) ----------
@@ -1481,6 +1498,7 @@ const sortCoachNotes = list => list.sort((a, b) => cnoteDay(b).localeCompare(cno
 const fmtSessionDay = d => day(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 const CNOTE_FILTERS = [['all', 'All'], ['session', 'Sessions'], ['general', 'General']];
 const CNOTES_PAGE = 3;   // notes per page
+const PLANS_PAGE = 3, SNOTES_PAGE = 3;   // Training Plans and Student Notes per page, on a student's page
 const cnoteIn = (n, filter) => filter === 'all' || (filter === 'session') === !!n.session_date;
 const cnoteDateField = (value = '') => `<label>Session Date<span class="hint field-hint">Leave the date empty for a general note.</span>
     <input type="date" name="session_date" value="${esc(value)}" max="${localToday()}" data-high="Pick today or an earlier day."></label>`;
@@ -1528,7 +1546,7 @@ async function adminStudent(id, again = false) {
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
     sb.from('notes').select('id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
-      .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).limit(10).then(must),
+      .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).then(must),
     sb.from('coach_notes').select('*').eq('student_id', id).then(must),
     sb.from('session_history').select('*').eq('student_id', id).then(must),
   ]);
@@ -1539,9 +1557,17 @@ async function adminStudent(id, again = false) {
   sortCoachNotes(cnotes);
   const p = pro(s.pronouns);
 
-  const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
+  // Training Plans and Student Notes, a page at a time.
+  const plansHTML = page => {
+    const [shown, at] = pageOf(s.plans, page, PLANS_PAGE);
+    return `<ul class="list">${shown.map(p => `<li><a class="item" href="#/plan/${p.id}">
     <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? fmtStart(p.start_date) : 'No start date'}</span></span>
-    ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
+    ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('')}</ul>${pagerHTML(at, s.plans.length, PLANS_PAGE)}`;
+  };
+  const snotesHTML = page => {
+    const [shown, at] = pageOf(notes, page, SNOTES_PAGE);
+    return shown.map(n => noteFeedItem(n)).join('') + pagerHTML(at, notes.length, SNOTES_PAGE);
+  };
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
   <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
@@ -1550,12 +1576,12 @@ async function adminStudent(id, again = false) {
       <section class="card">
         <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">+ New Plan</button></div>
         <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current plan first, and past plans below it. Open a plan to edit it.</p>
-        ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
+        ${s.plans.length ? `<div id="plansBox">${plansHTML(1)}</div>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>
       <section class="card feed"><h2>Student Notes</h2>
-        <p class="hint">${p.Their} latest notes on ${p.their} sessions. Open one to reply in the plan.</p>
-        ${notes.map(n => noteFeedItem(n)).join('') || `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
+        <p class="hint">${p.Their} notes on ${p.their} sessions, newest first. Open one to reply in the plan.</p>
+        ${notes.length ? `<div id="snotesBox">${snotesHTML(1)}</div>` : `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
       <section class="card" id="coachNotesCard"></section>
       ${trainingCardHTML(s)}
     </div>
@@ -1591,6 +1617,8 @@ async function adminStudent(id, again = false) {
     </aside>
   </div>`, { keepScroll: again });
   bindTraining(id, s, () => adminStudent(id, true));
+  if (s.plans.length) pagedBox($('#plansBox'), { page: 1 }, plansHTML);
+  if (notes.length) pagedBox($('#snotesBox'), { page: 1 }, snotesHTML);
   // Session History links to Coach Notes from the same day.
   // Coach Notes redraw when the sessions change, for their prompt about the newest past session.
   const hist = { log, page: 1, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
@@ -1617,10 +1645,16 @@ async function adminStudent(id, again = false) {
 
   // Goals change in place, so the rest of the page (and the scroll) stays put.
   // focusAdd: a goal was just added, so the box starts empty; otherwise a goal being typed stays.
-  function renderGoals(focusAdd) {
+  // added: the goal just added, so its page shows. Archived stays open or shut.
+  const goalAt = { current: { page: 1 }, achieved: { page: 1 }, archived: { page: 1 } };
+  function renderGoals(focusAdd, added) {
     gateInvite(inviteNeed());
     const typing = !focusAdd && $('#goalForm')?.elements.body.value;
-    $('#goalsCard').innerHTML = coachGoalsHTML(s.goals, p);
+    goalAt.archivedOpen = !!$('#goalsCard details')?.open;
+    if (added) goalAt.current.page = Math.floor(s.goals.filter(g => g.status === 'current').indexOf(added) / GOALS_PAGE) + 1;
+    $('#goalsCard').innerHTML = coachGoalsHTML(s.goals, p, goalAt);
+    $('#goalsCard').querySelectorAll('[data-goals]').forEach(box =>
+      pagedBox(box, goalAt[box.dataset.goals], () => goalGroupHTML(s.goals, box.dataset.goals, goalAt)));
     const form = $('#goalForm');
     if (typing) form.elements.body.value = typing;
     if (focusAdd) form.elements.body.focus();
@@ -1629,9 +1663,10 @@ async function adminStudent(id, again = false) {
       const body = form.elements.body.value.trim();
       if (!body) return;
       busy(e.submitter, async () => {
-        s.goals.push(await sb.from('goals').insert({ student_id: id, body }).select().single().then(must));
+        const g = await sb.from('goals').insert({ student_id: id, body }).select().single().then(must);
+        s.goals.push(g);
         sortGoals(s.goals);
-        renderGoals(true);
+        renderGoals(true, g);
       });
     };
   }

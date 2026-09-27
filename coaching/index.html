@@ -1320,7 +1320,8 @@ const addMinute = t => {
 };
 
 // Saves or clears the next session (redrawing the card), and runs Session History in place.
-// hist = { log, page, notes?, showNotes? }: showNotes(date) opens Coach Notes from that day.
+// hist = { log, page, notes?, showNotes?, changed? }: showNotes(date) opens Coach Notes from that day;
+// changed() runs after the next session or the history changes.
 function bindSessions(id, s, hist) {
   const box = $('#historyBox');
   const drawHistory = () => {
@@ -1341,6 +1342,7 @@ function bindSessions(id, s, hist) {
           must(await sb.from('session_history').delete().eq('id', h.id));
           hist.log.splice(hist.log.indexOf(h), 1);
           drawHistory();
+          hist.changed?.();
           flash('Session deleted.');
         });
     } else if ('histAdd' in b.dataset) {
@@ -1356,6 +1358,7 @@ function bindSessions(id, s, hist) {
         hist.log.push(data);
         hist.page = Math.ceil((historyOf(hist.log, s).indexOf(data) + 1) / HISTORY_PAGE);   // the page it landed on
         drawHistory();
+        hist.changed?.();
         flash('Session added.');
       });
     }
@@ -1369,6 +1372,7 @@ function bindSessions(id, s, hist) {
     hist.page = 1;
     $('#nextCard').outerHTML = sessionsCardHTML(s);
     bindSessions(id, s, hist);
+    hist.changed?.();
     flash(msg);
   });
   form.onsubmit = e => {
@@ -1489,19 +1493,22 @@ const coachNoteItem = n => `<div class="note-wrap" id="cnote-${n.id}"><div class
     <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>`;
 
 // at = { filter, page }: which notes show, and which page of them (kept in range here).
-function coachNotesHTML(notes, s, at) {
+// log: Session History rows (session_history).
+function coachNotesHTML(notes, s, log, at) {
   const p = pro(s.pronouns), list = notes.filter(n => cnoteIn(n, at.filter)), [shown, page] = pageOf(list, at.page, CNOTES_PAGE);
   at.page = page;
-  // Once the next session is over (until a note has its date), the form starts with that date filled in.
-  // It's the field's starting value, so the card isn't marked unsaved until the coach writes something.
-  const writeUp = nextOverdue(s) && !notes.some(n => n.session_date === s.next_date);
+  // The newest past session (an ended next session, or the newest in Session History, since setting the next
+  // session logs the ended one) until a note has its date: the form starts with that date filled in. It's the
+  // field's starting value, so the card isn't marked unsaved until the coach writes something. Not once coaching ends.
+  const last = !s.training_ended_at && historyOf(log, s)[0];
+  const writeUp = last && !notes.some(n => n.session_date === last.session_date) ? last.session_date : '';
   return `<h2>Coach Notes</h2>
     <p class="hint">Private to coaches: ${p.they} never ${p.v('see', 'sees')} these. Give a note a session date to keep what came up in that session.</p>
-    ${writeUp ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(s.next_date))} is over.</strong>
+    ${writeUp ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(writeUp))} is over.</strong>
       Note how it went while it's fresh. Its date is filled in below.</p>` : ''}
     <form id="cnoteForm" class="stack" data-save>
       <label>Note<textarea name="body" rows="3" maxlength="4000" required data-need="Write the note first."></textarea></label>
-      ${cnoteDateField(writeUp ? s.next_date : '')}
+      ${cnoteDateField(writeUp)}
       <button class="primary">+ Add Note</button>
     </form>
     ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
@@ -1585,7 +1592,9 @@ async function adminStudent(id, again = false) {
   </div>`, { keepScroll: again });
   bindTraining(id, s, () => adminStudent(id, true));
   // Session History links to Coach Notes from the same day.
-  const hist = { log, page: 1, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes };
+  // Coach Notes redraw when the sessions change, for their prompt about the newest past session.
+  const hist = { log, page: 1, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
+    changed: () => renderCoachNotes() };
   bindSessions(id, s, hist);
 
   $('#stuForm').onsubmit = e => {
@@ -1639,14 +1648,18 @@ async function adminStudent(id, again = false) {
   const cnoteAt = { filter: 'all', page: 1 };
   function renderCoachNotes(added) {
     const old = !added && $('#cnoteForm');
-    const typed = old && [old.elements.body.value, old.elements.session_date.value];
+    // The date only if the coach changed it: a filled-in one follows the prompt.
+    const date = old && old.elements.session_date, typed = old && [old.elements.body.value, date.value !== date.defaultValue && date.value];
     if (added) Object.assign(cnoteAt, { filter: 'all', page: Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
     const card = $('#coachNotesCard');
-    card.innerHTML = coachNotesHTML(cnotes, s, cnoteAt);
+    card.innerHTML = coachNotesHTML(cnotes, s, log, cnoteAt);
     bindPager(card, page => { cnoteAt.page = page; renderCoachNotes(); });
     hist.redraw();
     const form = $('#cnoteForm');
-    if (typed) [form.elements.body.value, form.elements.session_date.value] = typed;
+    if (typed) {
+      form.elements.body.value = typed[0];
+      if (typed[1] !== false) form.elements.session_date.value = typed[1];
+    }
     form.onsubmit = e => {
       e.preventDefault();
       const f = new FormData(form), body = f.get('body').trim();

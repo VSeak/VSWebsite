@@ -850,7 +850,8 @@ async function adminUsers() {
           ${Object.keys(ROLE_LABEL).map(r => `<option value="${r}">${ROLE_PLURAL[r]} (${count(r)})</option>`).join('')}
         </select>
       </div>
-      <ul class="list" id="userList" style="margin-top:.6rem"></ul>
+      <div class="list-head" id="userHead"><span>User</span><span>Roles / Status</span></div>
+      <ul class="list" id="userList"></ul>
     </section>
     <aside>
       <section class="card"><h2>Add Staff</h2>
@@ -872,6 +873,7 @@ async function adminUsers() {
     const q = search.value.trim().toLowerCase(), r = role.value;
     const shown = users.filter(u => (!r || u.roles.includes(r)) &&
       (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').includes(q)));
+    $('#userHead').hidden = !shown.length;
     $('#userList').innerHTML = shown.map(u => `<li><a class="item" href="#/user/${u.id}">
       <span><strong>${esc(u.name || u.email)}</strong>${pronounsTag(u.pronouns)}${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
         <span class="item-sub">${u.email ? esc(u.email) : 'No email yet'}</span></span>
@@ -1106,7 +1108,8 @@ async function adminStudents() {
   const active = students.filter(s => !s.training_ended_at), inactive = students.filter(s => s.training_ended_at);
   const section = (title, list, hint, none) => `<section class="card" data-fold="${title}"><h2>${title} (${list.length})</h2>
     <p class="hint">${hint}</p>
-    ${list.length ? `<ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
+    ${list.length ? `<div class="list-head"><span>Student</span><span>Current Plan</span></div>
+    <ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
   const feed = recent.map(n => noteFeedItem(n, n.session?.plan?.student?.name)).join('');
 
   view(`${crumbs([['Home', '#/'], ['Students']])}

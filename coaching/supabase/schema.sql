@@ -95,6 +95,7 @@ create table public.notes (
   session_id uuid not null references public.sessions (id) on delete cascade,
   author_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   from_coach boolean not null default false,
+  author_name text not null default '',   -- a coach's name on their replies (stamp_note_author); empty for students
   body text not null check (length(body) between 1 and 4000),
   created_at timestamptz not null default now()
 );
@@ -223,6 +224,24 @@ begin
   where lower(email) = lower(trim(p_email));
 end;
 $$;
+
+-- A coach's reply is signed with their name. Students can't read staff, so it is kept on the note, taken from
+-- the poster's own staff row (nobody can post as someone else) and fixed after that.
+create function public.stamp_note_author() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.author_name := old.author_name;
+  elsif new.from_coach then
+    new.author_name := coalesce((select nullif(name, '') from public.staff where email = lower(auth.jwt() ->> 'email')), '');
+  else
+    new.author_name := '';
+  end if;
+  return new;
+end;
+$$;
+create trigger stamp_note_author before insert or update on public.notes
+  for each row execute function public.stamp_note_author();
 
 -- 3. Access rules -------------------------------------------------------------
 -- Coaches can do everything with students, plans, sessions, notes and goals.

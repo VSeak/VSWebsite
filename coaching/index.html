@@ -2036,7 +2036,7 @@ function notesHTML(sid) {
   return `<details class="notes" data-notes="${sid}" ${list.length ? 'open' : ''}>
     <summary>${list.length ? `Notes (${list.length})` : 'Add a Note'}</summary>
     ${list.map(n => `<div class="note${n.from_coach ? ' coach' : ''}">
-      <div class="note-meta"><strong>${n.from_coach ? 'Coach' : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}
+      <div class="note-meta"><strong>${n.from_coach ? esc(n.author_name || 'Coach') : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}
       ${canDelete(n) ? ` · <button type="button" class="link" data-del-note="${n.id}">Delete</button>` : ''}</div>
       <p>${para(n.body)}</p></div>`).join('')}
     <form class="note-form" data-note-form="${sid}">

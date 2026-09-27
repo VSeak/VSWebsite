@@ -1469,7 +1469,7 @@ const cnoteDay = n => n.session_date || new Date(n.created_at).toLocaleDateStrin
 const sortCoachNotes = list => list.sort((a, b) => cnoteDay(b).localeCompare(cnoteDay(a)) || b.created_at.localeCompare(a.created_at));
 const fmtSessionDay = d => day(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 const CNOTE_FILTERS = [['all', 'All'], ['session', 'Sessions'], ['general', 'General']];
-const CNOTES_PAGE = 5;   // notes per page
+const CNOTES_PAGE = 3;   // notes per page
 const cnoteIn = (n, filter) => filter === 'all' || (filter === 'session') === !!n.session_date;
 const cnoteDateField = (value = '') => `<label>Session Date<span class="hint field-hint">Leave the date empty for a general note.</span>
     <input type="date" name="session_date" value="${esc(value)}" max="${localToday()}" data-high="Pick today or an earlier day."></label>`;

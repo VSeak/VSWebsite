@@ -855,7 +855,7 @@ async function adminUsers() {
     </section>
     <aside>
       <section class="card"><h2>Add Staff</h2>
-        <p class="hint">Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
+        <p class="hint">Staff get an email invite to choose a password. Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
         <form id="addStaff" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
@@ -959,7 +959,7 @@ async function adminUser(id, again = false) {
   <div class="grid2" data-folds="user">
     <div>
     <section class="card"><h2>Details</h2>
-      ${staff ? '' : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
+      ${staff ? `<p class="hint">Emails greet ${mine ? 'you' : p.them} by first name. Roles decide what ${mine ? 'you' : p.they} can see and do.</p>` : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
         : `Coaches manage ${p.their} plans and goals.`} ${p.They} can change ${p.their} own pronouns too.</p>`}
       <form id="userForm" class="stack" data-save>
         <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter ${mine ? 'your' : p.their} first name."></label>
@@ -990,6 +990,8 @@ async function adminUser(id, again = false) {
       ${staff || stu.training_ended_at ? '' : nextSessionCardHTML(stu)}
       <section class="card"><h2>Account</h2>
         ${active ? `
+        <p class="hint">${mine ? "How you sign in. Send yourself a new sign-in link if you're locked out."
+          : `How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.`}</p>
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
         <div class="row"><button data-act="send-link">Send Sign-In Link</button>${removeBtn}</div>` : `
         <form id="inviteForm" class="stack" data-save="show">
@@ -1129,7 +1131,9 @@ async function adminStudents() {
           <button class="primary">+ Add Student</button>
         </form>
       </section>
-      <section class="card feed"><h2>Latest Student Notes</h2>${feed || '<p class="muted">No notes yet.</p>'}</section>
+      <section class="card feed"><h2>Latest Student Notes</h2>
+        <p class="hint">The newest notes your students left on their sessions. Open one to reply in the plan.</p>
+        ${feed || '<p class="muted">No notes yet.</p>'}</section>
     </aside>
   </div>`);
 
@@ -1311,6 +1315,7 @@ async function adminStudent(id, again = false) {
     <div>
       <section class="card">
         <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">+ New Plan</button></div>
+        <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current plan first, and past plans below it. Open a plan to edit it.</p>
         ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>
@@ -1335,6 +1340,7 @@ async function adminStudent(id, again = false) {
         ${coachesHTML(coaches, 'No coach yet.')}</section>
       <section class="card"><h2>Account</h2>
         ${s.user_id ? `
+        <p class="hint">How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.</p>
         <p>Signs in as ${esc(s.email)}.</p>
         <div class="row"><button data-act="send-link">Send Sign-In Link</button>
         <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
@@ -1946,7 +1952,8 @@ async function studentHome() {
   if (current.length === 1) return studentPlan(current[0].id, plans, goals, coaches, next);
 
   view(`<h1>${welcome()}</h1>${nextSessionAlert(next)}${goalHTML(goals)}
-    ${plans.length ? `<section class="card"><h2>Your Plans</h2><ul class="list">${planLinks(plans)}</ul></section>`
+    ${plans.length ? `<section class="card"><h2>Your Plans</h2>
+      <p class="hint">Plans your coach has made for you. Your current plan is marked.</p><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
     ${achievedHTML(goals)}${yourCoachHTML(coaches)}${myDetailsHTML()}`);
   bindMyDetails();
@@ -1981,11 +1988,13 @@ function goalHTML(goals) {
 }
 function achievedHTML(goals) {
   const won = goals.filter(g => g.status === 'achieved');
-  return won.length ? `<section class="card" style="margin-top:2rem"><h2>Goals Achieved</h2><ul class="list">${won.map(g =>
+  return won.length ? `<section class="card" style="margin-top:2rem"><h2>Goals Achieved</h2>
+    <p class="hint">Every goal you've sent so far! This is what all the training is for, so be proud and keep climbing.</p><ul class="list">${won.map(g =>
     goalItem(g, fmtDay(g.done_at), '<span class="tag ok">Achieved</span>')).join('')}</ul></section>` : '';
 }
 // Hidden until they have had a coach.
 const yourCoachHTML = coaches => coaches.length ? `<section class="card" style="margin-top:2rem"><h2>Your Coach</h2>
+  <p class="hint">Your current coach, and any past coaches.</p>
   ${coachesHTML(coaches, "You don't have a coach right now.")}</section>` : '';
 const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title || 'Untitled Plan')}</strong>
   ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
@@ -2009,7 +2018,8 @@ async function studentPlan(id, allPlans, goals, coaches, next) {
     ${goals ? goalHTML(goals) : ''}
     ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}
     ${planReadHTML(plan, sessions)}
-    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2><ul class="list">${planLinks(others)}</ul></section>` : ''}
+    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2>
+      <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(others)}</ul></section>` : ''}
     ${goals ? achievedHTML(goals) : ''}
     ${coaches ? yourCoachHTML(coaches) : ''}
     ${allPlans ? myDetailsHTML() : ''}`);

@@ -585,13 +585,15 @@ function markUnsaved() {
   placeBar();
 }
 // Foldable cards: inside an element with data-folds="<page>", each card's heading becomes a button that folds the card
-// down to its heading row. Which headings are folded is remembered per page in this browser (so folding Details
-// on one student folds it on every student). A folded card's forms stay in the page, so the leave check still sees them.
+// down to its heading row (the student page, a user's page and the Students list). Which headings are folded is
+// remembered per page in this browser (so folding Details on one student folds it on every student). A folded card's forms stay in the page, so the leave check still sees them.
 const foldKey = page => `coaching.folded.${page}`;
 function foldedOn(page) {
   try { return new Set(JSON.parse(localStorage.getItem(foldKey(page)) || '[]')); } catch { return new Set(); }
 }
 const foldHead = card => card.querySelector(':scope > h2:first-child, :scope > .row:first-child > h2');
+// Remembered by heading, or by data-fold on the card when the heading changes (a count, or "Your" vs "Her").
+const foldName = (card, h) => card.dataset.fold || h.textContent.trim();
 function applyFolds() {
   for (const box of app.querySelectorAll('[data-folds]')) {
     const folded = foldedOn(box.dataset.folds);
@@ -599,7 +601,7 @@ function applyFolds() {
       const h = foldHead(card);
       if (!h) continue;
       if (!h.querySelector('button.fold')) h.innerHTML = `<button type="button" class="fold">${h.innerHTML}</button>`;
-      const on = folded.has(h.textContent.trim());
+      const on = folded.has(foldName(card, h));
       card.classList.toggle('folded', on);
       h.querySelector('button.fold').setAttribute('aria-expanded', String(!on));
     }
@@ -608,7 +610,7 @@ function applyFolds() {
 function setFold(card, on) {
   const box = card.closest('[data-folds]'), h = foldHead(card);
   if (!box || !h) return;
-  const folded = foldedOn(box.dataset.folds), name = h.textContent.trim();
+  const folded = foldedOn(box.dataset.folds), name = foldName(card, h);
   if (on) folded.add(name); else folded.delete(name);
   try { localStorage.setItem(foldKey(box.dataset.folds), JSON.stringify([...folded])); } catch {}
   applyFolds();
@@ -951,7 +953,7 @@ async function adminUser(id, again = false) {
 
   view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
   <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
-  <div class="grid2">
+  <div class="grid2" data-folds="user">
     <div>
     <section class="card"><h2>Details</h2>
       ${staff ? '' : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
@@ -964,7 +966,7 @@ async function adminUser(id, again = false) {
         <button class="primary">Save Details</button>
       </form>
     </section>
-    ${staff ? (u.roles.includes('coach') || pupils.length ? `<section class="card"><h2>${mine ? 'Your' : p.Their} Students</h2>
+    ${staff ? (u.roles.includes('coach') || pupils.length ? `<section class="card" data-fold="Students"><h2>${mine ? 'Your' : p.Their} Students</h2>
       <p class="hint">To give a student a new coach, open them and pick one.</p>
       ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
@@ -1101,14 +1103,14 @@ async function adminStudents() {
       ${s.user_id ? '' : `<span class="tag">${accountStatus(s)}</span>`}`}</span></a></li>`;
   };
   const active = students.filter(s => !s.training_ended_at), inactive = students.filter(s => s.training_ended_at);
-  const section = (title, list, hint, none) => `<section class="card"><h2>${title} (${list.length})</h2>
+  const section = (title, list, hint, none) => `<section class="card" data-fold="${title}"><h2>${title} (${list.length})</h2>
     <p class="hint">${hint}</p>
     ${list.length ? `<ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
   const feed = recent.map(n => noteFeedItem(n, n.session?.plan?.student?.name)).join('');
 
   view(`${crumbs([['Home', '#/'], ['Students']])}
   <h1>Students</h1>
-  <div class="grid2">
+  <div class="grid2" data-folds="students">
     <div>${students.length
       ? section('Active', active, 'Students you are coaching now.', 'No active students.')
         + section('Inactive', inactive, 'Students you no longer coach. Resume Coaching on their page brings them back.', 'No inactive students.')

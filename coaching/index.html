@@ -1710,11 +1710,11 @@ async function adminStudent(id, again = false) {
     const old = !added && $('#cnoteForm');
     // The date only if the coach changed it: a filled-in one follows the prompt.
     const date = old && old.elements.session_date, typed = old && [old.elements.body.value, date.value !== date.defaultValue && date.value];
-    if (added) Object.assign(cnoteAt, { filter: 'all', page: Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
+    if (added) Object.assign(cnoteAt, { filter: 'all', spot: null, page:Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
     const card = $('#coachNotesCard');
     card.innerHTML = coachNotesHTML(cnotes, s, log, cnoteAt);
     card.classList.toggle('overdue', cnoteMissing(cnotes, s, log).length > 0);
-    bindPager(card, page => { cnoteAt.page = page; renderCoachNotes(); });
+    bindPager(card, page => { cnoteAt.page = page; renderCoachNotes(); if (cnoteAt.spot) spotCoachNotes(); });
     // Picking a missing session: its date becomes the filled-in one (so a picked date isn't an unsaved edit).
     card.querySelectorAll('[data-cnote-day]').forEach(b => b.onclick = () => {
       const date = $('#cnoteForm').elements.session_date;
@@ -1751,22 +1751,27 @@ async function adminStudent(id, again = false) {
         flash('Note added.');
       });
     };
-    card.querySelector('.seg')?.addEventListener('change', e => { Object.assign(cnoteAt, { filter: e.target.value, page: 1 }); renderCoachNotes(); });
+    card.querySelector('.seg')?.addEventListener('change', e => { Object.assign(cnoteAt, { filter: e.target.value, page: 1, spot: null }); renderCoachNotes(); });
   }
   renderCoachNotes();
-  // From Session History: the page of session notes with that day's first note, scrolled to and lit up for a moment.
+  // From Session History: the page of session notes with that day's first note, scrolled to, and every note from
+  // that day lit up for a moment. If they run onto the next page, paging there lights those up too (cnoteAt.spot).
+  function spotCoachNotes() {
+    const els = cnotes.filter(n => n.session_date === cnoteAt.spot).map(n => $(`#cnote-${n.id}`)).filter(Boolean);
+    els.forEach(el => el.classList.remove('spot'));
+    if (els.length) void els[0].offsetWidth;   // restart the animation
+    els.forEach(el => el.classList.add('spot'));
+    return els;
+  }
   function showCoachNotes(date) {
     const list = cnotes.filter(n => cnoteIn(n, 'session')), i = list.findIndex(n => n.session_date === date);
     if (i < 0) return;
-    Object.assign(cnoteAt, { filter: 'session', page: Math.floor(i / CNOTES_PAGE) + 1 });
+    Object.assign(cnoteAt, { filter: 'session', page: Math.floor(i / CNOTES_PAGE) + 1, spot: date });
     renderCoachNotes();
     const card = $('#coachNotesCard');
     if (card.classList.contains('folded')) setFold(card, false);
-    const el = $(`#cnote-${list[i].id}`);
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.remove('spot');
-    void el.offsetWidth;   // restart the animation
-    el.classList.add('spot');
+    const els = spotCoachNotes();
+    els[0].scrollIntoView({ behavior: 'smooth', block: els.length > 1 ? 'start' : 'center' });
   }
   if (restore) restore();
 

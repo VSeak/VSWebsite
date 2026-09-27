@@ -720,7 +720,7 @@ async function adminStudents() {
   if (t !== navToken) return;
 
   const rows = students.map(s => {
-    const current = s.plans.filter(p => p.active).map(p => p.title).join(', ');
+    const current = s.plans.filter(p => p.active).map(p => p.title || 'Untitled Plan').join(', ');
     return `<li><a class="item" href="#/student/${s.id}">
       <span><strong>${esc(s.name)}</strong><span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
@@ -800,7 +800,7 @@ async function adminStudent(id) {
   sortGoals(s.goals);
 
   const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
-    <span><strong>${esc(p.title)}</strong><span class="item-sub">${p.start_date ? 'Starts ' + fmtDate(p.start_date) : 'No start date'}</span></span>
+    <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? 'Starts ' + fmtDate(p.start_date) : 'No start date'}</span></span>
     ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
   view(`${crumbs([['Students', '#/students'], [s.name]])}
@@ -917,7 +917,7 @@ async function adminStudent(id) {
       return;
     }
     if (b.dataset.act === 'new-plan') busy(b, async () => {
-      const p = await sb.from('plans').insert({ student_id: id, title: 'New Plan', active: !s.plans.some(x => x.active) })
+      const p = await sb.from('plans').insert({ student_id: id, title: '', active: !s.plans.some(x => x.active) })
         .select('id').single().then(must);
       location.hash = '#/plan/' + p.id;
     });
@@ -1020,9 +1020,9 @@ function renderEditor() {
   } else {
     const weeks = byWeek(order.map(i => ({ week: draft.sessions[i].week, i })));
     body = `<section class="card stack">
-      <label>Plan Title<input data-p="title" value="${esc(p.title)}" required data-need="Give the plan a title."></label>
+      <label>Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="Training Plan" required data-need="Give the plan a title."></label>
       <div class="row">
-        <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}"></label>
+        <div><label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label></div>
         <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan (shown first to the student; replaces their other current plan)</label>
       </div>
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
@@ -1033,7 +1033,7 @@ function renderEditor() {
       ${list.map(({ i }) => sessionEditHTML(draft.sessions[i], i)).join('')}
       <button class="ghost" style="margin-top:.8rem" data-act="add-session" data-week="${w}">+ Add Session to Week ${w}</button>
     </section>`).join('')}
-    <div class="row" style="margin-top:1.4rem"><button data-act="add-week">+ Add Week</button></div>
+    <div class="row" style="margin-top:1.4rem"><button data-act="add-week" data-need="Add at least one week with a session.">+ Add Week</button></div>
     <section class="card danger-zone row between">
       <button data-act="copy">Copy to a Student</button>
       <button class="ghost danger" data-act="del-plan">Delete Plan</button>
@@ -1113,11 +1113,13 @@ function sessionRows(planId, keepIds) {
 
 function savePlan(btn) {
   const p = draft.plan;
-  if (!p.title.trim()) {
+  const missing = [!p.title.trim() && '[data-p="title"]', !p.start_date && '[data-p="start_date"]',
+    !draft.sessions.length && '[data-act="add-week"]'].filter(Boolean);
+  if (missing.length) {
     if (draft.preview) { draft.preview = false; renderEditor(); }
-    const el = $('[data-p="title"]');
-    fieldError(el, el.dataset.need);
-    el.focus();
+    const els = missing.map(sel => $(sel));
+    els.forEach(el => fieldError(el, el.dataset.need));
+    els[0].focus();
     return;
   }
   return busy(btn, async () => {
@@ -1166,7 +1168,7 @@ async function copyPlan(btn) {
 async function deletePlan(btn) {
   const p = draft.plan;
   if (!await ask({ title: 'Delete This Plan?', warn: true, ok: 'Delete Plan',
-    body: `<p>“${esc(p.title)}” and all its notes will be deleted for good.</p>` })) return;
+    body: `<p>“${esc(p.title || 'Untitled Plan')}” and all its notes will be deleted for good.</p>` })) return;
   busy(btn, async () => {
     must(await sb.from('plans').delete().eq('id', p.id));
     dirty = false;
@@ -1180,7 +1182,7 @@ async function deletePlan(btn) {
 function planReadHTML(plan, sessions, { notes = true } = {}) {
   const weeks = byWeek(sessions);
   return `<header class="plan-head">
-      <div class="row"><h1>${esc(plan.title)}</h1>${plan.active ? '' : '<span class="tag">Past Plan</span>'}</div>
+      <div class="row"><h1>${esc(plan.title || 'Untitled Plan')}</h1>${plan.active ? '' : '<span class="tag">Past Plan</span>'}</div>
       ${plan.start_date ? `<p class="muted">Starts ${fmtDate(plan.start_date)}</p>` : ''}
       ${plan.overview ? `<div class="card prose">${para(plan.overview)}</div>` : ''}
     </header>
@@ -1231,7 +1233,7 @@ function achievedHTML(goals) {
   return won.length ? `<section class="card" style="margin-top:2rem"><h2>Goals Achieved</h2><ul class="list">${won.map(g =>
     goalItem(g, fmtDay(g.done_at), '<span class="tag ok">Achieved</span>')).join('')}</ul></section>` : '';
 }
-const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title)}</strong>
+const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title || 'Untitled Plan')}</strong>
   ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
 async function studentPlan(id, allPlans, goals) {

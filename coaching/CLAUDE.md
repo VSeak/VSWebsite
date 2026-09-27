@@ -32,7 +32,7 @@ A personal site for a bouldering coach. Coaches sign in to manage students and w
 
 - Staff: `#/` Coach Home (Admin Home for admin-only staff), one tile per page from `ADMIN_PAGES`, shown by `role` (add a new page there and in `route()`, which also checks the role). Coach pages: `#/students` students + add student + latest student notes; `#/student/<id>` plans, goals, details, account; `#/plan/<id>` plan editor. Admin pages: `#/users` everyone from `list_users()` with search, a role filter and Add Staff; `#/user/<id>` any user's details, roles (staff) and account (invite, sign-in link, Remove Access or Delete Student).
 - Student: `#/` their goals and current plan (or a list), then achieved goals; `#/plan/<id>` one plan.
-- The plan editor keeps a `draft` and saves on **Save Plan** (upserts sessions, deletes removed ones). Session ids are made in the browser so notes stay attached. `dirty` drives the leave check (`onHashChange`, `beforeunload`, Sign Out). **Student View** previews the draft.
+- The plan editor keeps a `draft` and saves on **Save Plan** (upserts sessions, deletes removed ones). Saving needs a title, a start date and at least one session. New plans start with an empty title (lists show "Untitled Plan" until it is saved). Session ids are made in the browser so notes stay attached. `dirty` drives the leave check (`onHashChange`, `beforeunload`, Sign Out). **Student View** previews the draft.
 
 ## Conventions
 

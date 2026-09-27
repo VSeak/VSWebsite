@@ -1765,8 +1765,7 @@ function renderEditor() {
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
     </section>
     ${sessionsHTML}
-    <section class="card danger-zone row between">
-      <button data-act="copy">Copy to a Student</button>
+    <section class="card danger-zone row">
       <button class="ghost danger" data-act="del-plan">Delete Plan</button>
     </section>`;
   }
@@ -1828,7 +1827,6 @@ function renderEditor() {
       }
       case 'preview': draft.preview = !draft.preview; renderEditor(); window.scrollTo(0, 0); return;
       case 'save': return savePlan(b);
-      case 'copy': return copyPlan(b);
       case 'del-plan': return deletePlan(b);
       default: return;
     }
@@ -1877,11 +1875,11 @@ function setExName(x, input) {
   for (const [f] of EX_FIELDS) row.querySelector(`[data-f="${f}"]`).value = x[f] = m[f];
 }
 
-function sessionRows(planId, keepIds) {
+function sessionRows(planId) {
   return displayOrder().map((i, position) => {
     const s = draft.sessions[i];
     return {
-      id: keepIds ? s.id : crypto.randomUUID(), plan_id: planId, week: s.week, position,
+      id: s.id, plan_id: planId, week: s.week, position,
       title: s.title.trim(), details: s.details.trim(),
       exercises: s.exercises.filter(x => Object.values(x).some(v => String(v).trim())),
     };
@@ -1900,7 +1898,7 @@ function savePlan(btn) {
     return;
   }
   return busy(btn, async () => {
-    const rows = sessionRows(p.id, true);
+    const rows = sessionRows(p.id);
     // The database turns the student's other current plan into a past plan; name it in the message.
     const closed = p.active ? await sb.from('plans').select('title')
       .eq('student_id', p.student.id).eq('active', true).neq('id', p.id).then(must) : [];
@@ -1920,29 +1918,6 @@ function savePlan(btn) {
     // The plan is saved even if this fails; the next save tries again.
     const added = await addToMasterList(rows).catch(e => { flash(`${msg} Couldn't add new exercises to the master list: ${msgOf(e)}`, 'error'); });
     if (added != null) flash(added ? `${msg} ${added === 1 ? '1 new exercise' : `${added} new exercises`} added to the master list.` : msg);
-  });
-}
-
-async function copyPlan(btn) {
-  const students = await sb.from('students').select('id,name').order('name').then(must).catch(e => { flash(msgOf(e), 'error'); });
-  if (!students) return;
-  const f = await ask({ title: 'Copy Plan to a Student', ok: 'Copy Plan',
-    body: `<p>Makes a new copy of this plan${dirty ? ', including your unsaved changes,' : ''} for the student you choose.
-      Notes and the start date aren't copied.</p>
-      <label>Student<select name="to">${students.map(s => `<option value="${s.id}" ${s.id === draft.plan.student.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` });
-  if (!f) return;
-  const to = students.find(s => s.id === f.get('to'));
-  busy(btn, async () => {
-    // The copy is the student's current plan only if they don't have one yet.
-    const hasCurrent = (await sb.from('plans').select('id').eq('student_id', to.id).eq('active', true).then(must)).length > 0;
-    const np = await sb.from('plans').insert({
-      student_id: to.id, title: draft.plan.title.trim() || 'New Plan', overview: draft.plan.overview.trim(),
-      repeats: draft.plan.repeats, active: !hasCurrent,
-    }).select('id').single().then(must);
-    const rows = sessionRows(np.id, false);
-    if (rows.length) must(await sb.from('sessions').insert(rows));
-    const added = await addToMasterList(rows);
-    flash(`Copied to ${to.name}.${added ? ` ${added === 1 ? '1 new exercise' : `${added} new exercises`} added to the master list.` : ''}`);
   });
 }
 

@@ -166,9 +166,9 @@ body.has-bar #flash { bottom: 5.5rem; }
 /* Foldable cards (applyFolds, inside [data-folds]): tap the heading to hide the rest of the card. The heading row stays,
    so a folded card still shows its Unsaved or Needs Update tag. */
 [data-folds] .card > h2:first-child, [data-folds] .card > .row:first-child > h2 { display: flex; align-items: center; flex: 1; cursor: pointer; }
-button.fold { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: .5rem; border-radius: 6px; }
+button.fold { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: .75rem; border-radius: 6px; }
 button.fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button.fold::before { content: ""; flex: none; width: .45em; height: .45em; border: solid var(--muted); border-width: 0 2px 2px 0;
+button.fold::before { content: ""; flex: none; width: .32em; height: .32em; border: solid var(--muted); border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg) translate(-.1em, -.1em); transition: transform .15s; }
 .card.folded button.fold::before { transform: rotate(-45deg); }
 [data-folds] .card.folded > :not(:first-child) { display: none; }

@@ -2390,13 +2390,14 @@ async function studentHome() {
     sb.from('session_history').select('*').eq('student_id', me.student.id).then(must),
   ]);
   if (t !== navToken) return;
-  const current = plans.filter(p => p.active);
+  const current = plans.find(p => p.active);   // at most one (one_current_plan)
   const history = studentHistory(log, next);
-  if (current.length === 1) return studentPlan(current[0].id, plans, goals, coaches, next, history);
+  if (current) return studentPlan(current.id, plans, goals, coaches, next, history);
 
+  // No current plan, so any plans here are past ones.
   view(`<h1>${welcome()}</h1>${nextSessionAlert(next)}${goalHTML(goals)}
-    ${plans.length ? `<section class="card"><h2>Your Plans</h2>
-      <p class="hint">Plans your coach has made for you. Your current plan is marked.</p><ul class="list">${planLinks(plans)}</ul></section>`
+    ${plans.length ? `<section class="card"><h2>Past Plans</h2>
+      <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
     ${achievedHTML(goals)}${history.html}${yourCoachHTML(coaches)}${myDetailsHTML()}`);
   history.bind();
@@ -2462,7 +2463,7 @@ async function studentPlan(id, allPlans, goals, coaches, next, history) {
     ${goals ? goalHTML(goals) : ''}
     ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}
     ${planReadHTML(plan, sessions)}
-    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2>
+    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Past Plans</h2>
       <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(others)}</ul></section>` : ''}
     ${goals ? achievedHTML(goals) : ''}
     ${history ? history.html : ''}

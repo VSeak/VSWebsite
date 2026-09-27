@@ -93,6 +93,20 @@ create table public.goals (
 );
 create index on public.goals (student_id);
 
+-- The master exercise list: defaults a plan copies when the coach picks an
+-- exercise. Plans keep their own copy, so editing either never changes the other.
+-- name_key makes names unique ignoring case and spaces at the ends.
+create table public.exercises (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(trim(name)) between 1 and 200),
+  name_key text generated always as (lower(trim(name))) stored unique,
+  sets text not null default '',
+  reps text not null default '',
+  rest text not null default '',
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
 -- The signed-in person's staff roles, e.g. {admin,coach}, or null for a student.
@@ -172,6 +186,8 @@ $$;
 -- A student can read their own row, plans and sessions, read their current and
 -- achieved goals (not archived ones), read notes on their sessions, and add or
 -- delete their own notes.
+-- Coaches and admins can do everything with the master exercise list. Students
+-- can't see it at all.
 
 alter table public.staff    enable row level security;
 alter table public.students enable row level security;
@@ -179,9 +195,10 @@ alter table public.plans    enable row level security;
 alter table public.sessions enable row level security;
 alter table public.notes    enable row level security;
 alter table public.goals    enable row level security;
+alter table public.exercises enable row level security;
 
 grant select, insert, update, delete
-  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals
+  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.exercises
   to authenticated;
 
 create policy "admin: everything" on public.staff for all to authenticated
@@ -217,6 +234,9 @@ create policy "coach: everything" on public.goals for all to authenticated
   using (public.is_coach()) with check (public.is_coach());
 create policy "student: own goals" on public.goals for select to authenticated
   using (student_id = public.my_student_id() and status <> 'archived');
+
+create policy "staff: everything" on public.exercises for all to authenticated
+  using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
 
 -- 4. Sign-up gate ---------------------------------------------------------------
 -- Only emails on the student list (or the staff list) can create an account.

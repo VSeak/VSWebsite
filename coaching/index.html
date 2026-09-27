@@ -399,6 +399,7 @@ function route() {
   const go = me.isStaff
     ? (me.isCoach && page === 'students' ? adminStudents() : me.isCoach && page === 'student' && id ? adminStudent(id)
       : me.isCoach && page === 'plan' && id ? adminPlan(id)
+      : (me.isCoach || me.isAdmin) && page === 'exercises' ? adminExercises()
       : me.isAdmin && page === 'users' ? adminUsers() : me.isAdmin && page === 'user' && id ? adminUser(id) : adminHome())
     : !me.student ? viewNoAccess()
     : (page === 'plan' && id ? studentPlan(id) : studentHome());
@@ -481,15 +482,21 @@ function viewNoAccess() {
 // ---------- Staff: home ----------
 
 // One tile per staff page. Add new pages here. stat() is optional and returns a short line for the tile.
-// role says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page.
+// roles says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page.
 const ADMIN_PAGES = [
-  { href: '#/students', title: 'Students', role: 'coach', blurb: 'Add students, build their plans and goals, and send invites.',
+  { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Add students, build their plans and goals, and send invites.',
     stat: async () => {
       const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true });
       if (error) throw error;
       return count === 1 ? '1 student' : `${count} students`;
     } },
-  { href: '#/users', title: 'Users', role: 'admin', blurb: 'See and edit everyone who can sign in: admins, coaches and students.',
+  { href: '#/exercises', title: 'Master Exercise List', roles: ['coach', 'admin'], blurb: 'The exercises plans pick from, with their usual sets, reps, rest and notes.',
+    stat: async () => {
+      const { count, error } = await sb.from('exercises').select('id', { count: 'exact', head: true });
+      if (error) throw error;
+      return count === 1 ? '1 exercise' : `${count} exercises`;
+    } },
+  { href: '#/users', title: 'Users', roles: ['admin'], blurb: 'See and edit everyone who can sign in: admins, coaches and students.',
     stat: async () => {
       const users = await sb.rpc('list_users').select('id').then(must);
       return users.length === 1 ? '1 user' : `${users.length} users`;
@@ -498,7 +505,7 @@ const ADMIN_PAGES = [
 
 async function adminHome() {
   const t = ++navToken;
-  const pages = ADMIN_PAGES.filter(p => me.roles.includes(p.role));
+  const pages = ADMIN_PAGES.filter(p => p.roles.some(r => me.roles.includes(r)));
   view(`<h1>${me.isCoach ? 'Coach Home' : 'Admin Home'}</h1>
     <div class="tiles">${pages.map((p, i) => `<a class="card tile" href="${p.href}">
       <h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p>
@@ -940,6 +947,117 @@ async function adminStudent(id) {
   };
 }
 
+// ---------- Staff: master exercise list ----------
+
+// Plans copy an exercise's values when it's picked, so editing either one never changes the other.
+const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps / Time'], ['rest', 'Rest'], ['notes', 'Notes']];
+const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
+const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
+const exFieldsHTML = (x = {}) => `<label>Name<input name="name" value="${esc(x.name)}" maxlength="200" required
+    data-need="Name the exercise." autocomplete="off"></label>
+  <div class="row">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
+    `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" autocomplete="off"></label>`).join('')}</div>
+  <label>Notes<textarea name="notes" rows="2">${esc(x.notes)}</textarea></label>`;
+const exFromForm = f => Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()]));
+
+async function adminExercises() {
+  const t = ++navToken;
+  view(loading);
+  let list = await sb.from('exercises').select('*').order('name_key').then(must);
+  if (t !== navToken) return;
+
+  view(`${crumbs([['Home', '#/'], ['Master Exercise List']])}
+  <h1>Master Exercise List</h1>
+  <div class="grid2">
+    <section class="card">
+      <input id="exSearch" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
+      <ul class="list" id="exList" style="margin-top:.6rem"></ul>
+    </section>
+    <aside>
+      <section class="card"><h2>Add Exercise</h2>
+        <form id="exAdd" class="stack">${exFieldsHTML()}<button class="primary">+ Add Exercise</button></form>
+        <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
+          New exercises typed into a plan are added here when the plan is saved.</p>
+      </section>
+    </aside>
+  </div>`);
+
+  const search = $('#exSearch');
+  function renderList() {
+    const q = exKey(search.value);
+    const shown = list.filter(x => !q || x.name_key.includes(q));
+    $('#exList').innerHTML = shown.map(x => {
+      const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l} ${esc(x[f])}`).join(' · ');
+      return `<li class="goal"><div class="goal-text"><strong>${esc(x.name)}</strong>
+        ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">${para(x.notes)}</span>` : ''}</div>
+        <div class="row"><button type="button" class="small ghost" data-act="ex-edit" data-ex="${x.id}">Edit</button>
+        <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></div></li>`;
+    }).join('') || `<li><p class="muted" style="margin:.6rem 0">${list.length ? 'No exercise matches that search.' : 'No exercises yet. Add your first one.'}</p></li>`;
+  }
+  const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));
+  renderList();
+  search.oninput = renderList;
+
+  $('#exAdd').onsubmit = e => {
+    e.preventDefault();
+    const row = exFromForm(new FormData(e.target));
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.from('exercises').insert(row).select().single();
+      if (error) throw exDupError(error);
+      list.push(data); sortList();
+      e.target.reset();
+      search.value = '';
+      renderList();
+      e.target.elements.name.focus();
+      flash(`${data.name} added.`);
+    });
+  };
+
+  app.onclick = async e => {
+    const b = e.target.closest('[data-act]');
+    const x = b && list.find(y => y.id === b.dataset.ex);
+    if (!x) return;
+    if (b.dataset.act === 'ex-edit') {
+      const f = await ask({ title: 'Edit Exercise', ok: 'Save Exercise', body: `<div class="stack">${exFieldsHTML(x)}</div>
+        <p class="hint">Plans that already use it keep their own values.</p>` });
+      if (f) busy(b, async () => {
+        const { data, error } = await sb.from('exercises').update(exFromForm(f)).eq('id', x.id).select().single();
+        if (error) throw exDupError(error);
+        Object.assign(x, data); sortList();
+        renderList();
+        flash('Exercise saved.');
+      });
+    }
+    if (b.dataset.act === 'ex-delete' && await ask({ title: `Delete ${x.name}?`, warn: true, ok: 'Delete',
+      body: '<p>It comes off the list. Plans that already use it keep it.</p>' }))
+      busy(b, async () => {
+        must(await sb.from('exercises').delete().eq('id', x.id));
+        list = list.filter(y => y !== x);
+        renderList();
+      });
+  };
+}
+
+// Adds a plan's exercises that aren't on the master list yet, with the plan's values.
+// Existing names are left alone (ignoreDuplicates), so plan edits never change the list.
+async function addToMasterList(rows) {
+  const known = new Set(draft.library.map(x => x.name_key)), add = new Map();
+  for (const x of rows.flatMap(r => r.exercises)) {
+    const k = exKey(x.name);
+    if (k && !known.has(k) && !add.has(k))
+      add.set(k, { name: x.name.trim().slice(0, 200), ...Object.fromEntries(EX_FIELDS.map(([f]) => [f, String(x[f] ?? '').trim()])) });
+  }
+  if (!add.size) return 0;
+  const added = await sb.from('exercises').upsert([...add.values()], { onConflict: 'name_key', ignoreDuplicates: true })
+    .select().then(must);
+  draft.library.push(...added);
+  const picker = $('#exNames');
+  if (picker) picker.innerHTML = exOptionsHTML();
+  return added.length;
+}
+const exOptionsHTML = () => [...draft.library].sort((a, b) => a.name_key.localeCompare(b.name_key))
+  .map(x => `<option value="${esc(x.name)}">`).join('');
+
 // ---------- Coach: plan editor ----------
 
 const blankEx = () => ({ name: '', sets: '', reps: '', rest: '', notes: '' });
@@ -948,9 +1066,10 @@ const blankSession = week => ({ id: crypto.randomUUID(), week, title: '', detail
 async function adminPlan(id) {
   const t = ++navToken;
   view(loading);
-  const [plan, sessions] = await Promise.all([
+  const [plan, sessions, library] = await Promise.all([
     sb.from('plans').select('*, student:students(id,name)').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
+    sb.from('exercises').select('*').then(must),
   ]);
   if (t !== navToken) return;
   if (!plan) { location.hash = '#/'; return; }
@@ -958,7 +1077,8 @@ async function adminPlan(id) {
     ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
   if (t !== navToken) return;
 
-  draft = { plan, sessions, savedIds: new Set(sessions.map(s => s.id)), preview: false };
+  // library: the master exercise list, for the Exercise picker.
+  draft = { plan, sessions, library, savedIds: new Set(sessions.map(s => s.id)), preview: false };
   notesCtx = { notes, studentName: plan.student.name };
   dirty = false;
   renderEditor();
@@ -987,6 +1107,7 @@ function markDirty() {
 
 function sessionEditHTML(s, i) {
   const f = (field, ph, e) => `<input data-s="${i}"${e != null ? ` data-e="${e}"` : ''} data-f="${field}" placeholder="${ph}" aria-label="${ph}"
+    ${field === 'name' && e != null ? 'list="exNames" maxlength="200" autocomplete="off"' : ''}
     value="${esc(e != null ? s.exercises[e][field] : s[field])}">`;
   return `<article class="card session-edit">
     <div class="row">
@@ -1037,7 +1158,8 @@ function renderEditor() {
     <section class="card danger-zone row between">
       <button data-act="copy">Copy to a Student</button>
       <button class="ghost danger" data-act="del-plan">Delete Plan</button>
-    </section>`;
+    </section>
+    <datalist id="exNames">${exOptionsHTML()}</datalist>`;
   }
 
   view(`${crumbs([['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
@@ -1053,7 +1175,9 @@ function renderEditor() {
     if (d.p && t.type !== 'checkbox') draft.plan[d.p] = t.value;
     else if (d.s != null && d.f !== 'week') {
       const s = draft.sessions[+d.s];
-      if (d.e != null) s.exercises[+d.e][d.f] = t.value; else s[d.f] = t.value;
+      if (d.e == null) s[d.f] = t.value;
+      else if (d.f === 'name') setExName(s.exercises[+d.e], t);
+      else s.exercises[+d.e][d.f] = t.value;
     } else return;
     markDirty();
   };
@@ -1100,6 +1224,21 @@ function renderEditor() {
   };
 }
 
+// Which master exercise each plan exercise's values came from (by name_key). An exercise
+// starts as its own name's, so fixing a typo or retyping the name keeps the coach's values.
+const filledFrom = new WeakMap();
+
+// Typing or picking a master exercise's name fills in its values; the coach can change them after.
+function setExName(x, input) {
+  if (!filledFrom.has(x)) filledFrom.set(x, exKey(x.name));
+  x.name = input.value;
+  const m = draft.library.find(y => y.name_key === exKey(x.name));
+  if (!m || filledFrom.get(x) === m.name_key) return;
+  filledFrom.set(x, m.name_key);
+  const row = input.closest('.ex-row');
+  for (const [f] of EX_FIELDS) row.querySelector(`[data-f="${f}"]`).value = x[f] = m[f];
+}
+
 function sessionRows(planId, keepIds) {
   return displayOrder().map((i, position) => {
     const s = draft.sessions[i];
@@ -1138,8 +1277,11 @@ function savePlan(btn) {
     draft.savedIds = new Set(rows.map(r => r.id));
     notesCtx.notes = notesCtx.notes.filter(n => draft.savedIds.has(n.session_id));
     dirty = false;
-    flash(closed.length ? `Plan saved. “${closed[0].title}” is now a past plan.` : 'Plan saved.');
     renderEditor();
+    const msg = closed.length ? `Plan saved. “${closed[0].title}” is now a past plan.` : 'Plan saved.';
+    // The plan is saved even if this fails; the next save tries again.
+    const added = await addToMasterList(rows).catch(e => { flash(`${msg} Couldn't add new exercises to the master list: ${msgOf(e)}`, 'error'); });
+    if (added != null) flash(added ? `${msg} ${added === 1 ? '1 new exercise' : `${added} new exercises`} added to the master list.` : msg);
   });
 }
 
@@ -1161,7 +1303,8 @@ async function copyPlan(btn) {
     }).select('id').single().then(must);
     const rows = sessionRows(np.id, false);
     if (rows.length) must(await sb.from('sessions').insert(rows));
-    flash(`Copied to ${to.name}.`);
+    const added = await addToMasterList(rows);
+    flash(`Copied to ${to.name}.${added ? ` ${added === 1 ? '1 new exercise' : `${added} new exercises`} added to the master list.` : ''}`);
   });
 }
 

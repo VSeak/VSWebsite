@@ -132,6 +132,24 @@ a.back:hover { border-color: var(--muted); }
 .warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); border-left: 4px solid var(--warn);
   border-radius: 8px; padding: .6rem .8rem; }
 .warn-box strong { color: var(--warn); }
+/* Unsaved edits (markUnsaved): the card's edge and an Unsaved tag in the warn color, and its Save button filled in,
+   since phones have no hover to fill it. */
+.card.unsaved { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
+.card.unsaved > h2:first-child::after, .card.unsaved > .row:first-child > h2::after {
+  content: "Unsaved"; display: inline-block; vertical-align: .15em; margin-left: .5rem; font: 600 .75rem/1.5 Inter, sans-serif;
+  padding: .1rem .55rem; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
+  background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+form.unsaved button.primary:not([type="button"]):not(:disabled), .savebar.unsaved [data-act="save"]:not(:disabled),
+#unsavedBar button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* Names the cards with unsaved edits while their Save buttons are out of view (placeBar) */
+#unsavedBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between;
+  gap: .4rem .8rem; flex-wrap: wrap; padding: .6rem 16px calc(.6rem + env(safe-area-inset-bottom)); background: var(--card);
+  border-top: 2px solid var(--warn); box-shadow: 0 -4px 16px rgba(0,0,0,.12); }
+#unsavedBar[hidden] { display: none; }
+#unsavedBar > span { color: var(--warn); font-weight: 600; min-width: 0; }
+body.has-bar main { padding-bottom: 8rem; }
+body.has-bar #flash { bottom: 5.5rem; }
+.card { scroll-margin-top: 1rem; }
 
 /* Coach home */
 /* Every tile the same size: rows share the tallest tile's height, and the stat sits at the bottom */
@@ -230,6 +248,8 @@ dialog .row { margin-top: 1rem; }
   <button id="signOut" class="ghost small" hidden>Sign Out</button>
 </header>
 <main id="app"></main>
+<div id="unsavedBar" role="status" hidden><span></span>
+  <div class="row"><button type="button" data-bar="show">Show</button><button type="button" class="primary" data-bar="save"></button></div></div>
 <div id="flash" role="status" hidden></div>
 <dialog id="dlg"></dialog>
 
@@ -475,6 +495,52 @@ function keepEdits(saved) {
     if (el.type === 'checkbox') now.checked = el.checked; else now.value = el.value;
   });
 }
+
+// Unsaved marks: a form with data-save marks itself and its card .unsaved while a field differs from how the
+// page drew it. Add forms (+ Add …) have no data-save. Runs on every input and after any redraw of the page.
+function markUnsaved() {
+  for (const f of app.querySelectorAll('form[data-save]')) {
+    const on = [...f.querySelectorAll('input, textarea, select')].some(fieldChanged);
+    f.classList.toggle('unsaved', on);
+    f.closest('.card')?.classList.toggle('unsaved', on);
+  }
+  placeBar();
+}
+let markQueued = false;
+const queueMark = () => { if (!markQueued) { markQueued = true; requestAnimationFrame(() => { markQueued = false; markUnsaved(); }); } };
+new MutationObserver(queueMark).observe(app, { childList: true, subtree: true });
+['input', 'change'].forEach(t => app.addEventListener(t, queueMark));
+
+// The bar at the bottom of the screen names the unsaved cards whose Save buttons are out of view, with Show
+// (scrolls to the first) and, for just one card, its Save button. Hidden while typing on a phone, where the
+// keyboard already takes the bottom of the screen. data-save="show" (the invite, which sends an email) only gets Show.
+const bar = $('#unsavedBar'), touch = matchMedia('(pointer: coarse)');
+const submitOf = f => f.querySelector('button:not([type="button"])');
+let barForms = [];
+function placeBar() {
+  const typing = touch.matches && document.activeElement?.matches('#app :is(textarea, select, input:not([type="checkbox"], [type="radio"]))');
+  barForms = typing ? [] : [...app.querySelectorAll('form.unsaved')].filter(f => {
+    const r = submitOf(f).getBoundingClientRect();
+    return r.bottom < 0 || r.top > innerHeight - 90;
+  });
+  const names = barForms.map(f => f.closest('.card').querySelector('h2').textContent.trim());
+  const text = `Unsaved changes: ${names.join(', ')}`;
+  if (bar.firstChild.textContent !== text) bar.firstChild.textContent = text;
+  const one = barForms.length === 1 && barForms[0].dataset.save !== 'show' && !submitOf(barForms[0]).disabled;
+  const save = bar.querySelector('[data-bar="save"]');
+  save.hidden = !one;
+  if (one) save.textContent = submitOf(barForms[0]).textContent;
+  bar.hidden = !barForms.length;
+  document.body.classList.toggle('has-bar', !bar.hidden);
+}
+bar.addEventListener('click', e => {
+  const b = e.target.closest('[data-bar]'), f = barForms[0];
+  if (!b || !f) return;
+  if (b.dataset.bar === 'save') f.requestSubmit(submitOf(f));
+  else f.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+['scroll', 'resize'].forEach(t => addEventListener(t, placeBar, { passive: true }));
+['focusin', 'focusout'].forEach(t => document.addEventListener(t, () => setTimeout(placeBar)));
 
 // Goes to another page without the leave check, after a save, add or delete that ends there.
 function goTo(hash) {
@@ -765,7 +831,7 @@ async function adminUser(id, again = false) {
     <section class="card"><h2>Details</h2>
       ${staff ? '' : `<p class="hint">A student. ${me.isCoach ? `Their plans and goals are on <a href="#/student/${u.id}">their student page</a>.`
         : 'Coaches manage their plans and goals.'}</p>`}
-      <form id="userForm" class="stack">
+      <form id="userForm" class="stack" data-save>
         <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter their first name."></label>
         <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
         ${staff ? rolesFieldset(u.roles, lockedRoles) + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '') : ''}
@@ -778,7 +844,7 @@ async function adminUser(id, again = false) {
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
     : `<section class="card"><h2>Coach</h2>
       <p class="hint">They see their current coach and past coaches on their page.</p>
-      <form id="coachForm" class="stack">
+      <form id="coachForm" class="stack" data-save>
         <label>Current Coach<select name="coach_id">
           <option value="">No Coach</option>
           ${coachOpts.map(c => `<option value="${c.id}"${c.id === coachId ? ' selected' : ''}>${esc(c.name || c.email)}</option>`).join('')}
@@ -795,7 +861,7 @@ async function adminUser(id, again = false) {
         ${active ? `
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
         <div class="row"><button data-act="send-link">Send Sign-In Link</button>${removeBtn}</div>` : `
-        <form id="inviteForm" class="stack">
+        <form id="inviteForm" class="stack" data-save="show">
           <p>${u.invited_at ? `Invited ${fmtWhen(u.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
           <label>Email<input type="email" name="email" value="${esc(u.email || '')}" required data-need="Enter their email to send the invite." autocomplete="off"></label>
           <p class="hint">${u.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email with a link to choose a password."}</p>
@@ -973,7 +1039,7 @@ function nextSessionCardHTML(s) {
     ${overdue ? `<p class="warn-box" role="status"><strong>This session is over.</strong>
       It ended on ${esc(nextDay(s))}, so they no longer see a next session. Pick the new date and time below.</p>`
       : s.next_date ? '' : '<p class="muted">No next session set yet.</p>'}
-    <form id="nextForm" class="stack">
+    <form id="nextForm" class="stack" data-save>
       <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" min="${localToday()}"
         required data-need="Pick the day." data-low="Pick today or a later day."></label>
       <div class="row">
@@ -1111,7 +1177,7 @@ async function adminStudent(id, again = false) {
       ${s.training_ended_at ? '' : nextSessionCardHTML(s)}
       <section class="card"><h2>Details</h2>
         <p class="hint">Emails and their page greet them by first name.</p>
-        <form id="stuForm" class="stack">
+        <form id="stuForm" class="stack" data-save>
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter their first name."></label>
           <label>Last Name<input name="last_name" value="${esc(s.last_name)}"></label>
           <button class="primary">Save Details</button>
@@ -1125,7 +1191,7 @@ async function adminStudent(id, again = false) {
         <p>Signs in as ${esc(s.email)}.</p>
         <div class="row"><button data-act="send-link">Send Sign-In Link</button>
         <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
-        <form id="inviteForm" class="stack">
+        <form id="inviteForm" class="stack" data-save="show">
           <p>${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
           <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required data-need="Enter their email to send the invite." autocomplete="off"></label>
           <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email saying their plan is ready, with a link to choose a password."}</p>
@@ -1470,7 +1536,7 @@ function byWeek(list) {
 function markDirty() {
   dirty = true;
   const el = $('#saveState');
-  if (el) { el.textContent = 'Unsaved changes'; el.classList.add('warn'); }
+  if (el) { el.textContent = 'Unsaved changes'; el.classList.add('warn'); el.parentElement.classList.add('unsaved'); }
 }
 
 function sessionEditHTML(s, i) {
@@ -1530,7 +1596,7 @@ function renderEditor() {
   }
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
-    <div class="card savebar">
+    <div class="card savebar${dirty ? ' unsaved' : ''}">
       <span id="saveState" class="${dirty ? 'warn' : 'muted'}">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>
       <div class="row"><button data-act="preview">${draft.preview ? 'Back to Editing' : 'Student View'}</button>
       <button class="primary" data-act="save">Save Plan</button></div>

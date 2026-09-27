@@ -1067,9 +1067,9 @@ async function adminStudent(id, again = false) {
         ${plans ? `<ul class="list">${plans}</ul>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>
+      ${trainingCardHTML(s)}
     </div>
     <aside>
-      ${trainingCardHTML(s)}
       ${s.training_ended_at ? '' : nextSessionCardHTML(s)}
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">

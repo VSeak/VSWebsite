@@ -1064,8 +1064,8 @@ async function adminStudents() {
   <h1>Students</h1>
   <div class="grid2">
     <div>${students.length
-      ? section('Active', active, 'Students still training.', 'No active students.')
-        + section('Inactive', inactive, 'Students who have ended training. Resume Training on their page brings them back.', 'No inactive students.')
+      ? section('Active', active, 'Students you are coaching now.', 'No active students.')
+        + section('Inactive', inactive, 'Students you no longer coach. Resume Coaching on their page brings them back.', 'No inactive students.')
       : '<section class="card"><p class="muted">No students yet. Add your first one.</p></section>'}</div>
     <aside>
       <section class="card"><h2>Add a Student</h2>
@@ -1167,30 +1167,30 @@ function bindNextSession(id, s) {
   });
 }
 
-// ---------- Training status (students.training_ended_at: null while they train) ----------
+// ---------- Coaching Status card (students.training_ended_at: null while they are coached) ----------
 
 function trainingCardHTML(s) {
   const done = s.training_ended_at, p = pro(s.pronouns);
   return `<section class="card" id="trainingCard">
-    <div class="row between"><h2>Training</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
-    <p class="hint">${done ? `Finished training ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.`
-      : `When ${p.they} ${p.v('stop', 'stops')} personal training, end it here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list.`}</p>
-    <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Training' : 'End Training'}</button>
+    <div class="row between"><h2>Coaching Status</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
+    <p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.`
+      : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list.`}</p>
+    <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>
   </section>`;
 }
 
-// Ends their training (clearing the next session) or resumes it, then redraw() the page.
+// Ends their coaching (clearing the next session) or resumes it, then redraw() the page.
 function bindTraining(id, s, redraw) {
   $('#trainingCard [data-act="training"]').addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
     const done = !s.training_ended_at, btn = e.currentTarget, p = pro(s.pronouns);
-    if (done && !await ask({ title: `End ${s.first_name}'s Training?`, ok: 'End Training',
+    if (done && !await ask({ title: `End Coaching for ${s.first_name}?`, ok: 'End Coaching',
       body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive and ${p.their} next session is cleared. Plans, goals and notes stay, and ${p.they} can still sign in.</p>` })) return;
     busy(btn, async () => {
       must(await sb.from('students').update(done
         ? { training_ended_at: new Date().toISOString(), next_date: null, next_start: null, next_end: null, next_location: null }
         : { training_ended_at: null }).eq('id', id));
-      flash(done ? `Training ended for ${s.first_name}.` : `Training resumed for ${s.first_name}.`);
+      flash(done ? `Coaching ended for ${s.first_name}.` : `Coaching resumed for ${s.first_name}.`);
       redraw();
     });
   });

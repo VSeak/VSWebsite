@@ -145,6 +145,8 @@ h1 .pronouns { font-size: 1rem; margin-left: .3rem; vertical-align: .15em; }
 .warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); border-left: 4px solid var(--warn);
   border-radius: 8px; padding: .6rem .8rem; }
 .warn-box strong { color: var(--warn); }
+/* A hint about one field, between its label and the field. */
+.field-hint { display: block; margin: .1rem 0 0; font-weight: 400; }
 /* Unsaved edits (markUnsaved): the card's edge and an Unsaved tag in the warn color, and its Save button filled in,
    since phones have no hover to fill it. */
 .card.unsaved { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
@@ -1307,9 +1309,8 @@ const fmtSessionDay = d => day(d).toLocaleDateString(undefined, { weekday: 'shor
 const CNOTE_FILTERS = [['all', 'All'], ['session', 'Sessions'], ['general', 'General']];
 const CNOTES_SHOWN = 5;   // the rest go under Older Notes
 const cnoteIn = (n, filter) => filter === 'all' || (filter === 'session') === !!n.session_date;
-const cnoteDateField = (value = '') => `<label>Session Date<input type="date" name="session_date" value="${esc(value)}"
-    max="${localToday()}" data-high="Pick today or an earlier day."></label>
-  <p class="hint">Leave it empty for a general note.</p>`;
+const cnoteDateField = (value = '') => `<label>Session Date<span class="hint field-hint">Leave the date empty for a general note.</span>
+    <input type="date" name="session_date" value="${esc(value)}" max="${localToday()}" data-high="Pick today or an earlier day."></label>`;
 
 const coachNoteItem = n => `<div class="note-wrap"><div class="row between">
     <strong>${n.session_date ? 'Session on ' + esc(fmtSessionDay(n.session_date)) : 'General Note'}</strong>
@@ -1320,15 +1321,16 @@ const coachNoteItem = n => `<div class="note-wrap"><div class="row between">
 
 function coachNotesHTML(notes, s, filter) {
   const p = pro(s.pronouns), shown = notes.filter(n => cnoteIn(n, filter));
-  // Once the next session is over, offer to write it up (until a note has that date).
+  // Once the next session is over (until a note has its date), the form starts with that date filled in.
+  // It's the field's starting value, so the card isn't marked unsaved until the coach writes something.
   const writeUp = nextOverdue(s) && !notes.some(n => n.session_date === s.next_date);
   return `<h2>Coach Notes</h2>
     <p class="hint">Private to coaches: ${p.they} never ${p.v('see', 'sees')} these. Give a note a session date to keep what came up in that session.</p>
-    ${writeUp ? `<div class="alert row between" style="margin-bottom:.8rem"><span>The session on ${esc(fmtSessionDay(s.next_date))} is over. Note how it went while it's fresh.</span>
-      <button type="button" class="small primary" data-act="cnote-session">Add Session Notes</button></div>` : ''}
+    ${writeUp ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(s.next_date))} is over.</strong>
+      Note how it went while it's fresh. Its date is filled in below.</p>` : ''}
     <form id="cnoteForm" class="stack" data-save>
       <label>Note<textarea name="body" rows="3" maxlength="4000" required data-need="Write the note first."></textarea></label>
-      ${cnoteDateField()}
+      ${cnoteDateField(writeUp ? s.next_date : '')}
       <button class="primary">+ Add Note</button>
     </form>
     ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
@@ -1509,13 +1511,6 @@ async function adminStudent(id, again = false) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act, g = s.goals.find(x => x.id === b.dataset.goal), cn = cnotes.find(x => x.id === b.dataset.cnote);
-    if (act === 'cnote-session') {
-      const form = $('#cnoteForm');
-      form.elements.session_date.value = s.next_date;
-      form.elements.session_date.dispatchEvent(new Event('input', { bubbles: true }));   // marks the card unsaved
-      form.elements.body.focus();
-      return;
-    }
     if (cn) {
       if (act === 'cnote-edit') {
         const f = await ask({ title: 'Edit Note', ok: 'Save Note', body: `<div class="stack">

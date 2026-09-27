@@ -986,23 +986,23 @@ function trainingCardHTML(s) {
   return `<section class="card" id="trainingCard">
     <div class="row between"><h2>Training</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
     <p class="hint">${done ? `Finished training ${fmtDay(done)}. Their plans, goals and notes are kept, and they can still sign in.`
-      : 'When they stop personal training, mark them done. They move to Inactive on the Students list.'}</p>
-    <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Mark Active Again' : 'Mark Done Training'}</button>
+      : 'When they stop personal training, end it here. They move to Inactive on the Students list.'}</p>
+    <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Training' : 'End Training'}</button>
   </section>`;
 }
 
-// Marks them done (clearing the next session) or active again, then redraw() the page.
+// Ends their training (clearing the next session) or resumes it, then redraw() the page.
 function bindTraining(id, s, redraw) {
   $('#trainingCard [data-act="training"]').addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
     const done = !s.training_ended_at, btn = e.currentTarget;
-    if (done && !await ask({ title: `Mark ${s.first_name} Done Training?`, ok: 'Mark Done',
+    if (done && !await ask({ title: `End ${s.first_name}'s Training?`, ok: 'End Training',
       body: "<p>They move to Inactive and their next session is cleared. Plans, goals and notes stay, and they can still sign in.</p>" })) return;
     busy(btn, async () => {
       must(await sb.from('students').update(done
         ? { training_ended_at: new Date().toISOString(), next_date: null, next_start: null, next_end: null, next_location: null }
         : { training_ended_at: null }).eq('id', id));
-      flash(done ? `${s.first_name} marked done training.` : `${s.first_name} is active again.`);
+      flash(done ? `Training ended for ${s.first_name}.` : `Training resumed for ${s.first_name}.`);
       redraw();
     });
   });

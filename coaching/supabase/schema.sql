@@ -203,6 +203,8 @@ grant select, insert, update, delete
 
 create policy "admin: everything" on public.staff for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
+create policy "staff: own row" on public.staff for select to authenticated
+  using (email = lower(auth.jwt() ->> 'email'));
 
 create policy "coach: everything" on public.students for all to authenticated
   using (public.is_coach()) with check (public.is_coach());
@@ -303,12 +305,22 @@ begin
 end;
 $$;
 
+-- A student can be invited once they have a saved plan (one with a title) and a goal.
+-- Security definer so admins, who can't read plans or goals, can check it too.
+create function public.student_ready(p_id uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select (public.is_coach() or public.is_admin())
+    and exists (select 1 from public.plans where student_id = p_id and title <> '')
+    and exists (select 1 from public.goals where student_id = p_id);
+$$;
+
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.claim_student() from anon;
 revoke execute on function public.delete_student(uuid) from public, anon;
 revoke execute on function public.list_users() from public, anon;
 revoke execute on function public.delete_staff(uuid) from public, anon;
-grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid) to authenticated;
+revoke execute on function public.student_ready(uuid) from public, anon;
+grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid) to authenticated;
 
 -- 7. Make yourself an admin and a coach. Change this to the email you'll sign in with.
 insert into public.staff (email, roles) values (lower('you@example.com'), '{admin,coach}');

@@ -63,6 +63,8 @@ main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 .grow { flex: 1; min-width: 180px; }
 .muted { color: var(--muted); }
 .hint { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
+/* A card's description sits just under its heading */
+.card > h2 + .hint, .card > .row:first-child + .hint { margin-top: -.2rem; }
 .alert { background: var(--soft); border-radius: 8px; padding: .6rem .8rem; }
 
 label { display: block; font-weight: 500; font-size: .9rem; }
@@ -355,7 +357,7 @@ function ask({ title, body = '', ok = 'OK', warn = false }) {
 }
 
 // The full trail from Home, with a Back button to the page one level up (the last crumb with a link).
-// Both change the hash, so unsaved plan edits still get the leave check in onHashChange.
+// Both change the hash, so unsaved edits still get the leave check in onHashChange.
 function crumbs(items) {
   const up = items.filter(([, href]) => href).at(-1)?.[1];
   return `<div class="crumb-bar">${up ? `<a class="back" href="${up}">← Back</a>` : ''}
@@ -424,7 +426,7 @@ async function boot() {
     catch (e) { showError(e); return; }
   }
   window.addEventListener('hashchange', onHashChange);
-  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', e => { if (unsaved()) { e.preventDefault(); e.returnValue = ''; } });
   route();
 }
 
@@ -445,13 +447,32 @@ async function loadMe(user) {
 
 const welcome = () => `Welcome${me.firstName ? ' ' + esc(me.firstName) : ''}!`;
 
+// Unsaved edits: the plan editor's draft (dirty), or a form field changed from how the page drew it.
+// Pages redraw their forms after a save, so a changed field is one that hasn't been saved (or added) yet.
+const fieldChanged = el => el.type === 'checkbox' || el.type === 'radio' ? el.checked !== el.defaultChecked
+  : el.tagName === 'SELECT' ? el.selectedIndex !== Math.max(0, [...el.options].findIndex(o => o.defaultSelected))
+  : el.value !== el.defaultValue;
+const unsaved = () => dirty || [...app.querySelectorAll('form :is(input, textarea, select)')].some(fieldChanged);
+
+// Asks before unsaved edits are lost. True when there are none or the user says go ahead.
+async function okToLeave(signOut = false) {
+  if (!unsaved()) return true;
+  const ok = await ask({ title: signOut ? 'Sign Out Without Saving?' : 'Leave Without Saving?', ok: signOut ? 'Sign Out' : 'Leave', warn: true,
+    body: dirty ? "<p>Your changes to this plan haven't been saved.</p>" : "<p>You have changes on this page that haven't been saved.</p>" });
+  if (ok) dirty = false;
+  return !!ok;
+}
+
+// Goes to another page without the leave check, after a save, add or delete that ends there.
+function goTo(hash) {
+  dirty = false;
+  app.querySelectorAll('form').forEach(f => f.reset());
+  location.hash = hash;
+}
+
 async function onHashChange() {
   if (location.hash === currentHash) return;
-  if (dirty) {
-    const ok = await ask({ title: 'Leave Without Saving?', body: "<p>Your changes to this plan haven't been saved.</p>", ok: 'Leave', warn: true });
-    if (!ok) { history.replaceState(null, '', currentHash); return; }
-    dirty = false;
-  }
+  if (!await okToLeave()) { history.replaceState(null, '', currentHash); return; }
   currentHash = location.hash;
   route();
 }
@@ -484,8 +505,7 @@ function showError(e) {
 }
 
 $('#signOut').onclick = async () => {
-  if (dirty && !await ask({ title: 'Sign Out Without Saving?', body: "<p>Your changes to this plan haven't been saved.</p>", ok: 'Sign Out', warn: true })) return;
-  dirty = false;
+  if (!await okToLeave(true)) return;
   await sb.auth.signOut();
   me = null;
   history.replaceState(null, '', BASE + '#/');
@@ -629,6 +649,7 @@ async function adminUsers() {
     </section>
     <aside>
       <section class="card"><h2>Add Staff</h2>
+        <p class="hint">Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
         <form id="addStaff" class="stack">
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
@@ -636,7 +657,6 @@ async function adminUsers() {
           ${rolesFieldset(['coach'])}
           <button class="primary">+ Add and Send Invite</button>
         </form>
-        <p class="hint">Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
       </section>
     </aside>
   </div>`);
@@ -667,7 +687,7 @@ async function adminUsers() {
       // Send the invite before opening their page, so it draws once (with Invited) instead of twice.
       const { error: mailError } = await sendLink(row.email, row.first_name, true);
       if (!mailError) must(await sb.from('staff').update({ invited_at: new Date().toISOString() }).eq('id', data.id));
-      location.hash = '#/user/' + data.id;
+      goTo('#/user/' + data.id);
       if (mailError) flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error');
       else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
     });
@@ -728,27 +748,26 @@ async function adminUser(id, again = false) {
   <div class="grid2">
     <div>
     <section class="card"><h2>Details</h2>
+      ${staff ? '' : `<p class="hint">A student. ${me.isCoach ? `Their plans and goals are on <a href="#/student/${u.id}">their student page</a>.`
+        : 'Coaches manage their plans and goals.'}</p>`}
       <form id="userForm" class="stack">
         <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter their first name."></label>
         <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
-        ${staff ? rolesFieldset(u.roles, lockedRoles)
-          + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '')
-          : `<p class="hint">A student. ${me.isCoach ? `Their plans and goals are on <a href="#/student/${u.id}">their student page</a>.`
-            : 'Coaches manage their plans and goals.'}</p>`}
+        ${staff ? rolesFieldset(u.roles, lockedRoles) + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '') : ''}
         <button class="primary">Save Details</button>
       </form>
     </section>
     ${staff ? (u.roles.includes('coach') || pupils.length ? `<section class="card"><h2>Their Students</h2>
+      <p class="hint">To give a student a new coach, open them and pick one.</p>
       ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
-        : '<p class="muted">Not coaching anyone right now.</p>'}
-      <p class="hint">To give a student a new coach, open them and pick one.</p></section>` : '')
+        : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
     : `<section class="card"><h2>Coach</h2>
+      <p class="hint">They see their current coach and past coaches on their page.</p>
       <form id="coachForm" class="stack">
         <label>Current Coach<select name="coach_id">
           <option value="">No Coach</option>
           ${coachOpts.map(c => `<option value="${c.id}"${c.id === coachId ? ' selected' : ''}>${esc(c.name || c.email)}</option>`).join('')}
         </select></label>
-        <p class="hint">They see their current coach and past coaches on their page.</p>
         <button class="primary">Save Coach</button>
       </form>
       ${coachesHTML(coaches.filter(c => !c.is_current))}
@@ -838,7 +857,7 @@ async function adminUser(id, again = false) {
       if (ok) busy(b, async () => {
         must(await sb.rpc(staff ? 'delete_staff' : 'delete_student', { p_id: id }));
         flash(`${title} ${staff ? 'removed' : 'deleted'}.`);
-        location.hash = '#/users';
+        goTo('#/users');
       });
     }
   };
@@ -882,12 +901,12 @@ async function adminStudents() {
     <section class="card">${students.length ? `<ul class="list">${rows}</ul>` : '<p class="muted">No students yet. Add your first one.</p>'}</section>
     <aside>
       <section class="card"><h2>Add a Student</h2>
+        <p class="hint">Build their plan and add a goal first, then add their email and send the invite from their page.</p>
         <form id="addForm" class="stack">
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
           <button class="primary">+ Add Student</button>
         </form>
-        <p class="hint">Build their plan and add a goal first, then add their email and send the invite from their page.</p>
       </section>
       <section class="card feed"><h2>Latest Student Notes</h2>${feed || '<p class="muted">No notes yet.</p>'}</section>
     </aside>
@@ -900,7 +919,7 @@ async function adminStudents() {
     busy(e.submitter, async () => {
       const data = await sb.from('students').insert({ first_name, last_name }).select('id').single().then(must);
       flash(`${first_name} added. Make their plan, then send the invite when it's ready.`);
-      location.hash = '#/student/' + data.id;
+      goTo('#/student/' + data.id);
     });
   };
 }
@@ -934,6 +953,7 @@ function nextSessionCardHTML(s) {
   const overdue = nextOverdue(s);
   return `<section class="card${overdue ? ' overdue' : ''}" id="nextCard">
     <div class="row between"><h2>Next Session</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
+    <p class="hint">They see it at the top of their page until it ends.</p>
     ${overdue ? `<p class="warn-box" role="status"><strong>This session is over.</strong>
       It ended on ${esc(nextDay(s))}, so they no longer see a next session. Pick the new date and time below.</p>`
       : s.next_date ? '' : '<p class="muted">No next session set yet.</p>'}
@@ -946,7 +966,6 @@ function nextSessionCardHTML(s) {
       </div>
       <label>Location<input name="next_location" value="${esc(s.next_location || '')}" maxlength="200" required
         data-need="Say where it is." autocomplete="off" placeholder="e.g. Gym/Wall"></label>
-      <p class="hint">They see it at the top of their page until it ends.</p>
       <div class="row"><button class="primary">Save Session</button>
         ${s.next_date ? '<button type="button" class="ghost danger" data-act="next-clear">Clear</button>' : ''}</div>
     </form>
@@ -1028,6 +1047,7 @@ function coachGoalsHTML(goals) {
   const btns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]) =>
     `<button type="button" class="small ${cls || 'ghost'}" data-act="${act}" data-goal="${g.id}">${label}</button>`).join('')}</div>`;
   return `<h2>Goals</h2>
+    <p class="hint">They see current and achieved goals on their page. Archived goals are hidden from them.</p>
     ${cur.length ? `<ul class="list">${cur.map(g => goalItem(g, '',
       btns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']))).join('')}</ul>`
       : '<p class="muted">No current goals.</p>'}
@@ -1035,7 +1055,6 @@ function coachGoalsHTML(goals) {
       <input name="body" class="grow" maxlength="500" required data-need="Write the goal first." autocomplete="off" placeholder="e.g. Send a V5 by spring">
       <button class="primary">+ Add Goal</button>
     </form>
-    <p class="hint">They see current and achieved goals on their page. Archived goals are hidden from them.</p>
     ${won.length ? `<h3 class="goal-group">Achieved</h3><ul class="list">${won.map(g => goalItem(g, 'Achieved ' + fmtDay(g.done_at),
       btns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive']))).join('')}</ul>` : ''}
     ${old.length ? `<details class="goal-group"><summary>Archived (${old.length})</summary><ul class="list">${old.map(g =>
@@ -1073,15 +1092,16 @@ async function adminStudent(id, again = false) {
     <aside>
       ${s.training_ended_at ? '' : nextSessionCardHTML(s)}
       <section class="card"><h2>Details</h2>
+        <p class="hint">Emails and their page greet them by first name.</p>
         <form id="stuForm" class="stack">
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter their first name."></label>
           <label>Last Name<input name="last_name" value="${esc(s.last_name)}"></label>
-          <p class="hint">Emails and their page greet them by first name.</p>
           <button class="primary">Save Details</button>
         </form>
       </section>
-      <section class="card"><h2>Coach</h2>${coachesHTML(coaches, 'No coach yet.')}
-        <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">their user page</a>.` : 'An admin can change their coach.'}</p></section>
+      <section class="card"><h2>Coach</h2>
+        <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">their user page</a>.` : 'An admin can change their coach.'}</p>
+        ${coachesHTML(coaches, 'No coach yet.')}</section>
       <section class="card"><h2>Account</h2>
         ${s.user_id ? `
         <p>Signs in as ${esc(s.email)}.</p>
@@ -1187,10 +1207,11 @@ async function adminStudent(id, again = false) {
       }
       return;
     }
-    if (b.dataset.act === 'new-plan') busy(b, async () => {
+    // Ask before making the plan, so cancelling doesn't leave an empty one behind.
+    if (b.dataset.act === 'new-plan' && await okToLeave()) busy(b, async () => {
       const p = await sb.from('plans').insert({ student_id: id, title: '', active: !s.plans.some(x => x.active) })
         .select('id').single().then(must);
-      location.hash = '#/plan/' + p.id;
+      goTo('#/plan/' + p.id);
     });
     if (b.dataset.act === 'send-link') busy(b, async () => {
       const { error } = await sendLink(s.email);
@@ -1205,7 +1226,7 @@ async function adminStudent(id, again = false) {
       if (ok) busy(b, async () => {
         must(await sb.rpc('delete_student', { p_id: id }));
         flash(`${s.name} deleted.`);
-        location.hash = '#/students';
+        goTo('#/students');
       });
     }
   };
@@ -1239,9 +1260,9 @@ async function adminExercises() {
     </section>
     <aside>
       <section class="card"><h2>Add Exercise</h2>
-        <form id="exAdd" class="stack">${exFieldsHTML()}<button class="primary">+ Add Exercise</button></form>
         <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
           New exercises typed into a plan are added here when the plan is saved.</p>
+        <form id="exAdd" class="stack">${exFieldsHTML()}<button class="primary">+ Add Exercise</button></form>
       </section>
     </aside>
   </div>`);
@@ -1641,9 +1662,8 @@ async function deletePlan(btn) {
     body: `<p>“${esc(p.title || 'Untitled Plan')}” and all its notes will be deleted for good.</p>` })) return;
   busy(btn, async () => {
     must(await sb.from('plans').delete().eq('id', p.id));
-    dirty = false;
     flash('Plan deleted.');
-    location.hash = '#/student/' + p.student.id;
+    goTo('#/student/' + p.student.id);
   });
 }
 

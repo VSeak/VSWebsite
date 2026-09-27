@@ -1204,8 +1204,11 @@ function renderEditor() {
       case 'dup': S.splice(i + 1, 0, { ...structuredClone(S[i]), id: crypto.randomUUID() }); break;
       case 'del-session': {
         const n = notesCtx.notes.filter(x => x.session_id === S[i].id).length;
-        if (n && !await ask({ title: 'Remove This Session?', warn: true, ok: 'Remove',
-          body: `<p>It has ${n} note${n > 1 ? 's' : ''}, which will be deleted when you save the plan.</p>` })) return;
+        const lastInWeek = !S.some((x, k) => k !== i && x.week === S[i].week);
+        const name = S[i].title.trim() ? `“${esc(S[i].title.trim())}”` : 'This session';
+        if (!await ask({ title: lastInWeek ? `Remove Week ${S[i].week}?` : 'Remove This Session?', warn: true, ok: 'Remove',
+          body: `<p>${lastInWeek ? `${name} is the only session in week ${S[i].week}, so the week will go too.` : `${name} will be removed from week ${S[i].week}.`}</p>
+            ${n ? `<p>It has ${n} note${n > 1 ? 's' : ''}, which will be deleted when you save the plan.</p>` : ''}` })) return;
         S.splice(i, 1); break;
       }
       case 'up': case 'down': {

@@ -820,7 +820,7 @@ async function adminStudent(id) {
   sortGoals(s.goals);
 
   const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
-    <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? 'Starts ' + fmtDate(p.start_date) : 'No start date'}</span></span>
+    <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? fmtStart(p.start_date) : 'No start date'}</span></span>
     ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
   view(`${crumbs([['Students', '#/students'], [s.name]])}

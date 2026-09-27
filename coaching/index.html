@@ -796,12 +796,10 @@ function viewLogin() {
 
 function viewSetPassword() {
   view(`<section class="card narrow"><h1>Choose a Password</h1>
-    <p class="muted">You'll sign in with ${esc(me.user.email)} and this password from now on.</p>
+    <p class="muted">You'll sign in with ${esc(me.user.email)} and this password from now on.<br>Passwords must be at least 8 characters long.</p>
     <form id="pwForm" class="stack">
       <label>New Password<input type="password" name="pw" minlength="8" autocomplete="new-password" required data-need="Choose a password."></label>
-      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required data-need="Enter the same password again."></label>
-      <p class="hint">At least 8 characters.</p>
-      <button class="primary">Save Password</button>
+      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required data-need="Enter the same password again."></label>      <button class="primary">Save Password</button>
     </form></section>`);
   $('#pwForm').onsubmit = e => {
     e.preventDefault();

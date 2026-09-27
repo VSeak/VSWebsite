@@ -1,10 +1,13 @@
 <!-- Supabase → Authentication → Emails → Templates → Magic Link.
      Sent when the coach clicks Send Sign-In Link for a student (or an admin does, for anyone) who already has an account
      (usually a forgotten password). The link leads to "Choose a Password".
-     Subject: Private Coaching: Your Sign-In Link 🧗
+     Subject: Private Coaching: {{ if .Data.email_changed_to }}Your Email Was Changed{{ else }}Your Sign-In Link{{ end }} 🧗
+     (If Supabase won't take the if in the subject, use: Private Coaching: Your Account 🧗)
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
      {{ .Data.first_name }} was saved on the student's login with their invite (sendLink in index.html).
-     {{ .Data.sent_by }} is the first name of the coach or admin who sent this link (stamp_sender writes it just before). -->
+     {{ .Data.sent_by }} is the first name of the coach or admin who sent this link (stamp_sender writes it just before).
+     {{ .Data.email_changed_to }} is set when an admin is changing the student's email (prepare_email_change): this email
+     goes to the OLD address, just before the change, as a notice only, with no sign-in button. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -43,12 +46,20 @@
           <td style="background:#FFFDF9; border:1px solid #E1DAD0; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#2C2620;">
 
             <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#2C2620;">
-              Your Sign-In Link
+              {{ if .Data.email_changed_to }}Your Email Was Changed{{ else }}Your Sign-In Link{{ end }}
             </h1>
 
             <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
               Hi {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},
             </p>
+            {{ if .Data.email_changed_to }}
+            <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
+              The email you sign in to your training plan with has been changed from {{ .Email }} to {{ .Data.email_changed_to }}. Your password stays the same, so use it with the new email from now on.
+            </p>
+            <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
+              If this was a mistake, please contact your coach or an admin.
+            </p>
+            {{ else }}
             <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
               Here's a new link to get back into {{ if .Data.staff }}the coaching site{{ else }}your training plan{{ end }}. Tap the button below to sign in, then set a new password.
               You'll use it to sign in from then on.
@@ -69,6 +80,7 @@
             <p style="margin:0 0 24px; font-size:14px; line-height:1.6; color:#766B60;">
               The button works once. If it has expired, just let me know and I'll send a new one.
             </p>
+            {{ end }}
 
             <!-- Signature -->
             <p style="margin:0; font-size:16px; line-height:1.6;">
@@ -82,7 +94,7 @@
         <!-- Footer -->
         <tr>
           <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#766B60;">
-            This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.
+            {{ if .Data.email_changed_to }}This email was sent to {{ .Email }} because it was the sign-in email for your Private Coaching account.{{ else }}This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.{{ end }}
           </td>
         </tr>
 

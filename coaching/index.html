@@ -1127,12 +1127,18 @@ async function adminUser(id, again = false) {
     });
     if (b.dataset.act === 'change-email') {
       const f = await ask({ title: 'Change Email', ok: 'Change Email', body: `<div class="stack">
-        <p>${p.They}'ll sign in with the new email from now on. ${p.Their} password stays the same.</p>
+        <p>${p.They}'ll sign in with the new email from now on. ${p.Their} password stays the same.
+          ${p.Their} current email gets a notice saying so, with a note to contact ${p.their} coach or an admin if it's a mistake.</p>
         <label>Email<input type="email" name="email" value="${esc(u.email)}" required data-need="Enter ${p.their} new email." autocomplete="off"></label></div>` });
       const email = f?.get('email').trim().toLowerCase();
       if (email && email !== u.email) busy(b, async () => {
+        // The notice goes to the old address, so it has to go before the change, while that address still has a login.
+        // prepare_email_change() checks the new email and stamps the notice's wording; no notice, no change.
+        const old = await sb.rpc('prepare_email_change', { p_id: id, p_email: email }).then(must);
+        const { error } = await mailer.auth.signInWithOtp({ email: old, options: { shouldCreateUser: false } });
+        if (error) throw new Error(`The notice to ${old} didn't send, so the email wasn't changed: ${msgOf(error)}`);
         must(await sb.rpc('change_student_email', { p_id: id, p_email: email }));
-        flash(`Email changed. ${p.They} ${p.v('sign', 'signs')} in as ${email} now.`);
+        flash(`Email changed. ${p.They} ${p.v('sign', 'signs')} in as ${email} now, and a notice went to ${old}.`);
         adminUser(id, true);
       });
     }

@@ -249,7 +249,9 @@ begin
   select first_name into sender from public.staff where email = lower(auth.jwt() ->> 'email')
     and ('coach' = any (roles) or 'admin' = any (roles));
   if sender is null then raise exception 'Only a coach or an admin can send sign-in links.'; end if;
-  update auth.users set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('sent_by', sender)
+  -- A normal sign-in link clears email_changed_to (prepare_email_change), so it gets the usual wording again.
+  update auth.users set raw_user_meta_data = (coalesce(raw_user_meta_data, '{}'::jsonb) - 'email_changed_to')
+    || jsonb_build_object('sent_by', sender)
   where lower(email) = lower(trim(p_email));
 end;
 $$;
@@ -501,6 +503,42 @@ begin
 end;
 $$;
 
+-- The OLD address gets a notice when an admin changes a signed-in student's email (the Magic Link email with
+-- {{ if .Data.email_changed_to }} wording and no sign-in button). It has to go out before the change, while the old
+-- address still has a login: this checks the new email like change_student_email() does, stamps sent_by and
+-- email_changed_to on the student's login, and returns the old email. The page sends the notice, then changes the email.
+create function public.prepare_email_change(p_id uuid, p_email text) returns text
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  new_email text := lower(trim(coalesce(p_email, '')));
+  sender text;
+  uid uuid;
+  old_email text;
+begin
+  select first_name into sender from public.staff where email = lower(auth.jwt() ->> 'email') and 'admin' = any (roles);
+  if sender is null then raise exception 'Only an admin can change a student''s email.'; end if;
+  if new_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'Enter a valid email.'; end if;
+  select user_id into uid from public.students where id = p_id;
+  if not found then raise exception 'That student no longer exists.'; end if;
+  select email into old_email from auth.users where id = uid;
+  if old_email is null then raise exception 'This student hasn''t signed in yet. Change the email in the invite form.'; end if;
+  if lower(old_email) = new_email then raise exception 'That''s already their email.'; end if;
+  if exists (select 1 from public.staff where email = new_email) then
+    raise exception 'A staff member already has that email.';
+  end if;
+  if exists (select 1 from public.students where email = new_email and id <> p_id) then
+    raise exception 'Another student already has that email.';
+  end if;
+  if exists (select 1 from auth.users where lower(email) = new_email) then
+    raise exception 'Another login already uses that email.';
+  end if;
+  update auth.users set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb)
+    || jsonb_build_object('sent_by', sender, 'email_changed_to', new_email)
+  where id = uid;
+  return old_email;
+end;
+$$;
+
 -- A student can be invited once they have a saved plan (one with a title) and a goal.
 -- Security definer so admins, who can't read plans or goals, can check it too.
 create function public.student_ready(p_id uuid) returns boolean
@@ -604,10 +642,10 @@ revoke execute on function public.delete_staff(uuid) from public, anon;
 revoke execute on function public.student_ready(uuid) from public, anon;
 revoke execute on function public.coaches_of(uuid), public.my_staff_id() from public, anon;
 revoke execute on function public.stamp_sender(text) from public, anon;
-revoke execute on function public.change_student_email(uuid, text) from public, anon;
+revoke execute on function public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
   public.coaches_of(uuid), public.my_staff_id(), public.update_my_pronouns(text), public.stamp_sender(text),
-  public.change_student_email(uuid, text) to authenticated;
+  public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) to authenticated;
 
 -- 8. Make yourself an admin, a coach and the owner. Change this to the email you'll sign in with.
 insert into public.staff (email, roles, owner) values (lower('you@example.com'), '{admin,coach}', true);

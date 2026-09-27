@@ -252,9 +252,7 @@ table.ex td:first-child { font-weight: 600; }
 /* Notes */
 details.notes { margin-top: .8rem; border-top: 1px dashed var(--line); padding-top: .6rem; }
 details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--accent); }
-/* Like text messages: the reader's own notes on the right, everyone else's on the left.
-   The thread (and its reply box) stays chat-width so the two sides don't drift apart on a wide screen. */
-.thread { max-width: 36rem; }
+/* Like text messages: the reader's own notes on the right, everyone else's on the left */
 .note { margin-top: .6rem; padding: .5rem .75rem; border-radius: 14px 14px 14px 4px; background: var(--bg);
   width: fit-content; max-width: 85%; overflow-wrap: anywhere; }
 .note.mine { margin-left: auto; border-radius: 14px 14px 4px 14px; background: var(--soft); }
@@ -2485,7 +2483,7 @@ function notesHTML(sid) {
   const canDelete = n => me.isCoach || (n.author_id === me.user.id && !n.from_coach);
   return `<details class="notes" data-notes="${sid}" ${list.length ? 'open' : ''}>
     <summary>${list.length ? `Notes (${list.length})` : 'Add a Note'}</summary>
-    <div class="thread">${list.map(n => `<div class="note${n.author_id === me.user.id ? ' mine' : ''}">
+    ${list.map(n => `<div class="note${n.author_id === me.user.id ? ' mine' : ''}">
       <div class="note-meta"><strong>${n.from_coach ? esc(n.author_name || 'Coach') : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}
       ${canDelete(n) ? ` · <button type="button" class="link" data-del-note="${n.id}">Delete</button>` : ''}</div>
       <p>${para(n.body)}</p></div>`).join('')}
@@ -2494,7 +2492,7 @@ function notesHTML(sid) {
         placeholder="${me.isCoach ? 'Reply to your student…'
           : list.some(n => !n.from_coach) ? 'Any other thoughts?' : 'How did the session go? Any questions?'}"></textarea>
       <button class="small">+ Post Note</button>
-    </form></div>
+    </form>
   </details>`;
 }
 

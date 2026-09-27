@@ -585,8 +585,11 @@ const ROLE_LABEL = { admin: 'Admin', coach: 'Coach', student: 'Student' };
 const ROLE_PLURAL = { admin: 'Admins', coach: 'Coaches', student: 'Students' };
 const ROLE_HINT = { admin: 'Sees and edits every user.', coach: 'Manages students, plans and goals.' };
 const STAFF_ROLES = ['admin', 'coach'];
-const rolesText = roles => roles.map(r => ROLE_LABEL[r] || r).join(' · ');
-const roleTags = roles => roles.map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
+// Roles in STAFF_ROLES order (Admin before Coach), anything else after.
+const roleRank = r => (i => i < 0 ? STAFF_ROLES.length : i)(STAFF_ROLES.indexOf(r));
+const sortRoles = roles => [...roles].sort((a, b) => roleRank(a) - roleRank(b));
+const rolesText = roles => sortRoles(roles).map(r => ROLE_LABEL[r] || r).join(' · ');
+const roleTags = roles => sortRoles(roles).map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
 const userStatus = u => u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
 const roleOrder = u => Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
 const isMine = u => u.kind === 'staff' && u.email === me.user.email?.toLowerCase();

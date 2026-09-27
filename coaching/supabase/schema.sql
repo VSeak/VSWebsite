@@ -16,8 +16,10 @@ create table public.staff (
   roles text[] not null default '{coach}'
     check (cardinality(roles) > 0 and roles <@ array['admin', 'coach']),
   invited_at timestamptz,
+  owner boolean not null default false,   -- see section 5: nobody else can change their access
   created_at timestamptz not null default now()
 );
+create unique index staff_one_owner on public.staff (owner) where owner;
 
 -- One row per student. email can wait until the coach is ready to invite them.
 -- invited_at is set when an invite goes out; user_id the first time they sign in.
@@ -275,17 +277,51 @@ $$;
 create trigger keep_an_admin after update or delete on public.staff
   for each statement execute function public.keep_an_admin();
 
+-- The owner (step 8): other admins can't change their roles or email, or remove them.
+-- The owner keeps the Admin role and can still change their own Coach role and name.
+-- Only the SQL Editor can make someone the owner (or undo it).
+create function public.protect_owner() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  -- The SQL Editor (no signed-in user) can do anything.
+  if auth.jwt() ->> 'email' is null then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+  if tg_op = 'INSERT' then
+    if new.owner then raise exception 'Only the SQL Editor can make someone the owner.'; end if;
+    return new;
+  end if;
+  if tg_op = 'DELETE' then
+    if old.owner then raise exception 'The owner can''t be removed.'; end if;
+    return old;
+  end if;
+  if new.owner is distinct from old.owner then
+    raise exception 'Only the SQL Editor can change who the owner is.';
+  end if;
+  if old.owner then
+    if new.email <> old.email then raise exception 'The owner''s email can''t be changed here.'; end if;
+    if not ('admin' = any (new.roles)) then raise exception 'The owner always keeps the Admin role.'; end if;
+    if new.roles is distinct from old.roles and old.email <> lower(auth.jwt() ->> 'email') then
+      raise exception 'Only the owner can change their own roles.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+create trigger protect_owner before insert or update or delete on public.staff
+  for each row execute function public.protect_owner();
+
 -- Everyone, staff and students, for admins only (others get no rows).
 -- last_sign_in_at comes from their login, so the page can tell who is active.
 create function public.list_users()
 returns table (kind text, id uuid, first_name text, last_name text, name text, email text,
-               roles text[], invited_at timestamptz, last_sign_in_at timestamptz)
+               roles text[], invited_at timestamptz, last_sign_in_at timestamptz, owner boolean)
 language sql stable security definer set search_path = '' as $$
-  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.email, s.roles, s.invited_at, u.last_sign_in_at
+  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.email, s.roles, s.invited_at, u.last_sign_in_at, s.owner
   from public.staff s left join auth.users u on lower(u.email) = s.email
   where public.is_admin()
   union all
-  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.email, '{student}'::text[], st.invited_at, u.last_sign_in_at
+  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.email, '{student}'::text[], st.invited_at, u.last_sign_in_at, false
   from public.students st left join auth.users u on u.id = st.user_id
   where public.is_admin();
 $$;
@@ -413,5 +449,5 @@ revoke execute on function public.coaches_of(uuid), public.my_staff_id() from pu
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
   public.coaches_of(uuid), public.my_staff_id() to authenticated;
 
--- 8. Make yourself an admin and a coach. Change this to the email you'll sign in with.
-insert into public.staff (email, roles) values (lower('you@example.com'), '{admin,coach}');
+-- 8. Make yourself an admin, a coach and the owner. Change this to the email you'll sign in with.
+insert into public.staff (email, roles, owner) values (lower('you@example.com'), '{admin,coach}', true);

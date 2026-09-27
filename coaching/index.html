@@ -655,12 +655,12 @@ async function adminUsers() {
     busy(e.submitter, async () => {
       const { data, error } = await sb.from('staff').insert(row).select('id').single();
       if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
-      location.hash = '#/user/' + data.id;
+      // Send the invite before opening their page, so it draws once (with Invited) instead of twice.
       const { error: mailError } = await sendLink(row.email, row.first_name, true);
-      if (mailError) { flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error'); return; }
-      must(await sb.from('staff').update({ invited_at: new Date().toISOString() }).eq('id', data.id));
-      flash(`${row.first_name} added. Invite sent to ${row.email}.`);
-      if (location.hash === '#/user/' + data.id) adminUser(data.id);
+      if (!mailError) must(await sb.from('staff').update({ invited_at: new Date().toISOString() }).eq('id', data.id));
+      location.hash = '#/user/' + data.id;
+      if (mailError) flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error');
+      else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
     });
   };
 }
@@ -685,9 +685,10 @@ function checkedRoles(form) {
 }
 
 // One page for any user: staff (details, roles, account) or a student (details, account).
-async function adminUser(id) {
+// again: redraw after a save, without the Loading… step or a jump to the top.
+async function adminUser(id, again = false) {
   const t = ++navToken;
-  view(loading);
+  if (!again) view(loading);
   const u = await sb.rpc('list_users').eq('id', id).maybeSingle().then(must);
   if (t !== navToken) return;
   if (!u) { location.hash = '#/users'; return; }
@@ -706,7 +707,11 @@ async function adminUser(id) {
   const cur = coaches.find(c => c.is_current);
   if (coachId && cur && !coachOpts.some(c => c.id === coachId)) coachOpts.push({ id: coachId, name: cur.name });
   const title = u.name || u.email;
-  const removeBtn = mine ? '' : `<button type="button" class="ghost danger" data-act="remove">${staff ? 'Remove Access' : 'Delete Student'}</button>`;
+  // The owner's access is theirs alone (protect_owner in schema.sql): other admins can't change their roles or remove them.
+  const lockedRoles = u.owner ? (mine ? ['admin'] : STAFF_ROLES) : mine ? ['admin'] : [];
+  const rolesHint = u.owner ? (mine ? "You're the owner, so you always keep the Admin role." : `${esc(u.first_name || 'The owner')} is the owner. Only they can change their roles.`)
+    : mine ? "You can't remove your own Admin role. Ask another admin." : '';
+  const removeBtn = mine || u.owner ? '' : `<button type="button" class="ghost danger" data-act="remove">${staff ? 'Remove Access' : 'Delete Student'}</button>`;
 
   view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
   <div class="row"><h1>${esc(title)}</h1>${roleTags(u.roles)}</div>
@@ -716,8 +721,8 @@ async function adminUser(id) {
       <form id="userForm" class="stack">
         <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter their first name."></label>
         <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
-        ${staff ? rolesFieldset(u.roles, mine ? ['admin'] : [])
-          + (mine ? '<p class="hint">You can\'t remove your own Admin role. Ask another admin.</p>' : '')
+        ${staff ? rolesFieldset(u.roles, lockedRoles)
+          + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '')
           : `<p class="hint">A student. ${me.isCoach ? `Their plans and goals are on <a href="#/student/${u.id}">their student page</a>.`
             : 'Coaches manage their plans and goals.'}</p>`}
         <button class="primary">Save Details</button>
@@ -753,7 +758,7 @@ async function adminUser(id) {
         </form>`}
       </section>
     </aside>
-  </div>`);
+  </div>`, { keepScroll: again });
   if (!ready) gateInvite(me.isCoach
     ? `Save a training plan and add a goal on <a href="#/student/${u.id}">their student page</a> before sending the invite.`
     : 'A coach needs to save a training plan and add a goal before the invite can go out.');
@@ -767,7 +772,7 @@ async function adminUser(id) {
       must(await sb.from(table).update(patch).eq('id', id));
       if (mine) { await loadMe(me.user); setWho(); }
       flash('Details saved.');
-      adminUser(id);
+      adminUser(id, true);
     });
   };
 
@@ -779,7 +784,7 @@ async function adminUser(id) {
     busy(e.submitter, async () => {
       must(await sb.from('students').update({ coach_id }).eq('id', id));
       flash(coach_id ? 'Coach saved.' : 'Coach removed.');
-      adminUser(id);
+      adminUser(id, true);
     });
   };
 
@@ -798,7 +803,7 @@ async function adminUser(id) {
       if (error) throw error;
       must(await sb.from(table).update({ invited_at: new Date().toISOString() }).eq('id', id));
       flash(`Invite sent to ${email}.`);
-      adminUser(id);
+      adminUser(id, true);
     });
   };
 

@@ -200,6 +200,19 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
 .feed :is(h2, .hint) + .note-wrap { border-top: 0; }
 .note-wrap p { margin: .2rem 0 0; }
+/* Opened from Session History (showCoachNotes): lit up for a moment. */
+.note-wrap.spot { animation: spot 2s ease-out; }
+@keyframes spot { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } }
+
+/* Sessions card: Next Session and Session History (sessionsCardHTML) */
+.sub-head { margin-top: 1.1rem; }
+.list li.hist { display: flex; justify-content: space-between; align-items: center; gap: .4rem .8rem; flex-wrap: wrap; padding: .6rem 0; }
+.hist-count { margin: 0 0 .2rem; font-size: .9rem; }
+
+/* Pages of a long list (pagerHTML) */
+.pager { display: flex; justify-content: space-between; align-items: center; gap: .6rem; margin-top: .6rem; }
+.pager .muted { font-size: .85rem; }
+.pager button:disabled { cursor: default; opacity: .4; }
 
 /* Plans */
 .plan-head { margin-bottom: 1.2rem; }
@@ -949,12 +962,14 @@ async function adminUser(id, again = false) {
   const mine = isMine(u), active = !!u.last_sign_in_at, p = pro(u.pronouns);
   // Admins can't read plans or goals, so ask the database whether a student is ready for the invite.
   const ready = staff || active || await sb.rpc('student_ready', { p_id: id }).then(must);
-  // Students: their row (coach and next session), who could coach them, and past coaches. Staff: the students they coach.
-  const [stu, coachOpts, coaches, pupils] = await Promise.all(staff
-    ? [null, [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
+  // Students: their row (coach and next session), who could coach them, past coaches and past sessions.
+  // Staff: the students they coach.
+  const [stu, coachOpts, coaches, log, pupils] = await Promise.all(staff
+    ? [null, [], [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
     : [sb.from('students').select('first_name,pronouns,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
        sb.from('staff').select('id,name,email').contains('roles', ['coach']).order('first_name').then(must),
-       sb.rpc('coaches_of', { p_id: id }).then(must), []]);
+       sb.rpc('coaches_of', { p_id: id }).then(must),
+       sb.from('session_history').select('*').eq('student_id', id).then(must), []]);
   if (t !== navToken) return;
   const coachId = stu?.coach_id ?? null;
   // Keep their coach in the list even if they've lost the Coach role since.
@@ -1000,7 +1015,7 @@ async function adminUser(id, again = false) {
     ${trainingCardHTML(stu)}`}
     </div>
     <aside>
-      ${staff || stu.training_ended_at ? '' : nextSessionCardHTML(stu)}
+      ${staff ? '' : sessionsCardHTML(stu)}
       <section class="card"><h2>Account</h2>
         ${active ? `
         <p class="hint">${mine ? "How you sign in. Send yourself a new sign-in link if you're locked out."
@@ -1019,7 +1034,7 @@ async function adminUser(id, again = false) {
   </div>`, { keepScroll: again });
   if (restore) restore();
   if (!staff) bindTraining(id, stu, () => adminUser(id, true));
-  if (!staff && !stu.training_ended_at) bindNextSession(id, stu);
+  if (!staff) bindSessions(id, stu, { log, page: 1 });
   if (!ready) gateInvite(me.isCoach
     ? `Save a training plan and add a goal on <a href="#/student/${u.id}">${p.their} student page</a> before sending the invite.`
     : 'A coach needs to save a training plan and add a goal before the invite can go out.');
@@ -1176,7 +1191,37 @@ function coachesHTML(coaches, none) {
     + (past.length ? `<h3 class="goal-group">Past Coaches</h3><ul class="list">${past.map(coachRow).join('')}</ul>` : '');
 }
 
-// ---------- Next session (students.next_*: coaches and admins set it, the student reads it) ----------
+// ---------- Pages: a long list shows a few items at a time, with Newer and Older buttons ----------
+
+const pageCount = (n, size) => Math.max(1, Math.ceil(n / size));
+// The page's items, and the page (1 on up) kept in range, e.g. after a delete empties the last page.
+function pageOf(list, page, size) {
+  const p = Math.min(Math.max(1, page), pageCount(list.length, size));
+  return [list.slice((p - 1) * size, p * size), p];
+}
+const pagerHTML = (page, n, size) => n > size ? `<nav class="pager" aria-label="Pages">
+  <button type="button" class="small ghost" data-page="${page - 1}"${page > 1 ? '' : ' disabled'}>‹ Newer</button>
+  <span class="muted">Page ${page} of ${pageCount(n, size)}</span>
+  <button type="button" class="small ghost" data-page="${page + 1}"${page < pageCount(n, size) ? '' : ' disabled'}>Older ›</button></nav>` : '';
+// go(page) redraws box. The pager stays where it was on screen (under a thumb on a phone) and keeps the focus.
+function bindPager(box, go) {
+  box.querySelector('.pager')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-page]');
+    if (!b) return;
+    const i = [...b.parentElement.children].indexOf(b), top = b.getBoundingClientRect().top;
+    go(+b.dataset.page);
+    const pager = box.querySelector('.pager');
+    if (!pager) return;
+    const nb = pager.children[i];
+    window.scrollBy(0, nb.getBoundingClientRect().top - top);
+    (nb.disabled ? pager.querySelector('button:not(:disabled)') : nb)?.focus({ preventScroll: true });
+  });
+}
+
+// ---------- Sessions card: Next Session (students.next_*) and Session History (session_history) ----------
+// Coaches and admins set the next session; the student sees it at the top of their page until it ends.
+// An ended next session shows as the newest past session straight away (historyOf), and is logged in
+// session_history when someone updates or clears it (logEnded). Coaches and admins can add or delete past sessions.
 
 const NEXT_COLS = 'next_date,next_start,next_end,next_location';
 const fmtTime = t => new Date('1970-01-01T' + t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -1186,15 +1231,56 @@ const nextPassed = s => !s.next_date || new Date(`${s.next_date}T${s.next_end}`)
 const nextOverdue = s => !!s.next_date && nextPassed(s);
 const nextDay = s => day(s.next_date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 const nextWhen = s => `${nextDay(s)} · ${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}`;
+const hm = t => t ? t.slice(0, 5) : '';
+const HISTORY_PAGE = 3;   // past sessions per page
 
-function nextSessionCardHTML(s) {
-  const hm = t => t ? t.slice(0, 5) : '';
-  const overdue = nextOverdue(s), p = pro(s.pronouns);
+// Past sessions newest first, with an ended next session that isn't logged yet on top.
+function historyOf(log, s) {
+  const list = [...log];
+  if (nextOverdue(s) && !log.some(h => h.session_date === s.next_date && hm(h.start_time) === hm(s.next_start)))
+    list.push({ session_date: s.next_date, start_time: s.next_start, end_time: s.next_end, location: s.next_location });
+  return list.sort((a, b) => b.session_date.localeCompare(a.session_date) || b.start_time.localeCompare(a.start_time));
+}
+// Before the next session changes, keep it in the history if it has ended. Logging it twice does nothing.
+async function logEnded(id, s, log) {
+  if (!nextOverdue(s)) return;
+  const rows = await sb.from('session_history').upsert({ student_id: id, session_date: s.next_date, start_time: s.next_start,
+    end_time: s.next_end, location: s.next_location }, { onConflict: 'student_id,session_date,start_time', ignoreDuplicates: true })
+    .select().then(must);
+  log?.push(...rows);
+}
+const historyItem = (h, right = '') => `<li class="hist"><span><strong>${esc(fmtSessionDay(h.session_date))}</strong>
+  <span class="item-sub">${fmtTime(h.start_time)} – ${fmtTime(h.end_time)} · ${esc(h.location)}</span></span>${right}</li>`;
+// "12 sessions since Mar 2026".
+const historyCount = list => list.length ? `<p class="muted hist-count">${list.length} ${list.length === 1 ? 'session' : 'sessions'} since
+  ${day(list.at(-1).session_date).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</p>` : '';
+
+// One page of past sessions. hist = { log, page, notes? }: notes(date) counts Coach Notes from that day,
+// for a Notes button (the student page only). Only logged rows can be deleted.
+function historyHTML(s, hist) {
+  const list = historyOf(hist.log, s), [shown, page] = pageOf(list, hist.page, HISTORY_PAGE);
+  hist.page = page;
+  const right = h => {
+    const n = hist.notes?.(h.session_date) || 0;
+    const btns = (n ? `<button type="button" class="small ghost" data-hist-notes="${h.session_date}">Notes (${n})</button>` : '')
+      + (h.id ? `<button type="button" class="small ghost danger" data-hist-del="${h.id}">Delete</button>` : '');
+    return btns ? `<div class="row">${btns}</div>` : '';
+  };
+  return `${historyCount(list)}
+    ${shown.length ? `<ul class="list">${shown.map(h => historyItem(h, right(h))).join('')}</ul>` : '<p class="muted">No past sessions yet.</p>'}
+    ${pagerHTML(page, list.length, HISTORY_PAGE)}
+    <button type="button" class="small" data-hist-add style="margin-top:.6rem">+ Add Past Session</button>`;
+}
+
+function sessionsCardHTML(s) {
+  const p = pro(s.pronouns), ended = !!s.training_ended_at, overdue = !ended && nextOverdue(s);
   return `<section class="card${overdue ? ' overdue' : ''}" id="nextCard">
-    <div class="row between"><h2>Next Session</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
-    <p class="hint">${p.They} ${p.v('see', 'sees')} it at the top of ${p.their} page until it ends.</p>
+    <div class="row between"><h2>Sessions</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
+    <p class="hint">${ended ? `Coaching has ended, so there's no next session. ${p.They} can still see ${p.their} past sessions.`
+      : `${p.They} ${p.v('see', 'sees')} the next session at the top of ${p.their} page until it ends. Then it moves to Session History, which ${p.they} ${p.v('see', 'sees')} too.`}</p>
+    ${ended ? '' : `<h3 class="sub-head">Next Session</h3>
     ${overdue ? `<p class="warn-box" role="status"><strong>This session is over.</strong>
-      It ended on ${esc(nextDay(s))}, so ${p.they} no longer ${p.v('see', 'sees')} a next session. Pick the new date and time below.</p>`
+      It ended on ${esc(nextDay(s))} and is now in Session History. Pick the new date and time below.</p>`
       : s.next_date ? '' : '<p class="muted">No next session set yet.</p>'}
     <form id="nextForm" class="stack" data-save>
       <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" min="${localToday()}"
@@ -1207,22 +1293,77 @@ function nextSessionCardHTML(s) {
         data-need="Say where it is." autocomplete="off" placeholder="e.g. Gym/Wall"></label>
       <div class="row"><button class="primary">Save Session</button>
         ${s.next_date ? '<button type="button" class="ghost danger" data-act="next-clear">Clear</button>' : ''}</div>
-    </form>
+    </form>`}
+    <h3 class="sub-head">Session History</h3>
+    <div id="historyBox"></div>
   </section>`;
 }
 
-// Saves or clears the next session, then redraws the card in place.
-function bindNextSession(id, s) {
-  const draw = () => {
-    $('#nextCard').outerHTML = nextSessionCardHTML(s);
-    bindNextSession(id, s);
+// The fields for a past session added by hand (in ask()). End Time's min follows Start Time (bindSessions).
+const pastSessionFields = () => `<div class="stack">
+  <label>Date<input type="date" name="session_date" max="${localToday()}" required data-need="Pick the day." data-high="Pick today or an earlier day."></label>
+  <div class="row">
+    <label class="grow" style="min-width:120px">Start Time<input type="time" name="start_time" required data-need="Pick a start time."></label>
+    <label class="grow" style="min-width:120px">End Time<input type="time" name="end_time" required data-need="Pick an end time." data-low="End after the start time."></label>
+  </div>
+  <label>Location<input name="location" maxlength="200" required data-need="Say where it was." autocomplete="off" placeholder="e.g. Gym/Wall"></label></div>`;
+const addMinute = t => {
+  const [h, m] = t.split(':').map(Number), n = Math.min(h * 60 + m + 1, 1439);
+  return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+};
+
+// Saves or clears the next session (redrawing the card), and runs Session History in place.
+// hist = { log, page, notes?, showNotes? }: showNotes(date) opens Coach Notes from that day.
+function bindSessions(id, s, hist) {
+  const box = $('#historyBox');
+  const drawHistory = () => {
+    box.innerHTML = historyHTML(s, hist);
+    bindPager(box, page => { hist.page = page; drawHistory(); });
   };
+  hist.redraw = drawHistory;   // e.g. after a Coach Note changes its Notes count
+  drawHistory();
+  box.onclick = async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.histNotes) hist.showNotes?.(b.dataset.histNotes);
+    else if (b.dataset.histDel) {
+      const h = hist.log.find(x => x.id === b.dataset.histDel);
+      if (h && await ask({ title: 'Delete This Session?', ok: 'Delete', warn: true,
+        body: `<p>${esc(fmtSessionDay(h.session_date))} comes off ${pro(s.pronouns).their} Session History. This can't be undone.</p>` }))
+        busy(b, async () => {
+          must(await sb.from('session_history').delete().eq('id', h.id));
+          hist.log.splice(hist.log.indexOf(h), 1);
+          drawHistory();
+          flash('Session deleted.');
+        });
+    } else if ('histAdd' in b.dataset) {
+      const asked = ask({ title: 'Add a Past Session', ok: 'Add Session', body: pastSessionFields() });
+      const dlg = $('#dlg'), start = dlg.querySelector('[name="start_time"]'), end = dlg.querySelector('[name="end_time"]');
+      start.addEventListener('input', () => { end.min = start.value ? addMinute(start.value) : ''; });
+      const f = await asked;
+      if (!f) return;
+      busy(b, async () => {
+        const { data, error } = await sb.from('session_history').insert({ student_id: id, session_date: f.get('session_date'),
+          start_time: f.get('start_time'), end_time: f.get('end_time'), location: f.get('location').trim() }).select().single();
+        if (error) throw error.code === '23505' ? new Error('That session is already in the history.') : error;
+        hist.log.push(data);
+        hist.page = Math.ceil((historyOf(hist.log, s).indexOf(data) + 1) / HISTORY_PAGE);   // the page it landed on
+        drawHistory();
+        flash('Session added.');
+      });
+    }
+  };
+
+  const form = $('#nextForm');
+  if (!form) return;
   const save = (btn, patch, msg) => busy(btn, async () => {
+    await logEnded(id, s, hist.log);
     Object.assign(s, await sb.from('students').update(patch).eq('id', id).select(NEXT_COLS).single().then(must));
-    draw();
+    hist.page = 1;
+    $('#nextCard').outerHTML = sessionsCardHTML(s);
+    bindSessions(id, s, hist);
     flash(msg);
   });
-  const form = $('#nextForm');
   form.onsubmit = e => {
     e.preventDefault();
     const f = new FormData(form), start = f.get('next_start'), end = f.get('next_end');
@@ -1232,9 +1373,29 @@ function bindNextSession(id, s) {
   };
   form.querySelector('[data-act="next-clear"]')?.addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
-    if (await ask({ title: 'Clear the Next Session?', body: `<p>${pro(s.pronouns).They} won't see a next session until you set one.</p>`, ok: 'Clear', warn: true }))
+    if (await ask({ title: 'Clear the Next Session?', ok: 'Clear', warn: true,
+      body: `<p>${pro(s.pronouns).They} won't see a next session until you set one.${nextOverdue(s) ? ' It stays in Session History.' : ''}</p>` }))
       save(e.target, { next_date: null, next_start: null, next_end: null, next_location: null }, 'Next session cleared.');
   });
+}
+
+// The student's own past sessions, near the bottom of their page, a page at a time. Hidden until they have one.
+function studentHistory(log, next) {
+  const list = historyOf(log, next || {});
+  let page = 1;
+  const draw = () => {
+    const [shown, p] = pageOf(list, page, HISTORY_PAGE);
+    return `${historyCount(list)}<ul class="list">${shown.map(h => historyItem(h)).join('')}</ul>${pagerHTML(p, list.length, HISTORY_PAGE)}`;
+  };
+  return {
+    html: list.length ? `<section class="card" style="margin-top:2rem"><h2>Your Sessions</h2>
+      <p class="hint">Every session you've had with your coach, newest first.</p><div id="myHistory">${draw()}</div></section>` : '',
+    bind() {
+      const box = $('#myHistory');
+      const go = n => { page = n; box.innerHTML = draw(); bindPager(box, go); };
+      if (box) bindPager(box, go);
+    },
+  };
 }
 
 // ---------- Coaching Status card (students.training_ended_at: null while they are coached) ----------
@@ -1249,14 +1410,15 @@ function trainingCardHTML(s) {
   </section>`;
 }
 
-// Ends their coaching (clearing the next session) or resumes it, then redraw() the page.
+// Ends their coaching (clearing the next session, after logging it if it has ended) or resumes it, then redraw() the page.
 function bindTraining(id, s, redraw) {
   $('#trainingCard [data-act="training"]').addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
     const done = !s.training_ended_at, btn = e.currentTarget, p = pro(s.pronouns);
     if (done && !await ask({ title: `End Coaching for ${s.first_name}?`, ok: 'End Coaching',
-      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive and ${p.their} next session is cleared. Plans, goals and notes stay, and ${p.they} can still sign in.</p>` })) return;
+      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive and ${p.their} next session is cleared. Plans, goals, notes and past sessions stay, and ${p.they} can still sign in.</p>` })) return;
     busy(btn, async () => {
+      if (done) await logEnded(id, s);
       must(await sb.from('students').update(done
         ? { training_ended_at: new Date().toISOString(), next_date: null, next_start: null, next_end: null, next_location: null }
         : { training_ended_at: null }).eq('id', id));
@@ -1307,20 +1469,22 @@ const cnoteDay = n => n.session_date || new Date(n.created_at).toLocaleDateStrin
 const sortCoachNotes = list => list.sort((a, b) => cnoteDay(b).localeCompare(cnoteDay(a)) || b.created_at.localeCompare(a.created_at));
 const fmtSessionDay = d => day(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 const CNOTE_FILTERS = [['all', 'All'], ['session', 'Sessions'], ['general', 'General']];
-const CNOTES_SHOWN = 5;   // the rest go under Older Notes
+const CNOTES_PAGE = 5;   // notes per page
 const cnoteIn = (n, filter) => filter === 'all' || (filter === 'session') === !!n.session_date;
 const cnoteDateField = (value = '') => `<label>Session Date<span class="hint field-hint">Leave the date empty for a general note.</span>
     <input type="date" name="session_date" value="${esc(value)}" max="${localToday()}" data-high="Pick today or an earlier day."></label>`;
 
-const coachNoteItem = n => `<div class="note-wrap"><div class="row between">
+const coachNoteItem = n => `<div class="note-wrap" id="cnote-${n.id}"><div class="row between">
     <strong>${n.session_date ? 'Session on ' + esc(fmtSessionDay(n.session_date)) : 'General Note'}</strong>
     <div class="row"><button type="button" class="small ghost" data-act="cnote-edit" data-cnote="${n.id}">Edit</button>
     <button type="button" class="small ghost danger" data-act="cnote-delete" data-cnote="${n.id}">Delete</button></div></div>
     <p>${para(n.body)}</p>
     <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>`;
 
-function coachNotesHTML(notes, s, filter) {
-  const p = pro(s.pronouns), shown = notes.filter(n => cnoteIn(n, filter));
+// at = { filter, page }: which notes show, and which page of them (kept in range here).
+function coachNotesHTML(notes, s, at) {
+  const p = pro(s.pronouns), list = notes.filter(n => cnoteIn(n, at.filter)), [shown, page] = pageOf(list, at.page, CNOTES_PAGE);
+  at.page = page;
   // Once the next session is over (until a note has its date), the form starts with that date filled in.
   // It's the field's starting value, so the card isn't marked unsaved until the coach writes something.
   const writeUp = nextOverdue(s) && !notes.some(n => n.session_date === s.next_date);
@@ -1334,10 +1498,9 @@ function coachNotesHTML(notes, s, filter) {
       <button class="primary">+ Add Note</button>
     </form>
     ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
-      `<label><input type="radio" name="cnote_filter" value="${k}"${k === filter ? ' checked' : ''}>${label} (${notes.filter(n => cnoteIn(n, k)).length})</label>`).join('')}</div>` : ''}
-    ${shown.slice(0, CNOTES_SHOWN).map(coachNoteItem).join('') || `<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
-    ${shown.length > CNOTES_SHOWN ? `<details class="goal-group"><summary>Older Notes (${shown.length - CNOTES_SHOWN})</summary>
-      ${shown.slice(CNOTES_SHOWN).map(coachNoteItem).join('')}</details>` : ''}`;
+      `<label><input type="radio" name="cnote_filter" value="${k}"${k === at.filter ? ' checked' : ''}>${label} (${notes.filter(n => cnoteIn(n, k)).length})</label>`).join('')}</div>` : ''}
+    ${shown.map(coachNoteItem).join('') || `<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
+    ${pagerHTML(page, list.length, CNOTES_PAGE)}`;
 }
 
 // again: redraw after a change, without the Loading… step or a jump to the top. It can be the form
@@ -1346,13 +1509,14 @@ async function adminStudent(id, again = false) {
   const t = ++navToken;
   const restore = again && keepEdits(again);
   if (!again) view(loading);
-  const [s, coaches, notes, cnotes] = await Promise.all([
+  const [s, coaches, notes, cnotes, log] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
     sb.from('notes').select('id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
       .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).limit(10).then(must),
     sb.from('coach_notes').select('*').eq('student_id', id).then(must),
+    sb.from('session_history').select('*').eq('student_id', id).then(must),
   ]);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/students'; return; }
@@ -1382,7 +1546,7 @@ async function adminStudent(id, again = false) {
       ${trainingCardHTML(s)}
     </div>
     <aside>
-      ${s.training_ended_at ? '' : nextSessionCardHTML(s)}
+      ${sessionsCardHTML(s)}
       <section class="card"><h2>Details</h2>
         <p class="hint">Emails and ${p.their} page greet ${p.them} by first name. ${p.They} can change ${p.their} own pronouns too.</p>
         <form id="stuForm" class="stack" data-save>
@@ -1413,7 +1577,9 @@ async function adminStudent(id, again = false) {
     </aside>
   </div>`, { keepScroll: again });
   bindTraining(id, s, () => adminStudent(id, true));
-  if (!s.training_ended_at) bindNextSession(id, s);
+  // Session History links to Coach Notes from the same day.
+  const hist = { log, page: 1, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes };
+  bindSessions(id, s, hist);
 
   $('#stuForm').onsubmit = e => {
     e.preventDefault();
@@ -1461,14 +1627,17 @@ async function adminStudent(id, again = false) {
   });
   renderGoals();
 
-  // Coach Notes also change in place. added: a note was just added, so the form starts empty (and shows All,
-  // where the new note is); otherwise a note being typed stays.
-  let cnoteFilter = 'all';
+  // Coach Notes also change in place, and Session History redraws for its Notes counts. added: the note just
+  // added, so the form starts empty and shows All, on the page with the new note; otherwise a note being typed stays.
+  const cnoteAt = { filter: 'all', page: 1 };
   function renderCoachNotes(added) {
     const old = !added && $('#cnoteForm');
     const typed = old && [old.elements.body.value, old.elements.session_date.value];
-    if (added) cnoteFilter = 'all';
-    $('#coachNotesCard').innerHTML = coachNotesHTML(cnotes, s, cnoteFilter);
+    if (added) Object.assign(cnoteAt, { filter: 'all', page: Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
+    const card = $('#coachNotesCard');
+    card.innerHTML = coachNotesHTML(cnotes, s, cnoteAt);
+    bindPager(card, page => { cnoteAt.page = page; renderCoachNotes(); });
+    hist.redraw();
     const form = $('#cnoteForm');
     if (typed) [form.elements.body.value, form.elements.session_date.value] = typed;
     form.onsubmit = e => {
@@ -1476,16 +1645,31 @@ async function adminStudent(id, again = false) {
       const f = new FormData(form), body = f.get('body').trim();
       if (!body) return;
       busy(e.submitter, async () => {
-        cnotes.push(await sb.from('coach_notes').insert({ student_id: id, body, session_date: f.get('session_date') || null })
-          .select().single().then(must));
+        const note = await sb.from('coach_notes').insert({ student_id: id, body, session_date: f.get('session_date') || null })
+          .select().single().then(must);
+        cnotes.push(note);
         sortCoachNotes(cnotes);
-        renderCoachNotes(true);
+        renderCoachNotes(note);
         flash('Note added.');
       });
     };
-    $('#coachNotesCard .seg')?.addEventListener('change', e => { cnoteFilter = e.target.value; renderCoachNotes(); });
+    card.querySelector('.seg')?.addEventListener('change', e => { Object.assign(cnoteAt, { filter: e.target.value, page: 1 }); renderCoachNotes(); });
   }
   renderCoachNotes();
+  // From Session History: the page of session notes with that day's first note, scrolled to and lit up for a moment.
+  function showCoachNotes(date) {
+    const list = cnotes.filter(n => cnoteIn(n, 'session')), i = list.findIndex(n => n.session_date === date);
+    if (i < 0) return;
+    Object.assign(cnoteAt, { filter: 'session', page: Math.floor(i / CNOTES_PAGE) + 1 });
+    renderCoachNotes();
+    const card = $('#coachNotesCard');
+    if (card.classList.contains('folded')) setFold(card, false);
+    const el = $(`#cnote-${list[i].id}`);
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('spot');
+    void el.offsetWidth;   // restart the animation
+    el.classList.add('spot');
+  }
   if (restore) restore();
 
   const inviteForm = $('#inviteForm');
@@ -2062,22 +2246,25 @@ function sessionReadHTML(s, withNotes) {
 async function studentHome() {
   const t = ++navToken;
   view(loading);
-  const [plans, goals, coaches, next] = await Promise.all([
+  const [plans, goals, coaches, next, log] = await Promise.all([
     sb.from('plans').select('id,title,active,start_date')
       .order('active', { ascending: false }).order('created_at', { ascending: false }).then(must),
     sb.from('goals').select('*').then(must).then(sortGoals),   // RLS leaves out archived goals
     sb.rpc('coaches_of', { p_id: me.student.id }).then(must),
     sb.from('students').select(NEXT_COLS).eq('id', me.student.id).maybeSingle().then(must),
+    sb.from('session_history').select('*').eq('student_id', me.student.id).then(must),
   ]);
   if (t !== navToken) return;
   const current = plans.filter(p => p.active);
-  if (current.length === 1) return studentPlan(current[0].id, plans, goals, coaches, next);
+  const history = studentHistory(log, next);
+  if (current.length === 1) return studentPlan(current[0].id, plans, goals, coaches, next, history);
 
   view(`<h1>${welcome()}</h1>${nextSessionAlert(next)}${goalHTML(goals)}
     ${plans.length ? `<section class="card"><h2>Your Plans</h2>
       <p class="hint">Plans your coach has made for you. Your current plan is marked.</p><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
-    ${achievedHTML(goals)}${yourCoachHTML(coaches)}${myDetailsHTML()}`);
+    ${achievedHTML(goals)}${history.html}${yourCoachHTML(coaches)}${myDetailsHTML()}`);
+  history.bind();
   bindMyDetails();
 }
 
@@ -2121,7 +2308,7 @@ const yourCoachHTML = coaches => coaches.length ? `<section class="card" style="
 const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title || 'Untitled Plan')}</strong>
   ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
-async function studentPlan(id, allPlans, goals, coaches, next) {
+async function studentPlan(id, allPlans, goals, coaches, next, history) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions] = await Promise.all([
@@ -2143,8 +2330,10 @@ async function studentPlan(id, allPlans, goals, coaches, next) {
     ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2>
       <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(others)}</ul></section>` : ''}
     ${goals ? achievedHTML(goals) : ''}
+    ${history ? history.html : ''}
     ${coaches ? yourCoachHTML(coaches) : ''}
     ${allPlans ? myDetailsHTML() : ''}`);
+  history?.bind();
   if (allPlans) bindMyDetails();
 }
 

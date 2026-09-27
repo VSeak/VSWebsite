@@ -128,6 +128,19 @@ create table public.coach_notes (
 );
 create index on public.coach_notes (student_id);
 
+-- Session History: past sessions. The page logs a Next Session once it has ended and is updated or
+-- cleared; coaches can add or delete rows by hand. One row per student, day and start time.
+create table public.session_history (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  session_date date not null,
+  start_time time not null,
+  end_time time not null check (end_time > start_time),
+  location text not null check (length(trim(location)) between 1 and 200),
+  created_at timestamptz not null default now(),
+  unique (student_id, session_date, start_time)
+);
+
 -- The master exercise list: defaults a plan copies when the coach picks an
 -- exercise. Plans keep their own copy, so editing either never changes the other.
 -- name_key makes names unique ignoring case and spaces at the ends.
@@ -297,10 +310,12 @@ alter table public.sessions enable row level security;
 alter table public.notes    enable row level security;
 alter table public.goals    enable row level security;
 alter table public.coach_notes enable row level security;
+alter table public.session_history enable row level security;
 alter table public.exercises enable row level security;
 
 grant select, insert, update, delete
-  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.exercises
+  on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.session_history,
+     public.exercises
   to authenticated;
 
 create policy "admin: everything" on public.staff for all to authenticated
@@ -341,6 +356,11 @@ create policy "student: own goals" on public.goals for select to authenticated
 
 create policy "coach: everything" on public.coach_notes for all to authenticated
   using (public.is_coach()) with check (public.is_coach());
+
+create policy "staff: everything" on public.session_history for all to authenticated
+  using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
+create policy "student: own history" on public.session_history for select to authenticated
+  using (student_id = public.my_student_id());
 
 create policy "staff: everything" on public.exercises for all to authenticated
   using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());

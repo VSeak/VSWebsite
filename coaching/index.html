@@ -42,7 +42,14 @@ p { margin: 0 0 .75rem; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   padding: .8rem 16px; border-bottom: 1px solid var(--line); background: var(--card); }
 .brand { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; }
-.who { display: flex; align-items: center; gap: .75rem; color: var(--muted); font-size: .9rem; }
+.who { display: flex; min-width: 0; margin-left: auto; white-space: nowrap; color: var(--muted); font-size: .9rem; }
+#whoEmail { overflow: hidden; text-overflow: ellipsis; }
+#whoName:not(:empty)::before { content: "·"; margin: 0 .4rem; }
+@media (max-width: 600px) {
+  .top { flex-wrap: wrap; row-gap: .35rem; }
+  .who { order: 3; flex-basis: 100%; margin: 0; font-size: .85rem; }
+  #signOut { margin-left: auto; }
+}
 main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem; box-shadow: var(--shadow); }
@@ -206,7 +213,8 @@ dialog .row { margin-top: 1rem; }
 <body>
 <header class="top">
   <a class="brand" href="#/"></a>
-  <div class="who"><span id="whoName"></span><button id="signOut" class="ghost small" hidden>Sign Out</button></div>
+  <div class="who" hidden><span id="whoEmail"></span><span id="whoName"></span></div>
+  <button id="signOut" class="ghost small" hidden>Sign Out</button>
 </header>
 <main id="app"></main>
 <div id="flash" role="status" hidden></div>
@@ -435,8 +443,17 @@ async function onHashChange() {
   route();
 }
 
+// Header: email · roles (staff) or email · name (students), so people can see which account they're on.
+function setWho() {
+  const email = me?.user.email || '';
+  $('.who').hidden = !me;
+  $('#whoEmail').textContent = email;
+  $('#whoEmail').title = email;
+  $('#whoName').textContent = !me ? '' : me.isStaff ? rolesText(me.roles) : (me.student?.name || '');
+}
+
 function route() {
-  $('#whoName').textContent = me ? (me.isStaff ? rolesText(me.roles) : (me.student?.name || me.user.email)) : '';
+  setWho();
   $('#signOut').hidden = !me;
   if (!me) return viewLogin();
   if (wantsPassword || (!me.isStaff && !me.user.user_metadata?.password_set)) return viewSetPassword();
@@ -717,7 +734,7 @@ async function adminUser(id) {
     if (staff && !(patch.roles = checkedRoles(e.target))) return;
     busy(e.submitter, async () => {
       must(await sb.from(table).update(patch).eq('id', id));
-      if (mine) { await loadMe(me.user); $('#whoName').textContent = rolesText(me.roles); }
+      if (mine) { await loadMe(me.user); setWho(); }
       flash('Details saved.');
       adminUser(id);
     });

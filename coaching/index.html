@@ -1027,20 +1027,20 @@ async function adminStudents() {
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
   ]);
   if (t !== navToken) return;
-  // Students still training first, then the ones who have finished.
-  students.sort((a, b) => !!a.training_ended_at - !!b.training_ended_at);
-
-  // Active (green) or Inactive is their training; Not Invited or Invited shows until an active student signs in.
-  const rows = students.map(s => {
+  // The section says Active or Inactive; Not Invited or Invited shows until an active student signs in.
+  const row = s => {
     const current = s.plans.filter(p => p.active).map(p => p.title || 'Untitled Plan').join(', ');
     return `<li><a class="item" href="#/student/${s.id}">
       <span><strong>${esc(s.name)}</strong>${pronounsTag(s.pronouns)}<span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
-      ${s.training_ended_at ? '<span class="tag">Inactive</span>' : `
+      ${s.training_ended_at ? '' : `
       ${nextOverdue(s) ? '<span class="tag warn">Update Next Session</span>' : ''}
-      ${s.user_id ? '' : `<span class="tag">${accountStatus(s)}</span>`}
-      <span class="tag ok">Active</span>`}</span></a></li>`;
-  }).join('');
+      ${s.user_id ? '' : `<span class="tag">${accountStatus(s)}</span>`}`}</span></a></li>`;
+  };
+  const active = students.filter(s => !s.training_ended_at), inactive = students.filter(s => s.training_ended_at);
+  const section = (title, list, hint, none) => `<section class="card"><h2>${title} (${list.length})</h2>
+    <p class="hint">${hint}</p>
+    ${list.length ? `<ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
   const feed = recent.map(n => `<div class="note-wrap"><div class="note-meta">
       <strong>${esc(n.session?.plan?.student?.name)}</strong> · ${fmtWhen(n.created_at)} ·
       <a href="#/plan/${n.session?.plan?.id}">${esc(n.session?.plan?.title)}, Week ${n.session?.week}</a></div>
@@ -1049,7 +1049,10 @@ async function adminStudents() {
   view(`${crumbs([['Home', '#/'], ['Students']])}
   <h1>Students</h1>
   <div class="grid2">
-    <section class="card">${students.length ? `<ul class="list">${rows}</ul>` : '<p class="muted">No students yet. Add your first one.</p>'}</section>
+    <div>${students.length
+      ? section('Active', active, 'Students still training.', 'No active students.')
+        + section('Inactive', inactive, 'Students who have ended training. Resume Training on their page brings them back.', 'No inactive students.')
+      : '<section class="card"><p class="muted">No students yet. Add your first one.</p></section>'}</div>
     <aside>
       <section class="card"><h2>Add a Student</h2>
         <p class="hint">Build their plan and add a goal first, then add their email and send the invite from their page.</p>

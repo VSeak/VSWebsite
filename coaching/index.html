@@ -2041,7 +2041,8 @@ function notesHTML(sid) {
       <p>${para(n.body)}</p></div>`).join('')}
     <form class="note-form" data-note-form="${sid}">
       <textarea name="body" rows="2" maxlength="4000" required data-need="Write your note first."
-        placeholder="${me.isCoach ? 'Reply to your student…' : 'How did it go? Grades sent, how it felt, questions…'}"></textarea>
+        placeholder="${me.isCoach ? 'Reply to your student…'
+          : list.some(n => !n.from_coach) ? 'Any other thoughts?' : 'How did the session go? Any questions?'}"></textarea>
       <button class="small">+ Post Note</button>
     </form>
   </details>`;

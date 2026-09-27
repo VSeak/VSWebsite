@@ -43,8 +43,8 @@ p { margin: 0 0 .75rem; }
   padding: .8rem 16px; border-bottom: 1px solid var(--line); background: var(--card); }
 .brand { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--ink); text-decoration: none; }
 .who { display: flex; min-width: 0; margin-left: auto; white-space: nowrap; color: var(--muted); font-size: .9rem; }
-#whoEmail { overflow: hidden; text-overflow: ellipsis; }
-#whoName:not(:empty)::before { content: "·"; margin: 0 .4rem; }
+#whoName { overflow: hidden; text-overflow: ellipsis; }
+#whoRoles:not(:empty)::before { content: "·"; margin: 0 .4rem; }
 @media (max-width: 600px) {
   .top { flex-wrap: wrap; row-gap: .35rem; }
   .who { order: 3; flex-basis: 100%; margin: 0; font-size: .85rem; }
@@ -213,7 +213,7 @@ dialog .row { margin-top: 1rem; }
 <body>
 <header class="top">
   <a class="brand" href="#/"></a>
-  <div class="who" hidden><span id="whoEmail"></span><span id="whoName"></span></div>
+  <div class="who" hidden><span id="whoName"></span><span id="whoRoles"></span></div>
   <button id="signOut" class="ghost small" hidden>Sign Out</button>
 </header>
 <main id="app"></main>
@@ -425,9 +425,10 @@ async function loadMe(user) {
   }
   // Staff read their own row for the greeting (admins can read every row, so match the email).
   // Falls back to the first name from their invite.
-  const staffRow = roles && (await sb.from('staff').select('first_name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
+  const staffRow = roles && (await sb.from('staff').select('first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
   const firstName = roles ? (staffRow?.first_name || user.user_metadata?.first_name || '') : (student?.first_name || '');
-  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName };
+  const fullName = (roles ? staffRow?.name : student?.name) || firstName;
+  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName, fullName };
 }
 
 const welcome = () => `Welcome${me.firstName ? ' ' + esc(me.firstName) : ''}!`;
@@ -443,13 +444,11 @@ async function onHashChange() {
   route();
 }
 
-// Header: email · roles (staff) or email · name (students), so people can see which account they're on.
+// Header: full name · roles (staff) or full name (students). The email stands in only if there's no name.
 function setWho() {
-  const email = me?.user.email || '';
   $('.who').hidden = !me;
-  $('#whoEmail').textContent = email;
-  $('#whoEmail').title = email;
-  $('#whoName').textContent = !me ? '' : me.isStaff ? rolesText(me.roles) : (me.student?.name || '');
+  $('#whoName').textContent = me ? (me.fullName || me.user.email) : '';
+  $('#whoRoles').textContent = me?.isStaff ? rolesText(me.roles) : '';
 }
 
 function route() {

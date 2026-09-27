@@ -620,9 +620,14 @@ function markUnsaved() {
 // Foldable cards: inside an element with data-folds="<page>", each card's heading becomes a button that folds the card
 // down to its heading row (the student page, a user's page and the Students list). Which headings are folded is
 // remembered per page in this browser (so folding Details on one student folds it on every student). A folded card's forms stay in the page, so the leave check still sees them.
+// A card with data-fold-start starts folded (one that is rarely touched) until it is unfolded once.
 const foldKey = page => `coaching.folded.${page}`;
+// { heading: true (folded) or false (unfolded) }. Older browsers kept a list of the folded headings.
 function foldedOn(page) {
-  try { return new Set(JSON.parse(localStorage.getItem(foldKey(page)) || '[]')); } catch { return new Set(); }
+  try {
+    const v = JSON.parse(localStorage.getItem(foldKey(page)) || '{}');
+    return Array.isArray(v) ? Object.fromEntries(v.map(n => [n, true])) : v;
+  } catch { return {}; }
 }
 const foldHead = card => card.querySelector(':scope > h2:first-child, :scope > .row:first-child > h2');
 // Remembered by heading, or by data-fold on the card when the heading changes (a count, or "Your" vs "Her").
@@ -634,7 +639,7 @@ function applyFolds() {
       const h = foldHead(card);
       if (!h) continue;
       if (!h.querySelector('button.fold')) h.innerHTML = `<button type="button" class="fold">${h.innerHTML}</button>`;
-      const on = folded.has(foldName(card, h));
+      const on = folded[foldName(card, h)] ?? 'foldStart' in card.dataset;
       card.classList.toggle('folded', on);
       h.querySelector('button.fold').setAttribute('aria-expanded', String(!on));
     }
@@ -644,8 +649,8 @@ function setFold(card, on) {
   const box = card.closest('[data-folds]'), h = foldHead(card);
   if (!box || !h) return;
   const folded = foldedOn(box.dataset.folds), name = foldName(card, h);
-  if (on) folded.add(name); else folded.delete(name);
-  try { localStorage.setItem(foldKey(box.dataset.folds), JSON.stringify([...folded])); } catch {}
+  folded[name] = on;
+  try { localStorage.setItem(foldKey(box.dataset.folds), JSON.stringify(folded)); } catch {}
   applyFolds();
   placeBar();
 }
@@ -992,7 +997,7 @@ async function adminUser(id, again = false) {
   <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
   <div class="grid2" data-folds="user">
     <div>
-    <section class="card"><h2>Details</h2>
+    <section class="card" data-fold-start><h2>Details</h2>
       ${staff ? `<p class="hint">Emails greet ${mine ? 'you' : p.them} by first name. Roles decide what ${mine ? 'you' : p.they} can see and do.</p>` : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
         : `Coaches manage ${p.their} plans and goals.`} ${p.They} can change ${p.their} own pronouns too.</p>`}
       <form id="userForm" class="stack" data-save>
@@ -1007,7 +1012,7 @@ async function adminUser(id, again = false) {
       <p class="hint">To give a student a new coach, open them and pick one.</p>
       ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
-    : `<section class="card"><h2>Coach</h2>
+    : `<section class="card" data-fold-start><h2>Coach</h2>
       <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current coach and past coaches on ${p.their} page.</p>
       <form id="coachForm" class="stack" data-save>
         <label>Current Coach<select name="coach_id">
@@ -1022,7 +1027,7 @@ async function adminUser(id, again = false) {
     </div>
     <aside>
       ${staff ? '' : sessionsCardHTML(stu)}
-      <section class="card"><h2>Account</h2>
+      <section class="card"${active ? ' data-fold-start' : ''}><h2>Account</h2>
         ${active ? `
         <p class="hint">${mine ? "How you sign in. Send yourself a new sign-in link if you're locked out."
           : `How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.`}</p>
@@ -1616,7 +1621,7 @@ async function adminStudent(id, again = false) {
     </div>
     <aside>
       ${sessionsCardHTML(s)}
-      <section class="card"><h2>Details</h2>
+      <section class="card" data-fold-start><h2>Details</h2>
         <p class="hint">Emails and ${p.their} page greet ${p.them} by first name. ${p.They} can change ${p.their} own pronouns too.</p>
         <form id="stuForm" class="stack" data-save>
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter ${p.their} first name."></label>
@@ -1625,10 +1630,10 @@ async function adminStudent(id, again = false) {
           <button class="primary">Save Details</button>
         </form>
       </section>
-      <section class="card"><h2>Coach</h2>
+      <section class="card" data-fold-start><h2>Coach</h2>
         <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} coach.`}</p>
         ${coachesHTML(coaches, 'No coach yet.')}</section>
-      <section class="card"><h2>Account</h2>
+      <section class="card"${s.user_id ? ' data-fold-start' : ''}><h2>Account</h2>
         ${s.user_id ? `
         <p class="hint">How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.</p>
         <p>Signs in as ${esc(s.email)}.</p>

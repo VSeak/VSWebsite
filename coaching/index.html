@@ -1554,7 +1554,7 @@ function coachNotesHTML(notes, s, log, at) {
     : missing.length ? `<div class="warn-box" role="status"><strong>${missing.length} sessions have no notes yet.</strong>
       Pick one to fill in its date below, then add its note.${pick}</div>` : ''}
     <form id="cnoteForm" class="stack" data-save>
-      <label>Notes<textarea name="body" rows="3" maxlength="4000" required data-need="Write the notes first."></textarea></label>
+      <label>Notes<textarea name="body" rows="3" maxlength="4000" required data-need="Write notes first."></textarea></label>
       ${cnoteDateField(writeUp)}
       <button class="primary">+ Add Notes</button>
     </form>
@@ -1817,8 +1817,8 @@ async function adminStudent(id, again = false) {
     const act = b.dataset.act, g = s.goals.find(x => x.id === b.dataset.goal), cn = cnotes.find(x => x.id === b.dataset.cnote);
     if (cn) {
       if (act === 'cnote-edit') {
-        const f = await ask({ title: 'Edit Note', ok: 'Save Note', body: `<div class="stack">
-          <label>Notes<textarea name="body" rows="6" maxlength="4000" required data-need="Write the notes.">${esc(cn.body)}</textarea></label>
+        const f = await ask({ title: 'Edit Notes', ok: 'Save Notes', body: `<div class="stack">
+          <label>Notes<textarea name="body" rows="6" maxlength="4000" required data-need="Write notes.">${esc(cn.body)}</textarea></label>
           ${cnoteDateField(cn.session_date || '')}</div>` });
         const body = f?.get('body').trim();
         if (body) busy(b, async () => {

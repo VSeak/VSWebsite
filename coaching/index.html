@@ -1510,17 +1510,21 @@ const coachNoteItem = n => `<div class="note-wrap" id="cnote-${n.id}"><div class
     <p>${para(n.body)}</p>
     <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>`;
 
+// The day of the newest past session (an ended next session, or the newest in Session History, since setting the
+// next session logs the ended one) while no note has its date, or ''. Not once coaching ends. log: session_history rows.
+function cnoteMissing(notes, s, log) {
+  const last = !s.training_ended_at && historyOf(log, s)[0];
+  return last && !notes.some(n => n.session_date === last.session_date) ? last.session_date : '';
+}
+
 // at = { filter, page }: which notes show, and which page of them (kept in range here).
-// log: Session History rows (session_history).
 function coachNotesHTML(notes, s, log, at) {
   const p = pro(s.pronouns), list = notes.filter(n => cnoteIn(n, at.filter)), [shown, page] = pageOf(list, at.page, CNOTES_PAGE);
   at.page = page;
-  // The newest past session (an ended next session, or the newest in Session History, since setting the next
-  // session logs the ended one) until a note has its date: the form starts with that date filled in. It's the
-  // field's starting value, so the card isn't marked unsaved until the coach writes something. Not once coaching ends.
-  const last = !s.training_ended_at && historyOf(log, s)[0];
-  const writeUp = last && !notes.some(n => n.session_date === last.session_date) ? last.session_date : '';
-  return `<h2>Coach Notes</h2>
+  // A missing session note: the card turns the warn color (renderCoachNotes) and the form starts with that date
+  // filled in. It's the field's starting value, so the card isn't marked unsaved until the coach writes something.
+  const writeUp = cnoteMissing(notes, s, log);
+  return `<div class="row between"><h2>Coach Notes</h2>${writeUp ? '<span class="tag warn">Needs Note</span>' : ''}</div>
     <p class="hint">Private to coaches: ${p.they} never ${p.v('see', 'sees')} these. Give a note a session date to keep what came up in that session.</p>
     ${writeUp ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(writeUp))} is over.</strong>
       Note how it went while it's fresh. Its date is filled in below.</p>` : ''}
@@ -1688,6 +1692,7 @@ async function adminStudent(id, again = false) {
     if (added) Object.assign(cnoteAt, { filter: 'all', page: Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
     const card = $('#coachNotesCard');
     card.innerHTML = coachNotesHTML(cnotes, s, log, cnoteAt);
+    card.classList.toggle('overdue', !!cnoteMissing(cnotes, s, log));
     bindPager(card, page => { cnoteAt.page = page; renderCoachNotes(); });
     hist.redraw();
     const form = $('#cnoteForm');

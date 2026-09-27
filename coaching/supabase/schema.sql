@@ -18,6 +18,7 @@ create table public.staff (
     check (cardinality(roles) > 0 and roles <@ array['admin', 'coach']),
   invited_at timestamptz,
   owner boolean not null default false,   -- see section 5: nobody else can change their access
+  deactivated_at timestamptz,             -- set when they leave: no roles, but the row, login and history stay
   created_at timestamptz not null default now()
 );
 create unique index staff_one_owner on public.staff (owner) where owner;
@@ -95,7 +96,7 @@ create index on public.sessions (plan_id);
 create table public.notes (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references public.sessions (id) on delete cascade,
-  author_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  author_id uuid default auth.uid() references auth.users (id) on delete set null,   -- the note outlives the login
   from_coach boolean not null default false,
   author_name text not null default '',   -- a coach's name on their replies (stamp_note_author); empty for students
   body text not null check (length(body) between 1 and 4000),
@@ -158,22 +159,23 @@ create table public.exercises (
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
 -- The signed-in person's staff roles, e.g. {admin,coach}, or null for a student.
+-- Deactivated staff (staff.deactivated_at) get no roles here or from is_coach() and is_admin().
 create function public.my_roles() returns text[]
 language sql stable security definer set search_path = '' as $$
-  select roles from public.staff where email = lower(auth.jwt() ->> 'email');
+  select roles from public.staff where email = lower(auth.jwt() ->> 'email') and deactivated_at is null;
 $$;
 
 create function public.is_coach() returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
-    select 1 from public.staff where email = lower(auth.jwt() ->> 'email') and 'coach' = any (roles)
+    select 1 from public.staff where email = lower(auth.jwt() ->> 'email') and 'coach' = any (roles) and deactivated_at is null
   );
 $$;
 
 create function public.is_admin() returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
-    select 1 from public.staff where email = lower(auth.jwt() ->> 'email') and 'admin' = any (roles)
+    select 1 from public.staff where email = lower(auth.jwt() ->> 'email') and 'admin' = any (roles) and deactivated_at is null
   );
 $$;
 
@@ -222,6 +224,7 @@ $$;
 
 -- Called by the coach's Delete Student button: removes the student and their
 -- login (never a coach's), so re-adding the same email starts fresh.
+-- Only once their coaching has ended (End Coaching is the way to archive someone).
 create function public.delete_student(p_id uuid) returns void
 language plpgsql volatile security definer set search_path = '' as $$
 declare
@@ -229,6 +232,9 @@ declare
 begin
   if not (public.is_coach() or public.is_admin()) then
     raise exception 'Only a coach or an admin can delete students.';
+  end if;
+  if exists (select 1 from public.students where id = p_id and training_ended_at is null) then
+    raise exception 'End their coaching before deleting them.';
   end if;
   delete from public.students where id = p_id returning * into s;
   if s.id is null then return; end if;
@@ -247,7 +253,7 @@ declare
   sender text;
 begin
   select first_name into sender from public.staff where email = lower(auth.jwt() ->> 'email')
-    and ('coach' = any (roles) or 'admin' = any (roles));
+    and ('coach' = any (roles) or 'admin' = any (roles)) and deactivated_at is null;
   if sender is null then raise exception 'Only a coach or an admin can send sign-in links.'; end if;
   -- A normal sign-in link clears email_changed_to (prepare_email_change), so it gets the usual wording again.
   update auth.users set raw_user_meta_data = (coalesce(raw_user_meta_data, '{}'::jsonb) - 'email_changed_to')
@@ -391,7 +397,7 @@ create trigger gate_signup before insert on auth.users
 create function public.keep_an_admin() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if not exists (select 1 from public.staff where 'admin' = any (roles)) then
+  if not exists (select 1 from public.staff where 'admin' = any (roles) and deactivated_at is null) then
     raise exception 'There must always be at least one admin.';
   end if;
   return null;
@@ -424,6 +430,7 @@ begin
   if old.owner then
     if new.email <> old.email then raise exception 'The owner''s email can''t be changed here.'; end if;
     if not ('admin' = any (new.roles)) then raise exception 'The owner always keeps the Admin role.'; end if;
+    if new.deactivated_at is not null then raise exception 'The owner can''t be deactivated.'; end if;
     if new.roles is distinct from old.roles and old.email <> lower(auth.jwt() ->> 'email') then
       raise exception 'Only the owner can change their own roles.';
     end if;
@@ -434,22 +441,38 @@ $$;
 create trigger protect_owner before insert or update or delete on public.staff
   for each row execute function public.protect_owner();
 
+-- Staff who leave are deactivated (deactivated_at), not deleted, so they can come back with their history.
+-- Deactivating someone (not yourself) leaves their students with no coach. Reactivating doesn't give them back.
+create function public.staff_deactivated() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.deactivated_at is null or old.deactivated_at is not null then return null; end if;
+  if new.email = lower(auth.jwt() ->> 'email') then raise exception 'You can''t deactivate yourself.'; end if;
+  update public.students set coach_id = null where coach_id = new.id;
+  return null;
+end;
+$$;
+create trigger staff_deactivated after update of deactivated_at on public.staff
+  for each row execute function public.staff_deactivated();
+
 -- Everyone, staff and students, for admins only (others get no rows).
 -- last_sign_in_at comes from their login, so the page can tell who is active.
 create function public.list_users()
 returns table (kind text, id uuid, first_name text, last_name text, name text, pronouns text, email text,
-               roles text[], invited_at timestamptz, last_sign_in_at timestamptz, owner boolean)
+               roles text[], invited_at timestamptz, last_sign_in_at timestamptz, owner boolean, deactivated_at timestamptz)
 language sql stable security definer set search_path = '' as $$
-  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.pronouns, s.email, s.roles, s.invited_at, u.last_sign_in_at, s.owner
+  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.pronouns, s.email, s.roles, s.invited_at, u.last_sign_in_at, s.owner,
+         s.deactivated_at
   from public.staff s left join auth.users u on lower(u.email) = s.email
   where public.is_admin()
   union all
-  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.pronouns, st.email, '{student}'::text[], st.invited_at, u.last_sign_in_at, false
+  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.pronouns, st.email, '{student}'::text[], st.invited_at,
+         u.last_sign_in_at, false, null::timestamptz
   from public.students st left join auth.users u on u.id = st.user_id
   where public.is_admin();
 $$;
 
--- Removes a staff member and their login (kept if they are also a student).
+-- Removes a staff member and their login (kept if they are also a student). Only once they're deactivated.
 -- Their students are left with no coach, and their time as coach ends now.
 create function public.delete_staff(p_id uuid) returns void
 language plpgsql volatile security definer set search_path = '' as $$
@@ -457,7 +480,10 @@ declare
   s public.staff;
 begin
   if not public.is_admin() then
-    raise exception 'Only an admin can remove staff.';
+    raise exception 'Only an admin can delete staff.';
+  end if;
+  if exists (select 1 from public.staff where id = p_id and deactivated_at is null) then
+    raise exception 'Deactivate them before deleting them.';
   end if;
   update public.student_coaches set ended_at = now() where staff_id = p_id and ended_at is null;
   delete from public.staff where id = p_id returning * into s;
@@ -515,7 +541,8 @@ declare
   uid uuid;
   old_email text;
 begin
-  select first_name into sender from public.staff where email = lower(auth.jwt() ->> 'email') and 'admin' = any (roles);
+  select first_name into sender from public.staff where email = lower(auth.jwt() ->> 'email') and 'admin' = any (roles)
+    and deactivated_at is null;
   if sender is null then raise exception 'Only an admin can change a student''s email.'; end if;
   if new_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'Enter a valid email.'; end if;
   select user_id into uid from public.students where id = p_id;
@@ -586,9 +613,9 @@ begin
     raise exception 'Only an admin can change a student''s coach.';
   end if;
   if new.coach_id is not null and not exists (
-    select 1 from public.staff where id = new.coach_id and 'coach' = any (roles)
+    select 1 from public.staff where id = new.coach_id and 'coach' = any (roles) and deactivated_at is null
   ) then
-    raise exception 'Pick someone with the Coach role.';
+    raise exception 'Pick an active staff member with the Coach role.';
   end if;
   return new;
 end;

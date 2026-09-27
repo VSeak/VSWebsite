@@ -597,7 +597,10 @@ async function loadMe(user) {
   const staffRow = roles && (await sb.from('staff').select('first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
   const firstName = roles ? (staffRow?.first_name || user.user_metadata?.first_name || '') : (student?.first_name || '');
   const fullName = (roles ? staffRow?.name : student?.name) || firstName;
-  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName, fullName };
+  // Deactivated staff get no roles (my_roles), but can still read their own row, to say why they see nothing.
+  const deactivated = !roles && !student
+    && !!(await sb.from('staff').select('deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()).data?.deactivated_at;
+  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName, fullName, deactivated };
 }
 
 const welcome = () => `Welcome${me.firstName ? ' ' + esc(me.firstName) : ''}!`;
@@ -832,6 +835,9 @@ function viewSetPassword() {
 }
 
 function viewNoAccess() {
+  if (me.deactivated) return view(`<section class="card narrow"><h1>Your Access Is Off</h1>
+    <p>You're signed in as ${esc(me.user.email)}, but your staff access has been turned off.
+    Ask an admin if you need it back.</p></section>`);
   view(`<section class="card narrow"><h1>No Plan Linked Yet</h1>
     <p>You're signed in as ${esc(me.user.email)}, but this account isn't on the student list.
     Ask your coach to check which email they have for you.</p></section>`);
@@ -887,8 +893,10 @@ const roleRank = r => (i => i < 0 ? STAFF_ROLES.length : i)(STAFF_ROLES.indexOf(
 const sortRoles = roles => [...roles].sort((a, b) => roleRank(a) - roleRank(b));
 const rolesText = roles => sortRoles(roles).map(r => ROLE_LABEL[r] || r).join(' · ');
 const roleTags = roles => sortRoles(roles).map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
-const userStatus = u => u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
-const roleOrder = u => Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
+const userStatus = u => u.deactivated_at ? 'Deactivated' : u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
+const statusTag = u => `<span class="tag${u.last_sign_in_at && !u.deactivated_at ? ' ok' : ''}">${userStatus(u)}</span>`;
+// Deactivated staff sort after everyone else.
+const roleOrder = u => u.deactivated_at ? Object.keys(ROLE_LABEL).length : Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
 const isMine = u => u.kind === 'staff' && u.email === me.user.email?.toLowerCase();
 
 async function adminUsers() {
@@ -898,7 +906,9 @@ async function adminUsers() {
   if (t !== navToken) return;
   users.sort((a, b) => (roleOrder(a) - roleOrder(b)) || (a.name || a.email || '').localeCompare(b.name || b.email || ''));
 
-  const count = r => users.filter(u => u.roles.includes(r)).length;
+  // The role filters leave out deactivated staff, who have their own filter.
+  const inFilter = (u, r) => !r ? true : r === 'deactivated' ? !!u.deactivated_at : !u.deactivated_at && u.roles.includes(r);
+  const count = r => users.filter(u => inFilter(u, r)).length;
   view(`${crumbs([['Home', '#/'], ['Users']])}
   <h1>Users</h1>
   <div class="grid2">
@@ -908,6 +918,7 @@ async function adminUsers() {
         <select id="userRole" aria-label="Role" style="width:auto">
           <option value="">Everyone (${users.length})</option>
           ${Object.keys(ROLE_LABEL).map(r => `<option value="${r}">${ROLE_PLURAL[r]} (${count(r)})</option>`).join('')}
+          ${count('deactivated') ? `<option value="deactivated">Deactivated Staff (${count('deactivated')})</option>` : ''}
         </select>
       </div>
       <div class="list-head" id="userHead"><span>User</span><span>Roles / Status</span></div>
@@ -931,13 +942,13 @@ async function adminUsers() {
   const search = $('#userSearch'), role = $('#userRole');
   function renderList() {
     const q = search.value.trim().toLowerCase(), r = role.value;
-    const shown = users.filter(u => (!r || u.roles.includes(r)) &&
+    const shown = users.filter(u => inFilter(u, r) &&
       (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').includes(q)));
     $('#userHead').hidden = !shown.length;
     $('#userList').innerHTML = shown.map(u => `<li><a class="item" href="#/user/${u.id}">
       <span><strong>${esc(u.name || u.email)}</strong>${pronounsTag(u.pronouns)}${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
         <span class="item-sub">${u.email ? esc(u.email) : 'No email yet'}</span></span>
-      <span class="row">${roleTags(u.roles)}<span class="tag${u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span></span></a></li>`).join('')
+      <span class="row">${roleTags(u.roles)}${statusTag(u)}</span></a></li>`).join('')
       || `<li><p class="muted" style="margin:.6rem 0">${users.length ? 'Nobody matches that search.' : 'No users yet.'}</p></li>`;
   }
   renderList();
@@ -993,7 +1004,7 @@ async function adminUser(id, again = false) {
   if (t !== navToken) return;
   if (!u) { location.hash = '#/users'; return; }
   const staff = u.kind === 'staff', table = staff ? 'staff' : 'students';
-  const mine = isMine(u), active = !!u.last_sign_in_at, p = pro(u.pronouns);
+  const mine = isMine(u), active = !!u.last_sign_in_at, off = !!u.deactivated_at, p = pro(u.pronouns);
   // Admins can't read plans or goals, so ask the database whether a student is ready for the invite.
   const ready = staff || active || await sb.rpc('student_ready', { p_id: id }).then(must);
   // Students: their row (coach and next session), who could coach them, past coaches and past sessions.
@@ -1001,7 +1012,7 @@ async function adminUser(id, again = false) {
   const [stu, coachOpts, coaches, log, pupils] = await Promise.all(staff
     ? [null, [], [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
     : [sb.from('students').select('first_name,pronouns,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
-       sb.from('staff').select('id,name,email').contains('roles', ['coach']).order('first_name').then(must),
+       sb.from('staff').select('id,name,email').contains('roles', ['coach']).is('deactivated_at', null).order('first_name').then(must),
        sb.rpc('coaches_of', { p_id: id }).then(must),
        sb.from('session_history').select('*').eq('student_id', id).then(must), []]);
   if (t !== navToken) return;
@@ -1014,10 +1025,9 @@ async function adminUser(id, again = false) {
   const lockedRoles = u.owner ? (mine ? ['admin'] : STAFF_ROLES) : mine ? ['admin'] : [];
   const rolesHint = u.owner ? (mine ? "You're the owner, so you always keep the Admin role." : `${esc(u.first_name || 'The owner')} is the owner. Only ${p.they} can change ${p.their} roles.`)
     : mine ? "You can't remove your own Admin role. Ask another admin." : '';
-  const removeBtn = mine || u.owner ? '' : `<button type="button" class="ghost danger" data-act="remove">${staff ? 'Remove Access' : 'Delete Student'}</button>`;
 
   view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
-  <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
+  <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}${off ? '<span class="tag">Deactivated</span>' : ''}</div>
   <div class="grid2" data-folds="user">
     <div>
     <section class="card" data-fold-start><h2>Details</h2>
@@ -1035,6 +1045,14 @@ async function adminUser(id, again = false) {
       <p class="hint">To give a student a new coach, open them and pick one.</p>
       ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
+      + (mine || u.owner ? '' : `<section class="card" data-fold-start>
+      <div class="row between"><h2>Staff Access</h2><span class="tag${off ? '' : ' ok'}">${off ? 'Deactivated' : 'On'}</span></div>
+      <p class="hint">${off ? `Deactivated ${fmtDay(u.deactivated_at)}. ${p.They} can't use the site. ${p.Their} details and history are kept, so you can reactivate ${p.them}. Delete ${p.them} only if ${p.they} won't be back.`
+        : `When ${p.they} ${p.v('leave', 'leaves')}, deactivate ${p.them}. ${p.Their} details and history are kept, so ${p.they} can come back later.`}</p>
+      <div class="row">${off ? `<button type="button" class="primary" data-act="reactivate">Reactivate</button>
+        <button type="button" class="ghost danger" data-act="del-staff">Delete Staff</button>`
+        : '<button type="button" class="ghost" data-act="deactivate">Deactivate</button>'}</div>
+    </section>`)
     : `<section class="card" data-fold-start><h2>Coach</h2>
       <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current coach and past coaches on ${p.their} page.</p>
       <form id="coachForm" class="stack" data-save>
@@ -1050,17 +1068,20 @@ async function adminUser(id, again = false) {
     </div>
     <aside>
       ${staff ? '' : sessionsCardHTML(stu)}
-      ${accountCardStart(active, u.invited_at, u.first_name || title, p)}
-        ${active ? `
+      ${accountCardStart(active || off, u.invited_at, u.first_name || title, p)}
+        ${off ? `
+        <p class="hint">Reactivate ${p.them} to send ${p.them} a sign-in link.</p>
+        <p>${active ? `Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.` : `${esc(u.email)}, never signed in.`}</p>`
+        : active ? `
         <p class="hint">${mine ? "How you sign in. Send yourself a new sign-in link if you're locked out."
           : `How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.`}</p>
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
-        <div class="row"><button data-act="send-link">Send Sign-In Link</button>${staff ? '' : '<button data-act="change-email">Change Email</button>'}${removeBtn}</div>` : `
+        <div class="row"><button data-act="send-link">Send Sign-In Link</button>${staff ? '' : '<button data-act="change-email">Change Email</button>'}</div>` : `
         <form id="inviteForm" class="stack" data-save="show">
           ${u.invited_at ? `<p>Invited ${fmtWhen(u.invited_at)}, but hasn't signed in yet.</p>` : ''}
           <label>Email<input type="email" name="email" value="${esc(u.email || '')}" required data-need="Enter ${p.their} email to send the invite." autocomplete="off"></label>
           <p class="hint">${u.invited_at ? 'Fix the email here if it was wrong, then resend.' : `${p.They}'ll get an email with a link to choose a password.`}</p>
-          <div class="row"><button class="primary" id="inviteBtn">${u.invited_at ? 'Resend Invite' : 'Send Invite'}</button>${removeBtn}</div>
+          <div class="row"><button class="primary" id="inviteBtn">${u.invited_at ? 'Resend Invite' : 'Send Invite'}</button></div>
           <p class="hint need" id="inviteNeed" hidden></p>
         </form>`}
       </section>
@@ -1142,15 +1163,31 @@ async function adminUser(id, again = false) {
         adminUser(id, true);
       });
     }
-    if (b.dataset.act === 'remove') {
+    if (b.dataset.act === 'deactivate') {
+      const n = pupils.length;
+      if (await ask({ title: `Deactivate ${title}?`, ok: 'Deactivate', warn: true,
+        body: `<p>${p.They} won't be able to use the site${n ? `, and ${p.their} ${n === 1 ? 'student' : `${n} students`} will have no coach until you pick a new one` : ''}.
+          ${p.Their} details and history stay, and you can reactivate ${p.them} later.</p>` })) busy(b, async () => {
+        must(await sb.from('staff').update({ deactivated_at: new Date().toISOString() }).eq('id', id));
+        flash(`${title} deactivated.`);
+        adminUser(id, true);
+      });
+    }
+    if (b.dataset.act === 'reactivate') busy(b, async () => {
+      must(await sb.from('staff').update({ deactivated_at: null }).eq('id', id));
+      flash(`${title} reactivated.${u.roles.includes('coach') ? ` Pick ${p.them} as the coach on any students ${p.they} should have.` : ''}`);
+      adminUser(id, true);
+    });
+    if (b.dataset.act === 'del-staff' || b.dataset.act === 'del-student') {
       const ok = await ask(staff
-        ? { title: `Remove ${title}?`, warn: true, ok: 'Remove Access',
-            body: `<p>${p.They} won't be able to sign in, and ${p.their} login is deleted. ${p.Their} students stay, with no coach until you pick a new one. Plans and notes stay as they are.</p>` }
+        ? { title: `Delete ${title}?`, warn: true, ok: 'Delete Staff',
+            body: `<p>This deletes ${p.their} staff account and login. Notes ${p.they} wrote stay, with ${p.their} name on them. This can't be undone.</p>
+              <p>If ${p.they} might come back, leave ${p.them} deactivated instead.</p>` }
         : { title: `Delete ${title}?`, warn: true, ok: 'Delete Student',
             body: `<p>This deletes the student, all ${p.their} plans, goals and notes, and ${p.their} login. This can't be undone.</p>` });
       if (ok) busy(b, async () => {
         must(await sb.rpc(staff ? 'delete_staff' : 'delete_student', { p_id: id }));
-        flash(`${title} ${staff ? 'removed' : 'deleted'}.`);
+        flash(`${title} deleted.`);
         goTo('#/users');
       });
     }
@@ -1476,9 +1513,11 @@ function trainingCardHTML(s) {
   const done = s.training_ended_at, p = pro(s.pronouns);
   return `<section class="card" id="trainingCard" data-fold-start>
     <div class="row between"><h2>Coaching Status</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
-    <p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.`
+    <p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
+        Delete ${p.them} only if ${p.they} ${p.v('were', 'was')} added by mistake.`
       : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list.`}</p>
-    <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>
+    <div class="row"><button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>
+      ${done ? '<button type="button" class="ghost danger" data-act="del-student">Delete Student</button>' : ''}</div>
   </section>`;
 }
 
@@ -1678,14 +1717,12 @@ async function adminStudent(id, again = false) {
         <p class="hint">How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.
           ${me.isAdmin ? `Change ${p.their} email on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} email.`}</p>
         <p>Signs in as ${esc(s.email)}.</p>
-        <div class="row"><button data-act="send-link">Send Sign-In Link</button>
-        <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
+        <div class="row"><button data-act="send-link">Send Sign-In Link</button></div>` : `
         <form id="inviteForm" class="stack" data-save="show">
           ${s.invited_at ? `<p>Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.</p>` : ''}
           <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required data-need="Enter ${p.their} email to send the invite." autocomplete="off"></label>
           <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : `${p.They}'ll get an email saying ${p.their} plan is ready, with a link to choose a password.`}</p>
-          <div class="row"><button class="primary" id="inviteBtn">${s.invited_at ? 'Resend Invite' : 'Send Invite'}</button>
-          <button type="button" class="ghost danger" data-act="del-student">Delete Student</button></div>
+          <div class="row"><button class="primary" id="inviteBtn">${s.invited_at ? 'Resend Invite' : 'Send Invite'}</button></div>
           <p class="hint need" id="inviteNeed" hidden></p>
         </form>`}
       </section>

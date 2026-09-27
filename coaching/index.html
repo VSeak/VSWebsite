@@ -1149,7 +1149,7 @@ async function adminStudents() {
       ${s.user_id ? '' : `<span class="tag">${accountStatus(s)}</span>`}`}</span></a></li>`;
   };
   const active = students.filter(s => !s.training_ended_at), inactive = students.filter(s => s.training_ended_at);
-  const section = (title, list, hint, none) => `<section class="card" data-fold="${title}"><h2>${title} (${list.length})</h2>
+  const section = (title, list, hint, none) => `<section class="card" data-fold="${title}"${title === 'Inactive' ? ' data-fold-start' : ''}><h2>${title} (${list.length})</h2>
     <p class="hint">${hint}</p>
     ${list.length ? `<div class="list-head"><span>Student</span><span>Current Plan</span></div>
     <ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
@@ -1434,7 +1434,7 @@ function studentHistory(log, next) {
 
 function trainingCardHTML(s) {
   const done = s.training_ended_at, p = pro(s.pronouns);
-  return `<section class="card" id="trainingCard">
+  return `<section class="card" id="trainingCard" data-fold-start>
     <div class="row between"><h2>Coaching Status</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
     <p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.`
       : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list.`}</p>

@@ -70,7 +70,10 @@ main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 .grow { flex: 1; min-width: 180px; }
 .muted { color: var(--muted); }
 .hint { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
-/* A card's description sits just under its heading */
+/* A card's description sits just under its heading. A heading row takes the h2's bottom margin itself, so a button
+   or tag taller than the heading still clears the description. */
+.card > .row:first-child:has(> h2) { margin-bottom: .5rem; }
+.card > .row:first-child > h2 { margin: 0; }
 .card > h2 + .hint, .card > .row:first-child + .hint { margin-top: -.2rem; }
 .alert { background: var(--soft); border-radius: 8px; padding: .6rem .8rem; }
 

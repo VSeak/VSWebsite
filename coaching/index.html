@@ -1542,7 +1542,8 @@ function coachNotesHTML(notes, s, log, at) {
   const pick = missing.length > 1 ? `<span class="row" style="margin-top:.5rem">${missing.slice(0, missing.length - more).map(d =>
     `<button type="button" class="small${d === writeUp ? ' primary' : ' ghost'}" data-cnote-day="${d}" aria-pressed="${d === writeUp}">
       ${esc(fmtSessionDay(d))}</button>`).join('')}
-    ${more ? `<button type="button" class="small ghost" data-cnote-more>And ${more} More</button>` : ''}</span>` : '';
+    ${more ? `<button type="button" class="small ghost" data-cnote-more aria-expanded="false">And ${more} More</button>`
+      : at.allMissing && missing.length > CNOTE_MISSING_SHOWN ? '<button type="button" class="small ghost" data-cnote-more aria-expanded="true">Show Fewer</button>' : ''}</span>` : '';
   return `<div class="row between"><h2>Coach Notes</h2>${missing.length ? '<span class="tag warn">Needs Note</span>' : ''}</div>
     <p class="hint">Private to coaches: ${p.they} never ${p.v('see', 'sees')} these. Give a note a session date to keep what came up in that session.</p>
     ${missing.length === 1 ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(writeUp))} is over.</strong>
@@ -1724,10 +1725,13 @@ async function adminStudent(id, again = false) {
       $('#cnoteForm').elements.body.focus();
     });
     const more = card.querySelector('[data-cnote-more]');
+    // And n More shows every missing session; Show Fewer goes back to the newest few. A picked date that gets
+    // hidden stays picked (it's still filled in below).
     if (more) more.onclick = () => {
-      cnoteAt.allMissing = true;
+      cnoteAt.allMissing = !cnoteAt.allMissing;
       renderCoachNotes();
-      card.querySelectorAll('[data-cnote-day]')[CNOTE_MISSING_SHOWN]?.focus();   // the first one that was hidden
+      if (cnoteAt.allMissing) card.querySelectorAll('[data-cnote-day]')[CNOTE_MISSING_SHOWN]?.focus();   // the first one that was hidden
+      else card.querySelector('[data-cnote-more]')?.focus();
     };
     hist.redraw();
     const form = $('#cnoteForm');

@@ -752,10 +752,11 @@ async function adminUser(id, again = false) {
         <button class="primary">Save Coach</button>
       </form>
       ${coachesHTML(coaches.filter(c => !c.is_current))}
-    </section>`}
+    </section>
+    ${trainingCardHTML(stu)}`}
     </div>
     <aside>
-      ${staff ? '' : trainingCardHTML(stu) + (stu.training_ended_at ? '' : nextSessionCardHTML(stu))}
+      ${staff || stu.training_ended_at ? '' : nextSessionCardHTML(stu)}
       <section class="card"><h2>Account</h2>
         ${active ? `
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>

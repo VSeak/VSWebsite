@@ -1989,7 +1989,7 @@ function goalHTML(goals) {
 function achievedHTML(goals) {
   const won = goals.filter(g => g.status === 'achieved');
   return won.length ? `<section class="card" style="margin-top:2rem"><h2>Goals Achieved</h2>
-    <p class="hint">Every goal you've sent so far! This is what all the training is for, so be proud and keep climbing.</p><ul class="list">${won.map(g =>
+    <p class="hint">Every goal you've sent so far! This is what all the training is for, so be proud of yourself and climb on!</p><ul class="list">${won.map(g =>
     goalItem(g, fmtDay(g.done_at), '<span class="tag ok">Achieved</span>')).join('')}</ul></section>` : '';
 }
 // Hidden until they have had a coach.

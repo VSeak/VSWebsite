@@ -130,6 +130,7 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 
 /* Plans */
 .plan-head { margin-bottom: 1.2rem; }
+.section-label { margin: 1.4rem 0 .3rem; font-size: .95rem; color: var(--muted); }
 .week { margin-top: 1.6rem; }
 .week > h2 { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
 .week > h2 .muted { font: 400 .9rem Inter, sans-serif; }
@@ -329,6 +330,8 @@ function crumbs(items) {
 
 const day = d => new Date(d + 'T00:00');
 const fmtDate = d => day(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+// "Started Sep 1, 2026" once the day has come (today included), "Starts on Oct 3, 2026" before.
+const fmtStart = d => (day(d) <= new Date() ? 'Started ' : 'Starts on ') + fmtDate(d);
 const fmtWhen = t => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 function weekRange(start, w) {
   if (!start) return '';
@@ -1399,7 +1402,7 @@ function planReadHTML(plan, sessions, { notes = true } = {}) {
   const weeks = byWeek(sessions);
   return `<header class="plan-head">
       <div class="row"><h1>${esc(plan.title || 'Untitled Plan')}</h1>${plan.active ? '' : '<span class="tag">Past Plan</span>'}</div>
-      ${plan.start_date ? `<p class="muted">Starts ${fmtDate(plan.start_date)}</p>` : ''}
+      ${plan.start_date ? `<p class="muted">${fmtStart(plan.start_date)}</p>` : ''}
       ${plan.overview ? `<div class="card prose">${para(plan.overview)}</div>` : ''}
     </header>
     ${weeks.length ? weeks.map(([w, list]) => `<section class="week">
@@ -1468,6 +1471,7 @@ async function studentPlan(id, allPlans, goals) {
   const others = allPlans?.filter(p => p.id !== id) || [];
   view(`${allPlans ? '' : crumbs([['My Plans', '#/'], [plan.title]])}
     ${goals ? goalHTML(goals) : ''}
+    ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}
     ${planReadHTML(plan, sessions)}
     ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2><ul class="list">${planLinks(others)}</ul></section>` : ''}
     ${goals ? achievedHTML(goals) : ''}`);

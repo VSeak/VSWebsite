@@ -200,6 +200,12 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
 .feed :is(h2, .hint) + .note-wrap { border-top: 0; }
 .note-wrap p { margin: .2rem 0 0; }
+/* A note in a feed (noteFeedItem) is one link, reaching past the text like list rows so the hover fills it */
+a.note-link { display: block; padding: .6rem; margin: 0 -.6rem; border-radius: 8px; color: var(--ink); text-decoration: none; }
+a.note-link:hover { background: color-mix(in srgb, var(--soft) 70%, transparent); }
+a.note-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.note-plan { color: var(--accent); }
+a.note-link:hover .note-plan { text-decoration: underline; }
 /* Opened from Session History (showCoachNotes): lit up for a moment. */
 .note-wrap.spot { animation: spot 2s ease-out; }
 @keyframes spot { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } }
@@ -1111,11 +1117,12 @@ async function adminUser(id, again = false) {
 const accountStatus = s => s.user_id ? 'Active' : s.invited_at ? 'Invited' : 'Not Invited';
 
 // One student note in a feed: who (on the Students list; left out on a student's own page), when, and its plan and week.
-const noteFeedItem = (n, name) => `<div class="note-wrap"><div class="note-meta">
+// The whole note is the link to its plan, so it's easy to tap on a phone.
+const noteFeedItem = (n, name) => `<a class="note-wrap note-link" href="#/plan/${n.session?.plan?.id}"><div class="note-meta">
     ${name ? `<strong>${esc(name)}</strong> · ` : ''}${fmtWhen(n.created_at)} ·
-    <a href="#/plan/${n.session?.plan?.id}">${esc(n.session?.plan?.title || 'Untitled Plan')}, ${n.session?.plan?.repeats
-      ? esc(n.session?.title || 'Session') : `Week ${n.session?.week}`}</a></div>
-    <p>${para(n.body)}</p></div>`;
+    <span class="note-plan">${esc(n.session?.plan?.title || 'Untitled Plan')}, ${n.session?.plan?.repeats
+      ? esc(n.session?.title || 'Session') : `Week ${n.session?.week}`}</span></div>
+    <p>${para(n.body)}</p></a>`;
 
 async function adminStudents() {
   const t = ++navToken;

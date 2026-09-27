@@ -315,6 +315,7 @@ function validityMsg(el) {
   const v = el.validity;
   if (v.valueMissing || v.customError) return el.dataset.need || 'Fill this in.';
   if (v.typeMismatch && el.type === 'email') return 'Enter a full email address, like name@example.com.';
+  if (v.rangeUnderflow && el.dataset.low) return el.dataset.low;
   if (v.tooShort) return `Use at least ${el.minLength} characters.`;
   return el.validationMessage;
 }
@@ -917,13 +918,14 @@ function nextSessionCardHTML(s) {
   return `<section class="card" id="nextCard"><h2>Next Session</h2>
     ${s.next_date && nextPassed(s) ? '<p class="hint">This date has passed, so they no longer see it. Set the next one.</p>' : ''}
     <form id="nextForm" class="stack">
-      <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" required data-need="Pick the day."></label>
+      <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" min="${localToday()}"
+        required data-need="Pick the day." data-low="Pick today or a later day."></label>
       <div class="row">
         <label class="grow" style="min-width:120px">Start Time<input type="time" name="next_start" value="${hm(s.next_start)}" required data-need="Pick a start time."></label>
         <label class="grow" style="min-width:120px">End Time<input type="time" name="next_end" value="${hm(s.next_end)}" required data-need="Pick an end time."></label>
       </div>
       <label>Location<input name="next_location" value="${esc(s.next_location || '')}" maxlength="200" required
-        data-need="Say where it is." autocomplete="off" placeholder="e.g. Main gym, bouldering wall"></label>
+        data-need="Say where it is." autocomplete="off" placeholder="e.g. Gym/Wall"></label>
       <p class="hint">They see it at the top of their page until the day has passed.</p>
       <div class="row"><button class="primary">Save Session</button>
         ${s.next_date ? '<button type="button" class="ghost danger" data-act="next-clear">Clear</button>' : ''}</div>

@@ -13,6 +13,7 @@ create table public.staff (
   first_name text not null default '',
   last_name text not null default '',
   name text generated always as (trim(first_name || ' ' || last_name)) stored,
+  pronouns text not null default '' check (length(pronouns) <= 40),   -- e.g. she/her; empty = not given
   roles text[] not null default '{coach}'
     check (cardinality(roles) > 0 and roles <@ array['admin', 'coach']),
   invited_at timestamptz,
@@ -29,6 +30,7 @@ create table public.students (
   first_name text not null,
   last_name text not null default '',
   name text generated always as (trim(first_name || ' ' || last_name)) stored,
+  pronouns text not null default '' check (length(pronouns) <= 40),   -- e.g. she/her; the student can change it (update_my_pronouns)
   email text unique check (email = lower(email)),
   invited_at timestamptz,
   user_id uuid unique references auth.users (id) on delete set null,
@@ -177,6 +179,17 @@ language sql volatile security definer set search_path = '' as $$
     and not exists (select 1 from public.students where user_id = auth.uid());
 $$;
 
+-- A signed-in student changes their own pronouns (nothing else on their row: coaches and admins keep their name,
+-- so the coach always knows who they are).
+create function public.update_my_pronouns(p_pronouns text) returns void
+language plpgsql volatile security definer set search_path = '' as $$
+begin
+  update public.students set pronouns = trim(coalesce(p_pronouns, ''))
+  where user_id = auth.uid() and auth.uid() is not null;
+  if not found then raise exception 'Only a signed-in student can change their pronouns here.'; end if;
+end;
+$$;
+
 -- Called by the coach's Delete Student button: removes the student and their
 -- login (never a coach's), so re-adding the same email starts fresh.
 create function public.delete_student(p_id uuid) returns void
@@ -199,7 +212,8 @@ $$;
 -- 3. Access rules -------------------------------------------------------------
 -- Coaches can do everything with students, plans, sessions, notes and goals.
 -- Admins can read and change the staff list and students (not plans or goals).
--- A student can read their own row, plans and sessions, read their current and
+-- A student can read their own row (and change their pronouns through
+-- update_my_pronouns()), plans and sessions, read their current and
 -- achieved goals (not archived ones), read notes on their sessions, and add or
 -- delete their own notes.
 -- Coaches and admins can do everything with the master exercise list. Students
@@ -326,14 +340,14 @@ create trigger protect_owner before insert or update or delete on public.staff
 -- Everyone, staff and students, for admins only (others get no rows).
 -- last_sign_in_at comes from their login, so the page can tell who is active.
 create function public.list_users()
-returns table (kind text, id uuid, first_name text, last_name text, name text, email text,
+returns table (kind text, id uuid, first_name text, last_name text, name text, pronouns text, email text,
                roles text[], invited_at timestamptz, last_sign_in_at timestamptz, owner boolean)
 language sql stable security definer set search_path = '' as $$
-  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.email, s.roles, s.invited_at, u.last_sign_in_at, s.owner
+  select 'staff'::text, s.id, s.first_name, s.last_name, s.name, s.pronouns, s.email, s.roles, s.invited_at, u.last_sign_in_at, s.owner
   from public.staff s left join auth.users u on lower(u.email) = s.email
   where public.is_admin()
   union all
-  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.email, '{student}'::text[], st.invited_at, u.last_sign_in_at, false
+  select 'student'::text, st.id, st.first_name, st.last_name, st.name, st.pronouns, st.email, '{student}'::text[], st.invited_at, u.last_sign_in_at, false
   from public.students st left join auth.users u on u.id = st.user_id
   where public.is_admin();
 $$;
@@ -453,13 +467,14 @@ $$;
 
 -- 7. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.claim_student() from anon;
+revoke execute on function public.update_my_pronouns(text) from public, anon;
 revoke execute on function public.delete_student(uuid) from public, anon;
 revoke execute on function public.list_users() from public, anon;
 revoke execute on function public.delete_staff(uuid) from public, anon;
 revoke execute on function public.student_ready(uuid) from public, anon;
 revoke execute on function public.coaches_of(uuid), public.my_staff_id() from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
-  public.coaches_of(uuid), public.my_staff_id() to authenticated;
+  public.coaches_of(uuid), public.my_staff_id(), public.update_my_pronouns(text) to authenticated;
 
 -- 8. Make yourself an admin, a coach and the owner. Change this to the email you'll sign in with.
 insert into public.staff (email, roles, owner) values (lower('you@example.com'), '{admin,coach}', true);

@@ -117,6 +117,9 @@ a.back:hover { border-color: var(--muted); }
 .list a.item:hover { background: color-mix(in srgb, var(--soft) 70%, transparent); }
 .list a.item:hover strong { color: var(--accent); }
 .item-sub { display: block; color: var(--muted); font-size: .85rem; }
+/* Preferred pronouns by a name: smaller and grayed */
+.pronouns { font: 400 .85rem Inter, sans-serif; color: var(--muted); white-space: nowrap; }
+h1 .pronouns { font-size: 1rem; margin-left: .3rem; vertical-align: .15em; }
 .tag { display: inline-flex; align-items: center; gap: .35rem; align-self: center; font-size: .75rem; font-weight: 600;
   line-height: 1.5; padding: .15rem .6rem; border-radius: 99px; border: 1px solid var(--line);
   background: var(--soft); color: var(--muted); white-space: nowrap; }
@@ -408,6 +411,48 @@ function gateInvite(need) {
   hint.innerHTML = need || '';
 }
 
+// ---------- Pronouns (staff.pronouns, students.pronouns: e.g. "she/her", or empty) ----------
+
+const PRONOUNS = ['she/her', 'he/him', 'they/them', 'she/they', 'he/they'];
+// Words for text about someone, from the first of their pronouns (she/they → she). Anything else,
+// or none given, uses they/them. v(plural, singular) picks the verb: `${p.They} ${p.v('see', 'sees')}`.
+const PRONOUN_WORDS = {
+  she: { they: 'she', them: 'her', their: 'her', plural: false },
+  he: { they: 'he', them: 'him', their: 'his', plural: false },
+};
+function pro(pronouns) {
+  const w = PRONOUN_WORDS[(pronouns || '').split('/')[0].trim().toLowerCase()] || { they: 'they', them: 'them', their: 'their', plural: true };
+  const cap = s => s[0].toUpperCase() + s.slice(1);
+  return { ...w, They: cap(w.they), Their: cap(w.their), v: (plural, singular) => w.plural ? plural : singular };
+}
+// Shown after a name, smaller and grayed.
+const pronounsTag = p => p ? ` <span class="pronouns">${esc(p)}</span>` : '';
+// A pick of the common ones, or Other with a box to type them. readPronouns() gets the value back.
+function pronounsField(value = '', whose = 'Their') {
+  const other = !!value && !PRONOUNS.includes(value);
+  return `<label>Pronouns<select name="pronouns" data-pronouns>
+      <option value="">Not Set</option>
+      ${PRONOUNS.map(p => `<option${p === value ? ' selected' : ''}>${p}</option>`).join('')}
+      <option value="other"${other ? ' selected' : ''}>Other</option>
+    </select></label>
+    <label${other ? '' : ' hidden'}>${whose} Pronouns<input name="pronouns_other" value="${other ? esc(value) : ''}" maxlength="40"
+      ${other ? 'required' : ''} data-need="Type the pronouns, or pick one above." placeholder="e.g. ze/hir" autocomplete="off"></label>`;
+}
+function readPronouns(f) {
+  if (f.get('pronouns') !== 'other') return f.get('pronouns') || '';
+  const typed = f.get('pronouns_other').trim();
+  return PRONOUNS.find(p => p === typed.toLowerCase().replace(/\s/g, '')) || typed;
+}
+// Other shows the box to type them in (and makes it required).
+document.addEventListener('change', e => {
+  if (!e.target.matches('[data-pronouns]')) return;
+  const box = e.target.form.elements.pronouns_other, other = e.target.value === 'other';
+  box.closest('label').hidden = !other;
+  box.required = other;
+  if (!other) clearFieldError(box);
+  else if (e.isTrusted) box.focus();
+});
+
 const day = d => new Date(d + 'T00:00');
 const fmtDate = d => day(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 // "Started Sep 1, 2026" once the day has come (today included), "Starts on Oct 3, 2026" before.
@@ -505,6 +550,7 @@ function keepEdits(saved) {
     const now = app.querySelector(sel);
     if (!now || now.disabled) return;
     if (el.type === 'checkbox') now.checked = el.checked; else now.value = el.value;
+    if (now.tagName === 'SELECT') now.dispatchEvent(new Event('change', { bubbles: true }));   // e.g. Other pronouns shows its box
   });
 }
 
@@ -752,6 +798,7 @@ async function adminUsers() {
         <form id="addStaff" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
+          ${pronounsField()}
           <label>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
           ${rolesFieldset(['coach'])}
           <button class="primary">+ Add and Send Invite</button>
@@ -766,7 +813,7 @@ async function adminUsers() {
     const shown = users.filter(u => (!r || u.roles.includes(r)) &&
       (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').includes(q)));
     $('#userList').innerHTML = shown.map(u => `<li><a class="item" href="#/user/${u.id}">
-      <span><strong>${esc(u.name || u.email)}</strong>${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
+      <span><strong>${esc(u.name || u.email)}</strong>${pronounsTag(u.pronouns)}${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
         <span class="item-sub">${u.email ? esc(u.email) : 'No email yet'}</span></span>
       <span class="row">${roleTags(u.roles)}<span class="tag${u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span></span></a></li>`).join('')
       || `<li><p class="muted" style="margin:.6rem 0">${users.length ? 'Nobody matches that search.' : 'No users yet.'}</p></li>`;
@@ -779,7 +826,8 @@ async function adminUsers() {
     const roles = checkedRoles(e.target);
     if (!roles) return;
     const f = new FormData(e.target);
-    const row = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), email: f.get('email').trim().toLowerCase(), roles };
+    const row = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f),
+      email: f.get('email').trim().toLowerCase(), roles };
     busy(e.submitter, async () => {
       const { data, error } = await sb.from('staff').insert(row).select('id').single();
       if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
@@ -823,13 +871,13 @@ async function adminUser(id, again = false) {
   if (t !== navToken) return;
   if (!u) { location.hash = '#/users'; return; }
   const staff = u.kind === 'staff', table = staff ? 'staff' : 'students';
-  const mine = isMine(u), active = !!u.last_sign_in_at;
+  const mine = isMine(u), active = !!u.last_sign_in_at, p = pro(u.pronouns);
   // Admins can't read plans or goals, so ask the database whether a student is ready for the invite.
   const ready = staff || active || await sb.rpc('student_ready', { p_id: id }).then(must);
   // Students: their row (coach and next session), who could coach them, and past coaches. Staff: the students they coach.
   const [stu, coachOpts, coaches, pupils] = await Promise.all(staff
     ? [null, [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
-    : [sb.from('students').select('first_name,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
+    : [sb.from('students').select('first_name,pronouns,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
        sb.from('staff').select('id,name,email').contains('roles', ['coach']).order('first_name').then(must),
        sb.rpc('coaches_of', { p_id: id }).then(must), []]);
   if (t !== navToken) return;
@@ -840,30 +888,31 @@ async function adminUser(id, again = false) {
   const title = u.name || u.email;
   // The owner's access is theirs alone (protect_owner in schema.sql): other admins can't change their roles or remove them.
   const lockedRoles = u.owner ? (mine ? ['admin'] : STAFF_ROLES) : mine ? ['admin'] : [];
-  const rolesHint = u.owner ? (mine ? "You're the owner, so you always keep the Admin role." : `${esc(u.first_name || 'The owner')} is the owner. Only they can change their roles.`)
+  const rolesHint = u.owner ? (mine ? "You're the owner, so you always keep the Admin role." : `${esc(u.first_name || 'The owner')} is the owner. Only ${p.they} can change ${p.their} roles.`)
     : mine ? "You can't remove your own Admin role. Ask another admin." : '';
   const removeBtn = mine || u.owner ? '' : `<button type="button" class="ghost danger" data-act="remove">${staff ? 'Remove Access' : 'Delete Student'}</button>`;
 
   view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
-  <div class="row"><h1>${esc(title)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
+  <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
   <div class="grid2">
     <div>
     <section class="card"><h2>Details</h2>
-      ${staff ? '' : `<p class="hint">A student. ${me.isCoach ? `Their plans and goals are on <a href="#/student/${u.id}">their student page</a>.`
-        : 'Coaches manage their plans and goals.'}</p>`}
+      ${staff ? '' : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
+        : `Coaches manage ${p.their} plans and goals.`} ${p.They} can change ${p.their} own pronouns too.</p>`}
       <form id="userForm" class="stack" data-save>
-        <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter their first name."></label>
+        <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter ${mine ? 'your' : p.their} first name."></label>
         <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
+        ${pronounsField(u.pronouns, mine ? 'Your' : 'Their')}
         ${staff ? rolesFieldset(u.roles, lockedRoles) + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '') : ''}
         <button class="primary">Save Details</button>
       </form>
     </section>
-    ${staff ? (u.roles.includes('coach') || pupils.length ? `<section class="card"><h2>Their Students</h2>
+    ${staff ? (u.roles.includes('coach') || pupils.length ? `<section class="card"><h2>${mine ? 'Your' : p.Their} Students</h2>
       <p class="hint">To give a student a new coach, open them and pick one.</p>
       ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
     : `<section class="card"><h2>Coach</h2>
-      <p class="hint">They see their current coach and past coaches on their page.</p>
+      <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current coach and past coaches on ${p.their} page.</p>
       <form id="coachForm" class="stack" data-save>
         <label>Current Coach<select name="coach_id">
           <option value="">No Coach</option>
@@ -883,8 +932,8 @@ async function adminUser(id, again = false) {
         <div class="row"><button data-act="send-link">Send Sign-In Link</button>${removeBtn}</div>` : `
         <form id="inviteForm" class="stack" data-save="show">
           <p>${u.invited_at ? `Invited ${fmtWhen(u.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
-          <label>Email<input type="email" name="email" value="${esc(u.email || '')}" required data-need="Enter their email to send the invite." autocomplete="off"></label>
-          <p class="hint">${u.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email with a link to choose a password."}</p>
+          <label>Email<input type="email" name="email" value="${esc(u.email || '')}" required data-need="Enter ${p.their} email to send the invite." autocomplete="off"></label>
+          <p class="hint">${u.invited_at ? 'Fix the email here if it was wrong, then resend.' : `${p.They}'ll get an email with a link to choose a password.`}</p>
           <div class="row"><button class="primary" id="inviteBtn">${u.invited_at ? 'Resend Invite' : 'Send Invite'}</button>${removeBtn}</div>
           <p class="hint need" id="inviteNeed" hidden></p>
         </form>`}
@@ -895,13 +944,13 @@ async function adminUser(id, again = false) {
   if (!staff) bindTraining(id, stu, () => adminUser(id, true));
   if (!staff && !stu.training_ended_at) bindNextSession(id, stu);
   if (!ready) gateInvite(me.isCoach
-    ? `Save a training plan and add a goal on <a href="#/student/${u.id}">their student page</a> before sending the invite.`
+    ? `Save a training plan and add a goal on <a href="#/student/${u.id}">${p.their} student page</a> before sending the invite.`
     : 'A coach needs to save a training plan and add a goal before the invite can go out.');
 
   $('#userForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const patch = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim() };
+    const patch = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f) };
     if (staff && !(patch.roles = checkedRoles(e.target))) return;
     busy(e.submitter, async () => {
       must(await sb.from(table).update(patch).eq('id', id));
@@ -953,9 +1002,9 @@ async function adminUser(id, again = false) {
     if (b.dataset.act === 'remove') {
       const ok = await ask(staff
         ? { title: `Remove ${title}?`, warn: true, ok: 'Remove Access',
-            body: "<p>They won't be able to sign in, and their login is deleted. Their students stay, with no coach until you pick a new one. Plans and notes stay as they are.</p>" }
+            body: `<p>${p.They} won't be able to sign in, and ${p.their} login is deleted. ${p.Their} students stay, with no coach until you pick a new one. Plans and notes stay as they are.</p>` }
         : { title: `Delete ${title}?`, warn: true, ok: 'Delete Student',
-            body: "<p>This deletes the student, all their plans, goals and notes, and their login. This can't be undone.</p>" });
+            body: `<p>This deletes the student, all ${p.their} plans, goals and notes, and ${p.their} login. This can't be undone.</p>` });
       if (ok) busy(b, async () => {
         must(await sb.rpc(staff ? 'delete_staff' : 'delete_student', { p_id: id }));
         flash(`${title} ${staff ? 'removed' : 'deleted'}.`);
@@ -973,7 +1022,7 @@ async function adminStudents() {
   const t = ++navToken;
   view(loading);
   const [students, recent] = await Promise.all([
-    sb.from('students').select(`id,name,email,invited_at,user_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
+    sb.from('students').select(`id,name,pronouns,email,invited_at,user_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
     sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,student:students(name)))')
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
   ]);
@@ -985,7 +1034,7 @@ async function adminStudents() {
   const rows = students.map(s => {
     const current = s.plans.filter(p => p.active).map(p => p.title || 'Untitled Plan').join(', ');
     return `<li><a class="item" href="#/student/${s.id}">
-      <span><strong>${esc(s.name)}</strong><span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
+      <span><strong>${esc(s.name)}</strong>${pronounsTag(s.pronouns)}<span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
       ${s.training_ended_at ? '<span class="tag">Inactive</span>' : `
       ${nextOverdue(s) ? '<span class="tag warn">Update Next Session</span>' : ''}
@@ -1007,6 +1056,7 @@ async function adminStudents() {
         <form id="addForm" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
+          ${pronounsField()}
           <button class="primary">+ Add Student</button>
         </form>
       </section>
@@ -1017,10 +1067,10 @@ async function adminStudents() {
   $('#addForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const first_name = f.get('first_name').trim(), last_name = f.get('last_name').trim();
+    const first_name = f.get('first_name').trim(), last_name = f.get('last_name').trim(), pronouns = readPronouns(f);
     busy(e.submitter, async () => {
-      const data = await sb.from('students').insert({ first_name, last_name }).select('id').single().then(must);
-      flash(`${first_name} added. Make their plan, then send the invite when it's ready.`);
+      const data = await sb.from('students').insert({ first_name, last_name, pronouns }).select('id').single().then(must);
+      flash(`${first_name} added. Make ${pro(pronouns).their} plan, then send the invite when it's ready.`);
       goTo('#/student/' + data.id);
     });
   };
@@ -1052,12 +1102,12 @@ const nextWhen = s => `${nextDay(s)} · ${fmtTime(s.next_start)} – ${fmtTime(s
 
 function nextSessionCardHTML(s) {
   const hm = t => t ? t.slice(0, 5) : '';
-  const overdue = nextOverdue(s);
+  const overdue = nextOverdue(s), p = pro(s.pronouns);
   return `<section class="card${overdue ? ' overdue' : ''}" id="nextCard">
     <div class="row between"><h2>Next Session</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
-    <p class="hint">They see it at the top of their page until it ends.</p>
+    <p class="hint">${p.They} ${p.v('see', 'sees')} it at the top of ${p.their} page until it ends.</p>
     ${overdue ? `<p class="warn-box" role="status"><strong>This session is over.</strong>
-      It ended on ${esc(nextDay(s))}, so they no longer see a next session. Pick the new date and time below.</p>`
+      It ended on ${esc(nextDay(s))}, so ${p.they} no longer ${p.v('see', 'sees')} a next session. Pick the new date and time below.</p>`
       : s.next_date ? '' : '<p class="muted">No next session set yet.</p>'}
     <form id="nextForm" class="stack" data-save>
       <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" min="${localToday()}"
@@ -1095,7 +1145,7 @@ function bindNextSession(id, s) {
   };
   form.querySelector('[data-act="next-clear"]')?.addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
-    if (await ask({ title: 'Clear the Next Session?', body: "<p>They won't see a next session until you set one.</p>", ok: 'Clear', warn: true }))
+    if (await ask({ title: 'Clear the Next Session?', body: `<p>${pro(s.pronouns).They} won't see a next session until you set one.</p>`, ok: 'Clear', warn: true }))
       save(e.target, { next_date: null, next_start: null, next_end: null, next_location: null }, 'Next session cleared.');
   });
 }
@@ -1103,11 +1153,11 @@ function bindNextSession(id, s) {
 // ---------- Training status (students.training_ended_at: null while they train) ----------
 
 function trainingCardHTML(s) {
-  const done = s.training_ended_at;
+  const done = s.training_ended_at, p = pro(s.pronouns);
   return `<section class="card" id="trainingCard">
     <div class="row between"><h2>Training</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
-    <p class="hint">${done ? `Finished training ${fmtDay(done)}. Their plans, goals and notes are kept, and they can still sign in.`
-      : 'When they stop personal training, end it here. They move to Inactive on the Students list.'}</p>
+    <p class="hint">${done ? `Finished training ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.`
+      : `When ${p.they} ${p.v('stop', 'stops')} personal training, end it here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list.`}</p>
     <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Training' : 'End Training'}</button>
   </section>`;
 }
@@ -1116,9 +1166,9 @@ function trainingCardHTML(s) {
 function bindTraining(id, s, redraw) {
   $('#trainingCard [data-act="training"]').addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
-    const done = !s.training_ended_at, btn = e.currentTarget;
+    const done = !s.training_ended_at, btn = e.currentTarget, p = pro(s.pronouns);
     if (done && !await ask({ title: `End ${s.first_name}'s Training?`, ok: 'End Training',
-      body: "<p>They move to Inactive and their next session is cleared. Plans, goals and notes stay, and they can still sign in.</p>" })) return;
+      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive and ${p.their} next session is cleared. Plans, goals and notes stay, and ${p.they} can still sign in.</p>` })) return;
     busy(btn, async () => {
       must(await sb.from('students').update(done
         ? { training_ended_at: new Date().toISOString(), next_date: null, next_start: null, next_end: null, next_location: null }
@@ -1143,13 +1193,13 @@ const sortGoals = goals => goals.sort((a, b) =>
 const goalItem = (g, sub, right) => `<li class="goal"><div class="goal-text"><p>${para(g.body)}</p>
   ${sub ? `<span class="item-sub">${sub}</span>` : ''}</div>${right}</li>`;
 
-function coachGoalsHTML(goals) {
+function coachGoalsHTML(goals, p) {
   const by = st => goals.filter(g => g.status === st);
   const cur = by('current'), won = by('achieved'), old = by('archived');
   const btns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]) =>
     `<button type="button" class="small ${cls || 'ghost'}" data-act="${act}" data-goal="${g.id}">${label}</button>`).join('')}</div>`;
   return `<h2>Goals</h2>
-    <p class="hint">They see current and achieved goals on their page. Archived goals are hidden from them.</p>
+    <p class="hint">${p.They} ${p.v('see', 'sees')} current and achieved goals on ${p.their} page. Archived goals are hidden from ${p.them}.</p>
     ${cur.length ? `<ul class="list">${cur.map(g => goalItem(g, '',
       btns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']))).join('')}</ul>`
       : '<p class="muted">No current goals.</p>'}
@@ -1177,13 +1227,14 @@ async function adminStudent(id, again = false) {
   if (!s) { location.hash = '#/students'; return; }
   s.plans.sort((a, b) => (b.active - a.active) || b.updated_at.localeCompare(a.updated_at));
   sortGoals(s.goals);
+  const p = pro(s.pronouns);
 
   const plans = s.plans.map(p => `<li><a class="item" href="#/plan/${p.id}">
     <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? fmtStart(p.start_date) : 'No start date'}</span></span>
     ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
-  <div class="row"><h1>${esc(s.name)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
+  <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
   <div class="grid2">
     <div>
       <section class="card">
@@ -1196,15 +1247,16 @@ async function adminStudent(id, again = false) {
     <aside>
       ${s.training_ended_at ? '' : nextSessionCardHTML(s)}
       <section class="card"><h2>Details</h2>
-        <p class="hint">Emails and their page greet them by first name.</p>
+        <p class="hint">Emails and ${p.their} page greet ${p.them} by first name. ${p.They} can change ${p.their} own pronouns too.</p>
         <form id="stuForm" class="stack" data-save>
-          <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter their first name."></label>
+          <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter ${p.their} first name."></label>
           <label>Last Name<input name="last_name" value="${esc(s.last_name)}"></label>
+          ${pronounsField(s.pronouns)}
           <button class="primary">Save Details</button>
         </form>
       </section>
       <section class="card"><h2>Coach</h2>
-        <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">their user page</a>.` : 'An admin can change their coach.'}</p>
+        <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} coach.`}</p>
         ${coachesHTML(coaches, 'No coach yet.')}</section>
       <section class="card"><h2>Account</h2>
         ${s.user_id ? `
@@ -1213,8 +1265,8 @@ async function adminStudent(id, again = false) {
         <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
         <form id="inviteForm" class="stack" data-save="show">
           <p>${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
-          <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required data-need="Enter their email to send the invite." autocomplete="off"></label>
-          <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : "They'll get an email saying their plan is ready, with a link to choose a password."}</p>
+          <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required data-need="Enter ${p.their} email to send the invite." autocomplete="off"></label>
+          <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : `${p.They}'ll get an email saying ${p.their} plan is ready, with a link to choose a password.`}</p>
           <div class="row"><button class="primary" id="inviteBtn">${s.invited_at ? 'Resend Invite' : 'Send Invite'}</button>
           <button type="button" class="ghost danger" data-act="del-student">Delete Student</button></div>
           <p class="hint need" id="inviteNeed" hidden></p>
@@ -1230,7 +1282,7 @@ async function adminStudent(id, again = false) {
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
       must(await sb.from('students').update({
-        first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(),
+        first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f),
       }).eq('id', id));
       flash('Details saved.');
       adminStudent(id, e.target);
@@ -1248,7 +1300,7 @@ async function adminStudent(id, again = false) {
   function renderGoals(focusAdd) {
     gateInvite(inviteNeed());
     const typing = !focusAdd && $('#goalForm')?.elements.body.value;
-    $('#goalsCard').innerHTML = coachGoalsHTML(s.goals);
+    $('#goalsCard').innerHTML = coachGoalsHTML(s.goals, p);
     const form = $('#goalForm');
     if (typing) form.elements.body.value = typing;
     if (focusAdd) form.elements.body.focus();
@@ -1329,8 +1381,8 @@ async function adminStudent(id, again = false) {
     if (b.dataset.act === 'del-student') {
       const n = s.plans.length;
       const ok = await ask({ title: `Delete ${s.name}?`, warn: true, ok: 'Delete Student',
-        body: `<p>This deletes ${n ? `their ${n} plan${n > 1 ? 's' : ''}, all notes` : 'them from your list'}
-        and their login. This can't be undone.</p>` });
+        body: `<p>This deletes ${n ? `${p.their} ${n} plan${n > 1 ? 's' : ''}, all notes` : `${p.them} from your list`}
+        and ${p.their} login. This can't be undone.</p>` });
       if (ok) busy(b, async () => {
         must(await sb.rpc('delete_student', { p_id: id }));
         flash(`${s.name} deleted.`);
@@ -1521,7 +1573,7 @@ async function adminPlan(id) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions, library] = await Promise.all([
-    sb.from('plans').select('*, student:students(id,name)').eq('id', id).maybeSingle().then(must),
+    sb.from('plans').select('*, student:students(id,name,pronouns)').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
     sb.from('exercises').select('*').then(must),
   ]);
@@ -1598,7 +1650,7 @@ function renderEditor() {
       <label>Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="Training Plan" required data-need="Give the plan a title."></label>
       <div class="row">
         <div><label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label></div>
-        <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan (shown first to the student; replaces their other current plan)</label>
+        <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan (shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan)</label>
       </div>
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
     </section>
@@ -1819,7 +1871,29 @@ async function studentHome() {
   view(`<h1>${welcome()}</h1>${nextSessionAlert(next)}${goalHTML(goals)}
     ${plans.length ? `<section class="card"><h2>Your Plans</h2><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
-    ${achievedHTML(goals)}${yourCoachHTML(coaches)}`);
+    ${achievedHTML(goals)}${yourCoachHTML(coaches)}${myDetailsHTML()}`);
+  bindMyDetails();
+}
+
+// Students change only their own pronouns (update_my_pronouns() in schema.sql), at the bottom of their home page.
+// Their name stays the coach's to change, so the coach always knows who they are.
+const myDetailsHTML = () => `<section class="card" id="myDetails" style="margin-top:2rem"><h2>Your Pronouns</h2>
+  <p class="hint">Your coach sees these next to your name. To change your name, ask your coach.</p>
+  <form id="myForm" class="stack" data-save>
+    ${pronounsField(me.student.pronouns, 'Your')}
+    <button class="primary">Save Pronouns</button>
+  </form></section>`;
+function bindMyDetails() {
+  $('#myForm').onsubmit = e => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      must(await sb.rpc('update_my_pronouns', { p_pronouns: readPronouns(new FormData(e.target)) }));
+      await loadMe(me.user);
+      $('#myDetails').outerHTML = myDetailsHTML();
+      bindMyDetails();
+      flash('Pronouns saved.');
+    });
+  };
 }
 
 function goalHTML(goals) {
@@ -1860,7 +1934,9 @@ async function studentPlan(id, allPlans, goals, coaches, next) {
     ${planReadHTML(plan, sessions)}
     ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Other Plans</h2><ul class="list">${planLinks(others)}</ul></section>` : ''}
     ${goals ? achievedHTML(goals) : ''}
-    ${coaches ? yourCoachHTML(coaches) : ''}`);
+    ${coaches ? yourCoachHTML(coaches) : ''}
+    ${allPlans ? myDetailsHTML() : ''}`);
+  if (allPlans) bindMyDetails();
 }
 
 // ---------- Notes (shared by the student's view and the coach's editor) ----------

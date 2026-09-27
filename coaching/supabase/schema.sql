@@ -39,6 +39,8 @@ create table public.students (
   next_start time,
   next_end time,
   next_location text check (length(next_location) <= 200),
+  -- Null while they are training; set when they finish (Inactive on the Students list).
+  training_ended_at timestamptz,
   created_at timestamptz not null default now(),
   constraint next_session_whole check (
     (next_date is null and next_start is null and next_end is null and next_location is null)

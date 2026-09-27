@@ -559,9 +559,9 @@ function viewNoAccess() {
 const ADMIN_PAGES = [
   { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Add students, build their plans and goals, and send invites.',
     stat: async () => {
-      const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true });
+      const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true }).is('training_ended_at', null);
       if (error) throw error;
-      return count === 1 ? '1 student' : `${count} students`;
+      return count === 1 ? '1 active student' : `${count} active students`;
     } },
   { href: '#/exercises', title: 'Master Exercise List', roles: ['coach', 'admin'], blurb: 'The exercises plans pick from, with their usual sets, reps, rest and notes.',
     stat: async () => {
@@ -708,7 +708,7 @@ async function adminUser(id, again = false) {
   // Students: their row (coach and next session), who could coach them, and past coaches. Staff: the students they coach.
   const [stu, coachOpts, coaches, pupils] = await Promise.all(staff
     ? [null, [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
-    : [sb.from('students').select('coach_id,' + NEXT_COLS).eq('id', id).single().then(must),
+    : [sb.from('students').select('first_name,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
        sb.from('staff').select('id,name,email').contains('roles', ['coach']).order('first_name').then(must),
        sb.rpc('coaches_of', { p_id: id }).then(must), []]);
   if (t !== navToken) return;
@@ -724,7 +724,7 @@ async function adminUser(id, again = false) {
   const removeBtn = mine || u.owner ? '' : `<button type="button" class="ghost danger" data-act="remove">${staff ? 'Remove Access' : 'Delete Student'}</button>`;
 
   view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
-  <div class="row"><h1>${esc(title)}</h1>${roleTags(u.roles)}</div>
+  <div class="row"><h1>${esc(title)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
   <div class="grid2">
     <div>
     <section class="card"><h2>Details</h2>
@@ -755,7 +755,7 @@ async function adminUser(id, again = false) {
     </section>`}
     </div>
     <aside>
-      ${staff ? '' : nextSessionCardHTML(stu)}
+      ${staff ? '' : trainingCardHTML(stu) + (stu.training_ended_at ? '' : nextSessionCardHTML(stu))}
       <section class="card"><h2>Account</h2>
         ${active ? `
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
@@ -770,7 +770,8 @@ async function adminUser(id, again = false) {
       </section>
     </aside>
   </div>`, { keepScroll: again });
-  if (!staff) bindNextSession(id, stu);
+  if (!staff) bindTraining(id, stu, () => adminUser(id, true));
+  if (!staff && !stu.training_ended_at) bindNextSession(id, stu);
   if (!ready) gateInvite(me.isCoach
     ? `Save a training plan and add a goal on <a href="#/student/${u.id}">their student page</a> before sending the invite.`
     : 'A coach needs to save a training plan and add a goal before the invite can go out.');
@@ -850,19 +851,24 @@ async function adminStudents() {
   const t = ++navToken;
   view(loading);
   const [students, recent] = await Promise.all([
-    sb.from('students').select(`id,name,email,invited_at,user_id,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
+    sb.from('students').select(`id,name,email,invited_at,user_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
     sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,student:students(name)))')
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
   ]);
   if (t !== navToken) return;
+  // Students still training first, then the ones who have finished.
+  students.sort((a, b) => !!a.training_ended_at - !!b.training_ended_at);
 
+  // Active (green) or Inactive is their training; Not Invited or Invited shows until an active student signs in.
   const rows = students.map(s => {
     const current = s.plans.filter(p => p.active).map(p => p.title || 'Untitled Plan').join(', ');
     return `<li><a class="item" href="#/student/${s.id}">
       <span><strong>${esc(s.name)}</strong><span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
+      ${s.training_ended_at ? '<span class="tag">Inactive</span>' : `
       ${nextOverdue(s) ? '<span class="tag warn">Update Next Session</span>' : ''}
-      <span class="tag${s.user_id ? ' ok' : ''}">${accountStatus(s)}</span></span></a></li>`;
+      ${s.user_id ? '' : `<span class="tag">${accountStatus(s)}</span>`}
+      <span class="tag ok">Active</span>`}</span></a></li>`;
   }).join('');
   const feed = recent.map(n => `<div class="note-wrap"><div class="note-meta">
       <strong>${esc(n.session?.plan?.student?.name)}</strong> · ${fmtWhen(n.created_at)} ·
@@ -972,6 +978,35 @@ function bindNextSession(id, s) {
   });
 }
 
+// ---------- Training status (students.training_ended_at: null while they train) ----------
+
+function trainingCardHTML(s) {
+  const done = s.training_ended_at;
+  return `<section class="card" id="trainingCard">
+    <div class="row between"><h2>Training</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
+    <p class="hint">${done ? `Finished training ${fmtDay(done)}. Their plans, goals and notes are kept, and they can still sign in.`
+      : 'When they stop personal training, mark them done. They move to Inactive on the Students list.'}</p>
+    <button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Mark Active Again' : 'Mark Done Training'}</button>
+  </section>`;
+}
+
+// Marks them done (clearing the next session) or active again, then redraw() the page.
+function bindTraining(id, s, redraw) {
+  $('#trainingCard [data-act="training"]').addEventListener('click', async e => {
+    e.stopPropagation();   // not the page's own data-act handler
+    const done = !s.training_ended_at, btn = e.currentTarget;
+    if (done && !await ask({ title: `Mark ${s.first_name} Done Training?`, ok: 'Mark Done',
+      body: "<p>They move to Inactive and their next session is cleared. Plans, goals and notes stay, and they can still sign in.</p>" })) return;
+    busy(btn, async () => {
+      must(await sb.from('students').update(done
+        ? { training_ended_at: new Date().toISOString(), next_date: null, next_start: null, next_end: null, next_location: null }
+        : { training_ended_at: null }).eq('id', id));
+      flash(done ? `${s.first_name} marked done training.` : `${s.first_name} is active again.`);
+      redraw();
+    });
+  });
+}
+
 // What the student sees: nothing once the day has passed.
 const nextSessionAlert = s => s && !nextPassed(s) ? `<div class="alert next-session"><strong>Next session:</strong>
   ${esc(nextWhen(s))}<br><span class="muted">${esc(s.next_location)}</span></div>` : '';
@@ -1006,9 +1041,10 @@ function coachGoalsHTML(goals) {
       goalItem(g, 'Archived ' + fmtDay(g.done_at), btns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))).join('')}</ul></details>` : ''}`;
 }
 
-async function adminStudent(id) {
+// again: redraw after a change, without the Loading… step or a jump to the top.
+async function adminStudent(id, again = false) {
   const t = ++navToken;
-  view(loading);
+  if (!again) view(loading);
   const [s, coaches] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
@@ -1023,7 +1059,7 @@ async function adminStudent(id) {
     ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
-  <h1>${esc(s.name)}</h1>
+  <div class="row"><h1>${esc(s.name)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
   <div class="grid2">
     <div>
       <section class="card">
@@ -1033,7 +1069,8 @@ async function adminStudent(id) {
       <section class="card" id="goalsCard"></section>
     </div>
     <aside>
-      ${nextSessionCardHTML(s)}
+      ${trainingCardHTML(s)}
+      ${s.training_ended_at ? '' : nextSessionCardHTML(s)}
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter their first name."></label>
@@ -1059,8 +1096,9 @@ async function adminStudent(id) {
         </form>`}
       </section>
     </aside>
-  </div>`);
-  bindNextSession(id, s);
+  </div>`, { keepScroll: again });
+  bindTraining(id, s, () => adminStudent(id, true));
+  if (!s.training_ended_at) bindNextSession(id, s);
 
   $('#stuForm').onsubmit = e => {
     e.preventDefault();

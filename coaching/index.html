@@ -1269,14 +1269,15 @@ const historyCount = list => list.length ? `<p class="muted hist-count">${list.l
   ${day(list.at(-1).session_date).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</p>` : '';
 
 // One page of past sessions. hist = { log, page, notes? }: notes(date) counts Coach Notes from that day,
-// for a Notes button (the student page only). Every row can be deleted: an ended next session that isn't
+// for a Notes button, or Add Notes when there are none (the student page only). Every row can be deleted: an ended next session that isn't
 // logged yet (no id) is deleted by clearing the next session without logging it.
 function historyHTML(s, hist) {
   const list = historyOf(hist.log, s), [shown, page] = pageOf(list, hist.page, HISTORY_PAGE);
   hist.page = page;
   const right = h => {
     const n = hist.notes?.(h.session_date) || 0;
-    const btns = (n ? `<button type="button" class="small ghost" data-hist-notes="${h.session_date}">Notes (${n})</button>` : '')
+    const btns = (!hist.notes ? '' : n ? `<button type="button" class="small ghost" data-hist-notes="${h.session_date}">Notes (${n})</button>`
+      : `<button type="button" class="small ghost" data-hist-add-notes="${h.session_date}">Add Notes</button>`)
       + `<button type="button" class="small ghost danger" data-hist-del="${h.id || 'next'}">Delete</button>`;
     return `<div class="row">${btns}</div>`;
   };
@@ -1327,7 +1328,8 @@ const addMinute = t => {
 };
 
 // Saves or clears the next session (redrawing the card), and runs Session History in place.
-// hist = { log, page, notes?, showNotes?, changed? }: showNotes(date) opens Coach Notes from that day;
+// hist = { log, page, notes?, showNotes?, addNotes?, changed? }: showNotes(date) opens Coach Notes from that day;
+// addNotes(date) starts a Coach Note for that day;
 // changed() runs after the next session or the history changes.
 function bindSessions(id, s, hist) {
   const box = $('#historyBox');
@@ -1352,6 +1354,7 @@ function bindSessions(id, s, hist) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.histNotes) hist.showNotes?.(b.dataset.histNotes);
+    else if (b.dataset.histAddNotes) hist.addNotes?.(b.dataset.histAddNotes);
     else if (b.dataset.histDel === 'next') {
       if (await ask({ title: 'Delete This Session?', ok: 'Delete', warn: true,
         body: `<p>${esc(fmtSessionDay(s.next_date))} comes off ${pro(s.pronouns).their} Session History, and the next session is cleared. This can't be undone.</p>` }))
@@ -1537,7 +1540,8 @@ function coachNotesHTML(notes, s, log, at) {
   // Missing session notes: the card turns the warn color (renderCoachNotes) and the form starts with the picked
   // (or newest) one's date filled in. It's the field's starting value, so the card isn't marked unsaved until the
   // coach writes something.
-  const missing = cnoteMissing(notes, s, log), writeUp = missing.includes(at.day) ? at.day : missing[0] || '';
+  const missing = cnoteMissing(notes, s, log);
+  const writeUp = historyOf(log, s).some(h => h.session_date === at.day) ? at.day : missing[0] || '';
   const more = at.allMissing ? 0 : Math.max(0, missing.length - CNOTE_MISSING_SHOWN);
   const pick = missing.length > 1 ? `<span class="row" style="margin-top:.5rem">${missing.slice(0, missing.length - more).map(d =>
     `<button type="button" class="small ghost" data-cnote-day="${d}">${esc(fmtSessionDay(d))}</button>`).join('')}
@@ -1545,14 +1549,14 @@ function coachNotesHTML(notes, s, log, at) {
       : at.allMissing && missing.length > CNOTE_MISSING_SHOWN ? '<button type="button" class="small ghost" data-cnote-more aria-expanded="true">Show Fewer</button>' : ''}</span>` : '';
   return `<div class="row between"><h2>Coach Notes</h2>${missing.length ? '<span class="tag warn">Needs Note</span>' : ''}</div>
     <p class="hint">Private to coaches: ${p.they} never ${p.v('see', 'sees')} these. Give a note a session date to keep what came up in that session.</p>
-    ${missing.length === 1 ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(writeUp))} is over.</strong>
-      Note how it went while it's fresh. Its date is filled in below.</p>`
+    ${missing.length === 1 ? `<p class="warn-box" role="status"><strong>The session on ${esc(fmtSessionDay(missing[0]))} is over.</strong>
+      Note how it went while it's fresh.${writeUp === missing[0] ? ' Its date is filled in below.' : ''}</p>`
     : missing.length ? `<div class="warn-box" role="status"><strong>${missing.length} sessions have no notes yet.</strong>
       Pick one to fill in its date below, then add its note.${pick}</div>` : ''}
     <form id="cnoteForm" class="stack" data-save>
-      <label>Note<textarea name="body" rows="3" maxlength="4000" required data-need="Write the note first."></textarea></label>
+      <label>Notes<textarea name="body" rows="3" maxlength="4000" required data-need="Write the notes first."></textarea></label>
       ${cnoteDateField(writeUp)}
-      <button class="primary">+ Add Note</button>
+      <button class="primary">+ Add Notes</button>
     </form>
     ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
       `<label><input type="radio" name="cnote_filter" value="${k}"${k === at.filter ? ' checked' : ''}>${label} (${notes.filter(n => cnoteIn(n, k)).length})</label>`).join('')}</div>` : ''}
@@ -1647,7 +1651,7 @@ async function adminStudent(id, again = false) {
   // Session History links to Coach Notes from the same day.
   // Coach Notes redraw when the sessions change, for their prompt about the newest past session.
   const hist = { log, page: 1, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
-    changed: () => renderCoachNotes() };
+    addNotes: startCoachNote, changed: () => renderCoachNotes() };
   bindSessions(id, s, hist);
 
   $('#stuForm').onsubmit = e => {
@@ -1710,7 +1714,7 @@ async function adminStudent(id, again = false) {
     const old = !added && $('#cnoteForm');
     // The date only if the coach changed it: a filled-in one follows the prompt.
     const date = old && old.elements.session_date, typed = old && [old.elements.body.value, date.value !== date.defaultValue && date.value];
-    if (added) Object.assign(cnoteAt, { filter: 'all', spot: null, page:Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
+    if (added) Object.assign(cnoteAt, { filter: 'all', spot: null, day: null, page: Math.floor(cnotes.indexOf(added) / CNOTES_PAGE) + 1 });
     const card = $('#coachNotesCard');
     card.innerHTML = coachNotesHTML(cnotes, s, log, cnoteAt);
     card.classList.toggle('overdue', cnoteMissing(cnotes, s, log).length > 0);
@@ -1762,6 +1766,19 @@ async function adminStudent(id, again = false) {
     if (els.length) void els[0].offsetWidth;   // restart the animation
     els.forEach(el => el.classList.add('spot'));
     return els;
+  }
+  // From Session History's Add Notes: that day becomes the filled-in Session Date (like picking a missing session),
+  // then the form is scrolled to with the Notes box focused. Notes already typed stay.
+  function startCoachNote(date) {
+    const field = $('#cnoteForm').elements.session_date;
+    field.value = field.defaultValue;
+    cnoteAt.day = date;
+    renderCoachNotes();
+    const card = $('#coachNotesCard');
+    if (card.classList.contains('folded')) setFold(card, false);
+    const form = $('#cnoteForm');
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    form.elements.body.focus({ preventScroll: true });
   }
   function showCoachNotes(date) {
     const list = cnotes.filter(n => cnoteIn(n, 'session')), i = list.findIndex(n => n.session_date === date);

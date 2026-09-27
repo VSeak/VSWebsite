@@ -205,6 +205,7 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 .session { margin-top: .8rem; }
 .prose { white-space: normal; }
 table.ex { width: 100%; border-collapse: collapse; margin: .6rem 0; font-size: .92rem; }
+.list-head { display: flex; justify-content: space-between; gap: .8rem; font-weight: 600; color: var(--muted); font-size: .8rem; padding: .3rem 0; border-bottom: 1px solid var(--line); margin-top: .6rem; }
 table.ex th { text-align: left; font-weight: 600; color: var(--muted); font-size: .8rem; padding: .3rem .5rem .3rem 0; border-bottom: 1px solid var(--line); }
 table.ex td { padding: .45rem .5rem .45rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.ex td:first-child { font-weight: 600; }
@@ -1487,7 +1488,8 @@ async function adminExercises() {
   <div class="grid2">
     <section class="card">
       <input id="exSearch" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
-      <ul class="list" id="exList" style="margin-top:.6rem"></ul>
+      <div class="list-head" id="exHead"><span>Exercise</span><span>Action</span></div>
+      <ul class="list" id="exList"></ul>
     </section>
     <aside>
       <section class="card"><h2>Add Exercise</h2>
@@ -1502,10 +1504,11 @@ async function adminExercises() {
   function renderList() {
     const q = exKey(search.value);
     const shown = list.filter(x => !q || x.name_key.includes(q));
+    $('#exHead').hidden = !shown.length;
     $('#exList').innerHTML = shown.map(x => {
-      const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l} ${esc(x[f])}`).join(' · ');
+      const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l}: ${esc(x[f])}`).join(' · ');
       return `<li class="goal"><div class="goal-text"><strong>${esc(x.name)}</strong>
-        ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">${para(x.notes)}</span>` : ''}</div>
+        ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">Notes: ${para(x.notes)}</span>` : ''}</div>
         <div class="row"><button type="button" class="small ghost" data-act="ex-edit" data-ex="${x.id}">Edit</button>
         <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></div></li>`;
     }).join('') || `<li><p class="muted" style="margin:.6rem 0">${list.length ? 'No exercise matches that search.' : 'No exercises yet. Add your first one.'}</p></li>`;

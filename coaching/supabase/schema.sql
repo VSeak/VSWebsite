@@ -374,14 +374,14 @@ create policy "staff: everything" on public.exercises for all to authenticated
   using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
 
 -- 4. Sign-up gate ---------------------------------------------------------------
--- Only emails on the student list (or the staff list) can create an account.
+-- Only emails on the student list (or the active staff list) can create an account.
 -- Anyone else gets an error, so an open sign-up can't be abused.
 
 create function public.gate_signup() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   if not exists (select 1 from public.students where email = lower(new.email))
-     and not exists (select 1 from public.staff where email = lower(new.email)) then
+     and not exists (select 1 from public.staff where email = lower(new.email) and deactivated_at is null) then
     raise exception 'This email has not been invited.';
   end if;
   return new;
@@ -442,13 +442,24 @@ create trigger protect_owner before insert or update or delete on public.staff
   for each row execute function public.protect_owner();
 
 -- Staff who leave are deactivated (deactivated_at), not deleted, so they can come back with their history.
--- Deactivating someone (not yourself) leaves their students with no coach. Reactivating doesn't give them back.
+-- Deactivating someone (not yourself) leaves their students with no coach, bans their login so they can't sign in
+-- (the page shows "Account Deactivated"), and ends any sign-in they have open. A login that is also a student's
+-- isn't banned: they keep their student access. Reactivating lifts the ban (their students don't come back).
 create function public.staff_deactivated() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if new.deactivated_at is null or old.deactivated_at is not null then return null; end if;
+  if (new.deactivated_at is null) = (old.deactivated_at is null) then return null; end if;
+  if new.deactivated_at is null then
+    update auth.users set banned_until = null where lower(email) = new.email;
+    return null;
+  end if;
   if new.email = lower(auth.jwt() ->> 'email') then raise exception 'You can''t deactivate yourself.'; end if;
   update public.students set coach_id = null where coach_id = new.id;
+  update auth.users u set banned_until = '2999-12-31'
+  where lower(u.email) = new.email
+    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = new.email);
+  delete from auth.sessions s using auth.users u
+  where s.user_id = u.id and u.banned_until is not null and lower(u.email) = new.email;
   return null;
 end;
 $$;

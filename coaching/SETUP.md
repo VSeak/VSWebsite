@@ -76,6 +76,6 @@ Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (i
 
 - **Updates to the database:** `schema.sql` is for a new project. If your project was set up earlier, run any new files in `supabase/migrations` (oldest first) in the SQL Editor.
 - **Ending coaching** is how you archive a student: everything is kept and they can still sign in. **Deleting a student** (only offered once coaching has ended) removes their plans, notes and login, so you can add the same email again and they get a fresh invite.
-- **Staff who leave:** deactivate them on their user page. They keep their details and history and can be reactivated. Delete Staff appears only once someone is deactivated.
+- **Staff who leave:** deactivate them on their user page. They can't sign in (they see an "Account Deactivated" message), but keep their details and history and can be reactivated. Delete Staff appears only once someone is deactivated.
 - **Free-plan pause:** Supabase pauses free projects after a week with no activity. Signing in once a week keeps it awake, or restore it from the dashboard in a click.
 - **Backups:** **Database → Backups** on paid plans. On free, you can export tables as CSV from the Table Editor.

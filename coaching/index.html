@@ -355,6 +355,7 @@ let sb, mailer;
 let me = null;               // {user, roles, isStaff, isCoach, isAdmin, student}. roles: staff roles, e.g. ['admin', 'coach']; [] for a student
 let wantsPassword = new URLSearchParams(location.search).has('setpw');
 let linkError = null;        // from an expired or used email link
+let deactivated = false;     // a deactivated staff member tried to sign in: the sign-in page tells them (deactivatedNotice)
 let dirty = false;           // unsaved plan edits
 let draft = null;            // plan open in the editor
 let notesCtx = { notes: [], studentName: '' };
@@ -363,7 +364,8 @@ let navToken = 0;
 
 if (location.hash && !location.hash.startsWith('#/')) {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Ask your coach to send a new one.';
+  if (h.get('error_code') === 'user_banned') deactivated = true;
+  else if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Ask your coach to send a new one.';
   else if (h.get('error_description')) linkError = h.get('error_description');
 }
 
@@ -442,10 +444,11 @@ document.addEventListener('input', e => {
 }, true);
 
 // Returns the form's FormData when confirmed, or null. Settles on submit, not close.
-function ask({ title, body = '', ok = 'OK', warn = false }) {
+// cancel: false for a notice with just the OK button.
+function ask({ title, body = '', ok = 'OK', warn = false, cancel = true }) {
   const d = $('#dlg');
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
-    <div class="row end"><button value="cancel" formnovalidate class="ghost">Cancel</button>
+    <div class="row end">${cancel ? '<button value="cancel" formnovalidate class="ghost">Cancel</button>' : ''}
     <button value="ok" class="primary${warn ? ' danger' : ''}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
@@ -597,10 +600,16 @@ async function loadMe(user) {
   const staffRow = roles && (await sb.from('staff').select('first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
   const firstName = roles ? (staffRow?.first_name || user.user_metadata?.first_name || '') : (student?.first_name || '');
   const fullName = (roles ? staffRow?.name : student?.name) || firstName;
-  // Deactivated staff get no roles (my_roles), but can still read their own row, to say why they see nothing.
-  const deactivated = !roles && !student
-    && !!(await sb.from('staff').select('deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()).data?.deactivated_at;
-  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName, fullName, deactivated };
+  // Deactivating someone bans their login and ends their sign-ins, but a page still open keeps its token for up to an
+  // hour. They get no roles (my_roles) and can still read their own row, so sign them out here too.
+  if (!roles && !student
+      && (await sb.from('staff').select('deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()).data?.deactivated_at) {
+    await sb.auth.signOut({ scope: 'local' });
+    me = null;
+    deactivated = true;
+    return;
+  }
+  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName, fullName };
 }
 
 const welcome = () => `Welcome${me.firstName ? ' ' + esc(me.firstName) : ''}!`;
@@ -796,18 +805,27 @@ function viewLogin() {
     </form>
     <p class="hint">Forgot your password? Ask your coach for a new sign-in link.</p>
   </section>`);
+  if (deactivated) deactivatedNotice();
 
   $('#loginForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
       const { data, error } = await sb.auth.signInWithPassword({ email: f.get('email').trim(), password: f.get('password') });
+      // A deactivated staff member's login is banned (staff_deactivated in schema.sql).
+      if (error?.code === 'user_banned') return deactivatedNotice();
       if (error) throw error;
       await loadMe(data.user);
       linkError = null;
       route();
     });
   };
+}
+
+function deactivatedNotice() {
+  deactivated = false;
+  ask({ title: 'Account Deactivated', cancel: false,
+    body: '<p>Your account has been deactivated, so you can\'t sign in. If this is a mistake, contact an admin.</p>' });
 }
 
 function viewSetPassword() {
@@ -835,9 +853,6 @@ function viewSetPassword() {
 }
 
 function viewNoAccess() {
-  if (me.deactivated) return view(`<section class="card narrow"><h1>Your Access Is Off</h1>
-    <p>You're signed in as ${esc(me.user.email)}, but your staff access has been turned off.
-    Ask an admin if you need it back.</p></section>`);
   view(`<section class="card narrow"><h1>No Plan Linked Yet</h1>
     <p>You're signed in as ${esc(me.user.email)}, but this account isn't on the student list.
     Ask your coach to check which email they have for you.</p></section>`);
@@ -1047,7 +1062,7 @@ async function adminUser(id, again = false) {
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
       + (mine || u.owner ? '' : `<section class="card" data-fold-start>
       <div class="row between"><h2>Staff Access</h2><span class="tag${off ? '' : ' ok'}">${off ? 'Deactivated' : 'On'}</span></div>
-      <p class="hint">${off ? `Deactivated ${fmtDay(u.deactivated_at)}. ${p.They} can't use the site. ${p.Their} details and history are kept, so you can reactivate ${p.them}. Delete ${p.them} only if ${p.they} won't be back.`
+      <p class="hint">${off ? `Deactivated ${fmtDay(u.deactivated_at)}. ${p.They} can't sign in. ${p.Their} details and history are kept, so you can reactivate ${p.them}. Delete ${p.them} only if ${p.they} won't be back.`
         : `When ${p.they} ${p.v('leave', 'leaves')}, deactivate ${p.them}. ${p.Their} details and history are kept, so ${p.they} can come back later.`}</p>
       <div class="row">${off ? `<button type="button" class="primary" data-act="reactivate">Reactivate</button>
         <button type="button" class="ghost danger" data-act="del-staff">Delete Staff</button>`
@@ -1166,7 +1181,7 @@ async function adminUser(id, again = false) {
     if (b.dataset.act === 'deactivate') {
       const n = pupils.length;
       if (await ask({ title: `Deactivate ${title}?`, ok: 'Deactivate', warn: true,
-        body: `<p>${p.They} won't be able to use the site${n ? `, and ${p.their} ${n === 1 ? 'student' : `${n} students`} will have no coach until you pick a new one` : ''}.
+        body: `<p>${p.They}'ll be signed out and won't be able to sign in${n ? `, and ${p.their} ${n === 1 ? 'student' : `${n} students`} will have no coach until you pick a new one` : ''}.
           ${p.Their} details and history stay, and you can reactivate ${p.them} later.</p>` })) busy(b, async () => {
         must(await sb.from('staff').update({ deactivated_at: new Date().toISOString() }).eq('id', id));
         flash(`${title} deactivated.`);

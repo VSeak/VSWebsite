@@ -475,6 +475,16 @@ function gateInvite(need) {
   hint.innerHTML = need || '';
 }
 
+// The Account card's opening (heading and, before the invite has gone, the warn color and box). The caller closes it.
+// It starts folded once they have signed in; until then it holds the invite.
+function accountCardStart(signedIn, invitedAt, name, p) {
+  const warn = !signedIn && !invitedAt;
+  return `<section class="card${warn ? ' overdue' : ''}"${signedIn ? ' data-fold-start' : ''}>
+    <div class="row between"><h2>Account</h2>${warn ? '<span class="tag warn">Not Invited</span>' : ''}</div>
+    ${warn ? `<p class="warn-box" role="status"><strong>${esc(name)} hasn't been invited yet.</strong>
+      ${p.They} can't sign in until you send the invite.</p>` : ''}`;
+}
+
 // ---------- Pronouns (staff.pronouns, students.pronouns: e.g. "she/her", or empty) ----------
 
 const PRONOUNS = ['she/her', 'he/him', 'they/them', 'she/they', 'he/they'];
@@ -1040,14 +1050,14 @@ async function adminUser(id, again = false) {
     </div>
     <aside>
       ${staff ? '' : sessionsCardHTML(stu)}
-      <section class="card"${active ? ' data-fold-start' : ''}><h2>Account</h2>
+      ${accountCardStart(active, u.invited_at, u.first_name || title, p)}
         ${active ? `
         <p class="hint">${mine ? "How you sign in. Send yourself a new sign-in link if you're locked out."
           : `How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.`}</p>
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
-        <div class="row"><button data-act="send-link">Send Sign-In Link</button>${removeBtn}</div>` : `
+        <div class="row"><button data-act="send-link">Send Sign-In Link</button>${staff ? '' : '<button data-act="change-email">Change Email</button>'}${removeBtn}</div>` : `
         <form id="inviteForm" class="stack" data-save="show">
-          <p>${u.invited_at ? `Invited ${fmtWhen(u.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
+          ${u.invited_at ? `<p>Invited ${fmtWhen(u.invited_at)}, but hasn't signed in yet.</p>` : ''}
           <label>Email<input type="email" name="email" value="${esc(u.email || '')}" required data-need="Enter ${p.their} email to send the invite." autocomplete="off"></label>
           <p class="hint">${u.invited_at ? 'Fix the email here if it was wrong, then resend.' : `${p.They}'ll get an email with a link to choose a password.`}</p>
           <div class="row"><button class="primary" id="inviteBtn">${u.invited_at ? 'Resend Invite' : 'Send Invite'}</button>${removeBtn}</div>
@@ -1115,6 +1125,17 @@ async function adminUser(id, again = false) {
       if (error) throw error;
       flash(`Link sent to ${u.email}.`);
     });
+    if (b.dataset.act === 'change-email') {
+      const f = await ask({ title: 'Change Email', ok: 'Change Email', body: `<div class="stack">
+        <p>${p.They}'ll sign in with the new email from now on. ${p.Their} password stays the same.</p>
+        <label>Email<input type="email" name="email" value="${esc(u.email)}" required data-need="Enter ${p.their} new email." autocomplete="off"></label></div>` });
+      const email = f?.get('email').trim().toLowerCase();
+      if (email && email !== u.email) busy(b, async () => {
+        must(await sb.rpc('change_student_email', { p_id: id, p_email: email }));
+        flash(`Email changed. ${p.They} ${p.v('sign', 'signs')} in as ${email} now.`);
+        adminUser(id, true);
+      });
+    }
     if (b.dataset.act === 'remove') {
       const ok = await ask(staff
         ? { title: `Remove ${title}?`, warn: true, ok: 'Remove Access',
@@ -1646,14 +1667,15 @@ async function adminStudent(id, again = false) {
       <section class="card" data-fold-start><h2>Coach</h2>
         <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} coach.`}</p>
         ${coachesHTML(coaches, 'No coach yet.')}</section>
-      <section class="card"${s.user_id ? ' data-fold-start' : ''}><h2>Account</h2>
+      ${accountCardStart(!!s.user_id, s.invited_at, s.first_name, p)}
         ${s.user_id ? `
-        <p class="hint">How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.</p>
+        <p class="hint">How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.
+          ${me.isAdmin ? `Change ${p.their} email on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} email.`}</p>
         <p>Signs in as ${esc(s.email)}.</p>
         <div class="row"><button data-act="send-link">Send Sign-In Link</button>
         <button class="ghost danger" data-act="del-student">Delete Student</button></div>` : `
         <form id="inviteForm" class="stack" data-save="show">
-          <p>${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}</p>
+          ${s.invited_at ? `<p>Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.</p>` : ''}
           <label>Email<input type="email" name="email" value="${esc(s.email || '')}" required data-need="Enter ${p.their} email to send the invite." autocomplete="off"></label>
           <p class="hint">${s.invited_at ? 'Fix the email here if it was wrong, then resend.' : `${p.They}'ll get an email saying ${p.their} plan is ready, with a link to choose a password.`}</p>
           <div class="row"><button class="primary" id="inviteBtn">${s.invited_at ? 'Resend Invite' : 'Send Invite'}</button>

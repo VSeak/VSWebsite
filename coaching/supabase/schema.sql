@@ -56,6 +56,8 @@ create table public.plans (
   title text not null,
   overview text not null default '',
   start_date date,
+  -- true = Repeat Weekly: one week of sessions (all week 1), done every week. false = Week by Week.
+  repeats boolean not null default true,
   active boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

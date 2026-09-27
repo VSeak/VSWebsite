@@ -364,8 +364,7 @@ let navToken = 0;
 
 if (location.hash && !location.hash.startsWith('#/')) {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get('error_code') === 'user_banned') deactivated = true;
-  else if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Ask your coach to send a new one.';
+  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Ask your coach to send a new one.';
   else if (h.get('error_description')) linkError = h.get('error_description');
 }
 
@@ -600,11 +599,13 @@ async function loadMe(user) {
   const staffRow = roles && (await sb.from('staff').select('first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
   const firstName = roles ? (staffRow?.first_name || user.user_metadata?.first_name || '') : (student?.first_name || '');
   const fullName = (roles ? staffRow?.name : student?.name) || firstName;
-  // Deactivating someone bans their login and ends their sign-ins, but a page still open keeps its token for up to an
-  // hour. They get no roles (my_roles) and can still read their own row, so sign them out here too.
+  // A deactivated staff member (staff_deactivated in schema.sql) can still sign in with their password, but gets no
+  // roles and can read only their own row. Sign them straight back out (every device) and show "Account Deactivated".
+  // Only after a real sign-in, so guessing an email never reveals that the account exists.
   if (!roles && !student
       && (await sb.from('staff').select('deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()).data?.deactivated_at) {
-    await sb.auth.signOut({ scope: 'local' });
+    const { error } = await sb.auth.signOut();
+    if (error) await sb.auth.signOut({ scope: 'local' });
     me = null;
     deactivated = true;
     return;
@@ -812,8 +813,6 @@ function viewLogin() {
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
       const { data, error } = await sb.auth.signInWithPassword({ email: f.get('email').trim(), password: f.get('password') });
-      // A deactivated staff member's login is banned (staff_deactivated in schema.sql).
-      if (error?.code === 'user_banned') return deactivatedNotice();
       if (error) throw error;
       await loadMe(data.user);
       linkError = null;

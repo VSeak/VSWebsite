@@ -442,24 +442,19 @@ create trigger protect_owner before insert or update or delete on public.staff
   for each row execute function public.protect_owner();
 
 -- Staff who leave are deactivated (deactivated_at), not deleted, so they can come back with their history.
--- Deactivating someone (not yourself) leaves their students with no coach, bans their login so they can't sign in
--- (the page shows "Account Deactivated"), and ends any sign-in they have open. A login that is also a student's
--- isn't banned: they keep their student access. Reactivating lifts the ban (their students don't come back).
+-- Deactivating someone (not yourself) leaves their students with no coach and ends any sign-in they have open (unless
+-- their login is also a student's). Their password still works, so only someone who knows it learns the account is
+-- deactivated: the page signs them straight back out and shows "Account Deactivated". They get no roles or data meanwhile.
+-- Reactivating doesn't give their students back.
 create function public.staff_deactivated() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if (new.deactivated_at is null) = (old.deactivated_at is null) then return null; end if;
-  if new.deactivated_at is null then
-    update auth.users set banned_until = null where lower(email) = new.email;
-    return null;
-  end if;
+  if new.deactivated_at is null or old.deactivated_at is not null then return null; end if;
   if new.email = lower(auth.jwt() ->> 'email') then raise exception 'You can''t deactivate yourself.'; end if;
   update public.students set coach_id = null where coach_id = new.id;
-  update auth.users u set banned_until = '2999-12-31'
-  where lower(u.email) = new.email
-    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = new.email);
   delete from auth.sessions s using auth.users u
-  where s.user_id = u.id and u.banned_until is not null and lower(u.email) = new.email;
+  where s.user_id = u.id and lower(u.email) = new.email
+    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = new.email);
   return null;
 end;
 $$;

@@ -33,7 +33,17 @@ create table public.students (
   invited_at timestamptz,
   user_id uuid unique references auth.users (id) on delete set null,
   coach_id uuid references public.staff (id) on delete set null,   -- current coach; history in student_coaches
-  created_at timestamptz not null default now()
+  -- Their next training session: coaches and admins set it, the student only reads it.
+  -- All four are set together (the end after the start), or none.
+  next_date date,
+  next_start time,
+  next_end time,
+  next_location text check (length(next_location) <= 200),
+  created_at timestamptz not null default now(),
+  constraint next_session_whole check (
+    (next_date is null and next_start is null and next_end is null and next_location is null)
+    or (next_date is not null and next_start is not null and next_end > next_start
+        and length(trim(next_location)) > 0))
 );
 
 create table public.plans (

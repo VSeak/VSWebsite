@@ -144,6 +144,7 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 /* Coaches */
 .coach { display: flex; justify-content: space-between; align-items: baseline; gap: .2rem .8rem; flex-wrap: wrap; padding: .5rem 0; }
 .alert ul { margin: .3rem 0 0; padding-left: 1.2rem; }
+.next-session { margin: 0 0 .8rem; }
 
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
 .feed h2 + .note-wrap { border-top: 0; }
@@ -696,13 +697,14 @@ async function adminUser(id, again = false) {
   const mine = isMine(u), active = !!u.last_sign_in_at;
   // Admins can't read plans or goals, so ask the database whether a student is ready for the invite.
   const ready = staff || active || await sb.rpc('student_ready', { p_id: id }).then(must);
-  // Students: their coach, who could coach them, and past coaches. Staff: the students they coach.
-  const [coachId, coachOpts, coaches, pupils] = await Promise.all(staff
+  // Students: their row (coach and next session), who could coach them, and past coaches. Staff: the students they coach.
+  const [stu, coachOpts, coaches, pupils] = await Promise.all(staff
     ? [null, [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
-    : [sb.from('students').select('coach_id').eq('id', id).single().then(must).then(r => r.coach_id),
+    : [sb.from('students').select('coach_id,' + NEXT_COLS).eq('id', id).single().then(must),
        sb.from('staff').select('id,name,email').contains('roles', ['coach']).order('first_name').then(must),
        sb.rpc('coaches_of', { p_id: id }).then(must), []]);
   if (t !== navToken) return;
+  const coachId = stu?.coach_id ?? null;
   // Keep their coach in the list even if they've lost the Coach role since.
   const cur = coaches.find(c => c.is_current);
   if (coachId && cur && !coachOpts.some(c => c.id === coachId)) coachOpts.push({ id: coachId, name: cur.name });
@@ -745,6 +747,7 @@ async function adminUser(id, again = false) {
     </section>`}
     </div>
     <aside>
+      ${staff ? '' : nextSessionCardHTML(stu)}
       <section class="card"><h2>Account</h2>
         ${active ? `
         <p>Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.</p>
@@ -759,6 +762,7 @@ async function adminUser(id, again = false) {
       </section>
     </aside>
   </div>`, { keepScroll: again });
+  if (!staff) bindNextSession(id, stu);
   if (!ready) gateInvite(me.isCoach
     ? `Save a training plan and add a goal on <a href="#/student/${u.id}">their student page</a> before sending the invite.`
     : 'A coach needs to save a training plan and add a goal before the invite can go out.');
@@ -898,6 +902,65 @@ function coachesHTML(coaches, none) {
     + (past.length ? `<h3 class="goal-group">Past Coaches</h3><ul class="list">${past.map(coachRow).join('')}</ul>` : '');
 }
 
+// ---------- Next session (students.next_*: coaches and admins set it, the student reads it) ----------
+
+const NEXT_COLS = 'next_date,next_start,next_end,next_location';
+const fmtTime = t => new Date('1970-01-01T' + t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const localToday = () => new Date().toLocaleDateString('en-CA');   // YYYY-MM-DD in local time
+// Once the day has gone by it isn't "next" any more: the student stops seeing it.
+const nextPassed = s => !s.next_date || s.next_date < localToday();
+const nextWhen = s => `${day(s.next_date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+  · ${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}`;
+
+function nextSessionCardHTML(s) {
+  const hm = t => t ? t.slice(0, 5) : '';
+  return `<section class="card" id="nextCard"><h2>Next Session</h2>
+    ${s.next_date && nextPassed(s) ? '<p class="hint">This date has passed, so they no longer see it. Set the next one.</p>' : ''}
+    <form id="nextForm" class="stack">
+      <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" required data-need="Pick the day."></label>
+      <div class="row">
+        <label class="grow" style="min-width:120px">Start Time<input type="time" name="next_start" value="${hm(s.next_start)}" required data-need="Pick a start time."></label>
+        <label class="grow" style="min-width:120px">End Time<input type="time" name="next_end" value="${hm(s.next_end)}" required data-need="Pick an end time."></label>
+      </div>
+      <label>Location<input name="next_location" value="${esc(s.next_location || '')}" maxlength="200" required
+        data-need="Say where it is." autocomplete="off" placeholder="e.g. Main gym, bouldering wall"></label>
+      <p class="hint">They see it at the top of their page until the day has passed.</p>
+      <div class="row"><button class="primary">Save Session</button>
+        ${s.next_date ? '<button type="button" class="ghost danger" data-act="next-clear">Clear</button>' : ''}</div>
+    </form>
+  </section>`;
+}
+
+// Saves or clears the next session, then redraws the card in place.
+function bindNextSession(id, s) {
+  const draw = () => {
+    $('#nextCard').outerHTML = nextSessionCardHTML(s);
+    bindNextSession(id, s);
+  };
+  const save = (btn, patch, msg) => busy(btn, async () => {
+    Object.assign(s, await sb.from('students').update(patch).eq('id', id).select(NEXT_COLS).single().then(must));
+    draw();
+    flash(msg);
+  });
+  const form = $('#nextForm');
+  form.onsubmit = e => {
+    e.preventDefault();
+    const f = new FormData(form), start = f.get('next_start'), end = f.get('next_end');
+    if (end <= start) return fieldError(form.elements.next_end, 'End after the start time.');
+    save(e.submitter, { next_date: f.get('next_date'), next_start: start, next_end: end,
+      next_location: f.get('next_location').trim() }, 'Next session saved.');
+  };
+  form.querySelector('[data-act="next-clear"]')?.addEventListener('click', async e => {
+    e.stopPropagation();   // not the page's own data-act handler
+    if (await ask({ title: 'Clear the Next Session?', body: "<p>They won't see a next session until you set one.</p>", ok: 'Clear', warn: true }))
+      save(e.target, { next_date: null, next_start: null, next_end: null, next_location: null }, 'Next session cleared.');
+  });
+}
+
+// What the student sees: nothing once the day has passed.
+const nextSessionAlert = s => s && !nextPassed(s) ? `<div class="alert next-session"><strong>Next session:</strong>
+  ${esc(nextWhen(s))}<br><span class="muted">${esc(s.next_location)}</span></div>` : '';
+
 // ---------- Goals (current → achieved or archived) ----------
 
 const fmtDay = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -955,6 +1018,7 @@ async function adminStudent(id) {
       <section class="card" id="goalsCard"></section>
     </div>
     <aside>
+      ${nextSessionCardHTML(s)}
       <section class="card"><h2>Details</h2>
         <form id="stuForm" class="stack">
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter their first name."></label>
@@ -981,6 +1045,7 @@ async function adminStudent(id) {
       </section>
     </aside>
   </div>`);
+  bindNextSession(id, s);
 
   $('#stuForm').onsubmit = e => {
     e.preventDefault();
@@ -1558,17 +1623,18 @@ function sessionReadHTML(s, withNotes) {
 async function studentHome() {
   const t = ++navToken;
   view(loading);
-  const [plans, goals, coaches] = await Promise.all([
+  const [plans, goals, coaches, next] = await Promise.all([
     sb.from('plans').select('id,title,active,start_date')
       .order('active', { ascending: false }).order('created_at', { ascending: false }).then(must),
     sb.from('goals').select('*').then(must).then(sortGoals),   // RLS leaves out archived goals
     sb.rpc('coaches_of', { p_id: me.student.id }).then(must),
+    sb.from('students').select(NEXT_COLS).eq('id', me.student.id).maybeSingle().then(must),
   ]);
   if (t !== navToken) return;
   const current = plans.filter(p => p.active);
-  if (current.length === 1) return studentPlan(current[0].id, plans, goals, coaches);
+  if (current.length === 1) return studentPlan(current[0].id, plans, goals, coaches, next);
 
-  view(`<h1>${welcome()}</h1>${goalHTML(goals)}
+  view(`<h1>${welcome()}</h1>${nextSessionAlert(next)}${goalHTML(goals)}
     ${plans.length ? `<section class="card"><h2>Your Plans</h2><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
     ${achievedHTML(goals)}${yourCoachHTML(coaches)}`);
@@ -1591,7 +1657,7 @@ const yourCoachHTML = coaches => coaches.length ? `<section class="card" style="
 const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title || 'Untitled Plan')}</strong>
   ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
 
-async function studentPlan(id, allPlans, goals, coaches) {
+async function studentPlan(id, allPlans, goals, coaches, next) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions] = await Promise.all([
@@ -1606,6 +1672,7 @@ async function studentPlan(id, allPlans, goals, coaches) {
   notesCtx = { notes, studentName: me.student.name };
   const others = allPlans?.filter(p => p.id !== id) || [];
   view(`${allPlans ? '' : crumbs([['Home', '#/'], [plan.title || 'Untitled Plan']])}
+    ${nextSessionAlert(next)}
     ${goals ? goalHTML(goals) : ''}
     ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}
     ${planReadHTML(plan, sessions)}

@@ -147,6 +147,8 @@ h1 .pronouns { font-size: 1rem; margin-left: .3rem; vertical-align: .15em; }
   background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 .tag.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent);
   background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.tag.danger { border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 /* A next session that has ended: the card and a banner in the warn color, so the coach sets a new one. */
 .card.overdue { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
 .warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); border-left: 4px solid var(--warn);
@@ -927,7 +929,7 @@ const sortRoles = roles => [...roles].sort((a, b) => roleRank(a) - roleRank(b));
 const rolesText = roles => sortRoles(roles).map(r => ROLE_LABEL[r] || r).join(' · ');
 const roleTags = roles => sortRoles(roles).map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
 const userStatus = u => u.deactivated_at ? 'Deactivated' : u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
-const statusTag = u => `<span class="tag${u.last_sign_in_at && !u.deactivated_at ? ' ok' : ''}">${userStatus(u)}</span>`;
+const statusTag = u => `<span class="tag${u.deactivated_at ? ' danger' : u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span>`;
 // Deactivated staff sort after everyone else.
 const roleOrder = u => u.deactivated_at ? Object.keys(ROLE_LABEL).length : Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
 const isMine = u => u.kind === 'staff' && u.email === me.user.email?.toLowerCase();
@@ -1076,7 +1078,7 @@ async function adminUser(id, again = false) {
     : mine ? "You can't remove your own Admin role. Ask another admin." : '';
 
   view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
-  <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag">Inactive</span>' : ''}${off ? '<span class="tag">Deactivated</span>' : ''}</div>
+  <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag danger">Inactive</span>' : ''}${off ? '<span class="tag danger">Deactivated</span>' : ''}</div>
   <div class="grid2" data-folds="user">
     <div>
     <section class="card" data-fold-start><h2>Details</h2>
@@ -1096,7 +1098,7 @@ async function adminUser(id, again = false) {
       ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
         : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
       + (mine || u.owner ? '' : `<section class="card" data-fold-start>
-      <div class="row between"><h2>Staff Access</h2><span class="tag${off ? '' : ' ok'}">${off ? 'Deactivated' : 'On'}</span></div>
+      <div class="row between"><h2>Staff Access</h2><span class="tag ${off ? 'danger' : 'ok'}">${off ? 'Deactivated' : 'On'}</span></div>
       <p class="hint">${off ? `Deactivated ${fmtDay(u.deactivated_at)}. ${p.They} can't sign in. ${p.Their} details and history are kept, so you can reactivate ${p.them}. Delete ${p.them} only if ${p.they} won't be back.`
         : `When ${p.they} ${p.v('leave', 'leaves')}, deactivate ${p.them}. ${p.Their} details and history are kept, so ${p.they} can come back later.`}</p>
       <div class="row">${off ? `<button type="button" class="primary" data-act="reactivate">Reactivate</button>
@@ -1588,7 +1590,7 @@ function studentHistory(log, next) {
 function trainingCardHTML(s, edit = true) {
   const done = s.training_ended_at, p = pro(s.pronouns);
   return `<section class="card" id="trainingCard" data-fold-start>
-    <div class="row between"><h2>Coaching Status</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
+    <div class="row between"><h2>Coaching Status</h2><span class="tag ${done ? 'danger' : 'ok'}">${done ? 'Inactive' : 'Active'}</span></div>
     ${!edit ? `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}.` : 'Being coached.'} Only ${p.their} coach can change this.</p>`
     : `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
         ${me.isCoach && !isSelf(s) ? `Resuming makes you ${p.their} coach.` : `After resuming, pick ${p.their} coach.`}
@@ -1768,7 +1770,7 @@ async function adminStudent(id, again = false) {
   };
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
-  <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
+  <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag danger">Inactive</span>' : ''}</div>
   ${edit ? '' : `<p class="alert">${esc(s.first_name)} is coached by ${esc(coach?.name || 'another coach')}. You can read everything here,
     add Coach Notes and add past sessions you ran. Only ${p.their} coach can change the rest.</p>`}
   <div class="grid2 phone-order" data-folds="student">

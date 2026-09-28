@@ -151,7 +151,7 @@ function renderEditor() {
     </section>
     ${purposeFilterHTML()}
     ${sessionsHTML}
-    <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Plan</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
+    <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Training Plan</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
   }
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}

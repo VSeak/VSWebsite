@@ -1,7 +1,7 @@
 -- Only a student's current coach changes their plans, goals, details and next session, and replies to their notes.
 -- Other coaches can read everything, add Coach Notes (editing only their own) and log past sessions.
 -- A student with no coach can be changed by any coach. Ending coaching leaves the student with no coach;
--- a coach who resumes it becomes their coach.
+-- resuming it leaves them with none until an admin picks one.
 -- A staff member can also be a student: nobody coaches themselves, and a coach never sees Coach Notes about themselves.
 
 -- True when the student is the signed-in person (their claimed login, or their email before they claim it).
@@ -128,7 +128,7 @@ begin
 end;
 $$;
 
--- Coaches: ending coaching leaves no coach, and a coach who resumes it becomes the coach. Nobody coaches themselves.
+-- Coaches: ending coaching leaves no coach (resuming keeps none; an admin picks). Nobody coaches themselves.
 create or replace function public.check_student_coach() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -139,10 +139,6 @@ begin
   if tg_op = 'UPDATE' and new.training_ended_at is distinct from old.training_ended_at then
     if new.training_ended_at is not null then
       new.coach_id := null;
-      return new;
-    end if;
-    if new.coach_id is null and old.coach_id is null and public.is_coach() and not public.is_self(new.id) then
-      new.coach_id := public.my_staff_id();
       return new;
     end if;
   end if;

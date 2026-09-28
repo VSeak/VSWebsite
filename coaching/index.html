@@ -1303,7 +1303,7 @@ async function adminStudents() {
       ? section('My Students', mine, 'Students you are coaching now. Only you change their plans, goals and sessions.', 'No students yet.')
         + (none.length ? section('No Coach', none, 'Active students with no coach. Any coach can change them until an admin picks their coach.', '') : '')
         + section("Other Coaches' Students", others, 'You can read their plans and goals, add Coach Notes and add past sessions you ran.', 'None right now.', true)
-        + section('Inactive', inactive, 'Students no longer being coached. Resume Coaching on their page brings them back, with you as their coach.', 'No inactive students.', true)
+        + section('Inactive', inactive, 'Students no longer being coached. Resume Coaching on their page brings them back, with no coach until an admin picks one.', 'No inactive students.', true)
       : '<section class="card"><p class="muted">No students yet. Add your first one.</p></section>'}</div>
     <aside>
       <section class="card"><h2>Add a Student</h2>
@@ -1591,7 +1591,7 @@ function trainingCardHTML(s, edit = true) {
     <div class="row between"><h2>Coaching Status</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
     ${!edit ? `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}.` : 'Being coached.'} Only ${p.their} coach can change this.</p>`
     : `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
-        ${me.isCoach && !isSelf(s) ? `Resuming makes you ${p.their} coach.` : `After resuming, pick ${p.their} coach.`}
+        ${me.isAdmin ? `Resuming leaves ${p.them} with no coach until you pick one.` : `Resuming leaves ${p.them} with no coach until an admin picks one.`}
         Delete ${p.them} only if ${p.they} ${p.v('were', 'was')} added by mistake.`
       : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list and ${p.v('have', 'has')} no coach.`}</p>
     <div class="row"><button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>

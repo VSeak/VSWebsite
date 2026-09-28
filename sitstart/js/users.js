@@ -11,21 +11,27 @@ const roleRank = r => (i => i < 0 ? STAFF_ROLES.length : i)(STAFF_ROLES.indexOf(
 const sortRoles = roles => [...roles].sort((a, b) => roleRank(a) - roleRank(b));
 const rolesText = roles => sortRoles(roles).map(r => ROLE_LABEL[r] || r).join(' · ');
 const roleTags = roles => sortRoles(roles).map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
-const userStatus = u => u.deactivated_at ? 'Deactivated' : u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
-const statusTag = u => `<span class="tag${u.deactivated_at ? ' danger' : u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span>`;
-// Deactivated staff sort after everyone else.
-const roleOrder = u => u.deactivated_at ? Object.keys(ROLE_LABEL).length : Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
+const userStatus = u => u.deactivated_at ? 'Deactivated' : u.ended_at ? 'Inactive' : u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
+const statusTag = u => `<span class="tag${u.deactivated_at || u.ended_at ? ' danger' : u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span>`;
+// Deactivated staff and inactive students (coaching ended) sort after everyone else.
+const gone = u => !!(u.deactivated_at || u.ended_at);
+const roleOrder = u => gone(u) ? Object.keys(ROLE_LABEL).length + !!u.deactivated_at : Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
 const isMine = u => u.kind === 'staff' && u.email === me.user.email?.toLowerCase();
 
 async function adminUsers() {
   const t = ++navToken;
   view(loading);
-  const users = await sb.rpc('list_users').then(must);
+  // list_users() doesn't say whose coaching has ended, so read that from students (admins can).
+  const [users, ended] = await Promise.all([sb.rpc('list_users').then(must),
+    sb.from('students').select('id,training_ended_at').not('training_ended_at', 'is', null).then(must)]);
   if (t !== navToken) return;
+  const endedAt = new Map(ended.map(s => [s.id, s.training_ended_at]));
+  users.forEach(u => { if (u.kind === 'student') u.ended_at = endedAt.get(u.id) || null; });
   users.sort((a, b) => (roleOrder(a) - roleOrder(b)) || (a.name || a.email || '').localeCompare(b.name || b.email || ''));
 
-  // The role filters leave out deactivated staff, who have their own filter.
-  const inFilter = (u, r) => !r ? true : r === 'deactivated' ? !!u.deactivated_at : !u.deactivated_at && u.roles.includes(r);
+  // The role filters leave out deactivated staff and inactive students, who have their own filters.
+  const inFilter = (u, r) => !r ? true : r === 'deactivated' ? !!u.deactivated_at : r === 'inactive' ? !!u.ended_at
+    : !gone(u) && u.roles.includes(r);
   const count = r => users.filter(u => inFilter(u, r)).length;
   view(`${crumbs([['Home', '#/'], ['Users']])}
   <h1>Users</h1>
@@ -36,7 +42,8 @@ async function adminUsers() {
         <select id="userRole" aria-label="Role" style="width:auto">
           <option value="">Everyone (${users.length})</option>
           ${Object.keys(ROLE_LABEL).map(r => `<option value="${r}">${ROLE_PLURAL[r]} (${count(r)})</option>`).join('')}
-          ${count('deactivated') ? `<option value="deactivated">Deactivated Staff (${count('deactivated')})</option>` : ''}
+          ${count('inactive') ? `<option value="inactive">Inactive Students (${count('inactive')})</option>` : ''}
+          ${count('deactivated') ?`<option value="deactivated">Deactivated Staff (${count('deactivated')})</option>` : ''}
         </select>
       </div>
       <div class="list-head" id="userHead"><span>User</span><span>Roles / Status</span></div>

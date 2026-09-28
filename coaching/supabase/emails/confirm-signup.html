@@ -1,6 +1,6 @@
 <!-- Supabase → Authentication → Emails → Templates → Confirm signup.
-     Subject: Private Coaching: {{ if .Data.staff }}You're Invited{{ else }}Your Training Plan Is Ready{{ end }} 🧗
-     (If Supabase won't take the if in the subject, use: Private Coaching: Your Invite 🧗)
+     Subject: Sit Start: {{ if .Data.staff }}You're Invited{{ else }}Your Training Plan Is Ready{{ end }} 🧗
+     (If Supabase won't take the if in the subject, use: Sit Start: Your Invite 🧗)
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
      {{ .Data.first_name }} is the student's first name, sent by the page with the invite (sendLink in index.html).
      {{ .Data.staff }} is set when an admin invites a coach or admin, so the wording changes for them.
@@ -12,7 +12,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>Private Coaching: Your Training Plan Is Ready</title>
+<title>Sit Start: Your Training Plan Is Ready</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&family=Sora:wght@600&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0; padding:0; background:#F3F0EA;">
@@ -74,7 +74,7 @@
             <!-- Signature -->
             <p style="margin:0; font-size:16px; line-height:1.6;">
               {{ if .Data.staff }}Welcome aboard!{{ else }}Happy training!{{ end }}<br>
-              <strong style="font-family:'Space Grotesk', Arial, sans-serif;">{{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }}</strong>
+              <strong style="font-family:'Space Grotesk', Arial, sans-serif;">{{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }}</strong>
             </p>
 
           </td>
@@ -83,7 +83,7 @@
         <!-- Footer -->
         <tr>
           <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#766B60;">
-            This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Private Coaching{{ end }} added you as {{ if .Data.staff }}staff{{ else }}a student{{ end }}. If you weren't expecting it, you can ignore it.
+            This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }} added you as {{ if .Data.staff }}staff{{ else }}a student{{ end }}. If you weren't expecting it, you can ignore it.
           </td>
         </tr>
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Private Coaching</title>
+<title>Sit Start</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="theme-color" content="#FFFDF9" media="(prefers-color-scheme: light)">
@@ -332,7 +332,7 @@ dialog .row { margin-top: 1rem; }
 <script>
 // ---- Fill these in from Supabase (see SETUP.md) ----
 const CONFIG = {
-  siteName: "Private Coaching",
+  siteName: "Sit Start",
   supabaseUrl: "https://loxyrqffevvdhwltccxr.supabase.co",   // e.g. https://abcd1234.supabase.co
   supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxveHlycWZmZXZ2ZGh3bHRjY3hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNzc5NzAsImV4cCI6MjEwNTk1Mzk3MH0.czgnKpu18kuEghIC3Ixy6jR-AFvBHQVH7rDDqmFF_EI",   // the publishable (or "anon") key. Never the secret key.
   siteUrl: "https://vseak.github.io/VSWebsite/coaching/",   // where emailed sign-in links go, even when sent from localhost. Leave "" to use the current address.
@@ -347,7 +347,7 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 const loading = '<p class="muted">Loading…</p>';
 
 document.title = CONFIG.siteName;
-{ // "Private Coaching" → "Private" over a small "COACHING"
+{ // "Sit Start" → "Sit" over a small "START"
   const [first, ...rest] = CONFIG.siteName.split(' ');
   $('.brand-name').innerHTML = esc(first) + (rest.length ? `<small>${esc(rest.join(' '))}</small>` : '');
   $('.brand').setAttribute('aria-label', CONFIG.siteName);

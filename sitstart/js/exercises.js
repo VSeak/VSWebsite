@@ -1,6 +1,7 @@
 // ---------- Staff: master exercise list ----------
 
 // Plans copy an exercise's values when it's picked, so editing either one never changes the other.
+const EX_PAGE = 10;   // exercises per page on the Master Exercise List
 const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps / Time'], ['rest', 'Rest'], ['notes', 'Notes']];
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
@@ -20,11 +21,12 @@ async function adminExercises() {
   view(`${crumbs([['Home', '#/'], ['Master Exercise List']])}
   <h1>Master Exercise List</h1>
   <div class="grid2">
-    <section class="card"><h2>Exercises (<span id="exCount"></span>)</h2>
+    <section class="card"><h2>All Exercises (<span id="exCount"></span>)</h2>
       <p class="hint">Every exercise you can pick in a training plan, with the values it fills in. Search, edit or delete them here.</p>
       <input id="exSearch" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
       <div class="list-head" id="exHead"><span>Exercise</span><span class="ex-actions">Action</span></div>
       <ul class="list" id="exList"></ul>
+      <div id="exPager"></div>
     </section>
     <aside>
       <section class="card"><h2>Add Exercise</h2>
@@ -36,12 +38,19 @@ async function adminExercises() {
   </div>`);
 
   const search = $('#exSearch');
+  let page = 1;
+  const matches = () => { const q = exKey(search.value); return list.filter(x => !q || x.name_key.includes(q)); };
+  // Goes to the page that holds x, if the search shows it.
+  const pageWith = x => { const i = matches().indexOf(x); if (i >= 0) page = Math.floor(i / EX_PAGE) + 1; };
   function renderList() {
-    const q = exKey(search.value);
-    const shown = list.filter(x => !q || x.name_key.includes(q));
+    const shown = matches();
+    const [items, p] = pageOf(shown, page, EX_PAGE);
+    page = p;
     $('#exCount').textContent = list.length;
     $('#exHead').hidden = !shown.length;
-    $('#exList').innerHTML = shown.map(x => {
+    $('#exPager').innerHTML = pagerHTML(page, shown.length, EX_PAGE, ['Previous', 'Next']);
+    bindPager($('#exPager'), n => { page = n; renderList(); });
+    $('#exList').innerHTML = items.map(x => {
       const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l}: ${esc(x[f])}`).join(' · ');
       return `<li class="goal"><div class="goal-text"><strong>${esc(x.name)}</strong>
         ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">Notes: ${para(x.notes)}</span>` : ''}</div>
@@ -51,7 +60,7 @@ async function adminExercises() {
   }
   const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));
   renderList();
-  search.oninput = renderList;
+  search.oninput = () => { page = 1; renderList(); };
 
   $('#exAdd').onsubmit = e => {
     e.preventDefault();
@@ -62,6 +71,7 @@ async function adminExercises() {
       list.push(data); sortList();
       e.target.reset();
       search.value = '';
+      pageWith(data);
       renderList();
       e.target.elements.name.focus();
       flash(`${data.name} added.`);
@@ -79,6 +89,7 @@ async function adminExercises() {
         const { data, error } = await sb.from('exercises').update(exFromForm(f)).eq('id', x.id).select().single();
         if (error) throw exDupError(error);
         Object.assign(x, data); sortList();
+        pageWith(x);
         renderList();
         flash('Exercise saved.');
       });

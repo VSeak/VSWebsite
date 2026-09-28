@@ -4,8 +4,19 @@ A personal site for a bouldering coach. Coaches sign in to manage students and w
 
 ## How it's built
 
-- One page: `index.html`, with HTML, CSS and plain JavaScript inline. No build step. supabase-js v2 comes from jsDelivr, fonts from Google Fonts.
-- Backend: Supabase (auth + Postgres). `supabase/schema.sql` creates everything. Setup steps are in `SETUP.md`. `CONFIG` at the top of the script holds the project URL and publishable key.
+- One page (`index.html`: the header and page shell), styled by `styles.css`, run by plain JavaScript in `js/`. No build step. supabase-js v2 comes from jsDelivr, fonts from Google Fonts.
+- The JS files are classic `<script>` tags, not modules: they share one global scope, so any file can call any other's functions. They load in the order listed in `index.html`, and `boot()` runs after the last one. Code that runs straight away at load (not inside a function) can only use what earlier files define. Don't declare the same top-level name in two files (a duplicate `const`/`let` stops the second file loading). A new file needs its own `<script>` tag.
+  - `core.js`: `CONFIG`, page state (`me`, `draft`, `dirty`), helpers (`esc`, `flash`, `ask`, `crumbs`, field errors), pronouns, date formats, `sendLink`.
+  - `app.js`: `boot`, `loadMe`, `route`, the leave check and unsaved marks, foldable cards, the unsaved bar, sign-in pages, staff Home (`ADMIN_PAGES`).
+  - `users.js`: the Users page and `#/user/<id>` (roles, staff access).
+  - `students.js`: the Students list.
+  - `cards.js`: shared cards and pieces: coaches, pagers, the Sessions card, Coaching Status, Goals, Coach Notes.
+  - `student-page.js`: `#/student/<id>` (`adminStudent`).
+  - `exercises.js`: the Master Exercise List and the `#exMenu` name picker.
+  - `plan-editor.js`: `#/plan/<id>` for staff (`adminPlan`, `savePlan`).
+  - `student-view.js`: plans as students see them, the student home.
+  - `notes.js`: plan notes, shared by the student view and the plan editor.
+- Backend: Supabase (auth + Postgres). `supabase/schema.sql` creates everything. Setup steps are in `SETUP.md`. `CONFIG` at the top of `js/core.js` holds the project URL and publishable key.
 - **Security is in the database, not the page.** Row-level security in `schema.sql` decides what each user can read or write. Any new table needs RLS and policies. The page never holds the secret key.
 - Serve it over http (`npx serve .`), since sign-in links need a real address.
 

@@ -40,7 +40,7 @@ Leave **Authentication → Sign In / Providers → Email** on, and leave "Allow 
 
 ## 6. Connect the site
 
-**Project Settings → API Keys.** Copy the **Project URL** and the **publishable key** (or the key labelled `anon`), and paste them into `CONFIG` near the top of the script in `sitstart/index.html`:
+**Project Settings → API Keys.** Copy the **Project URL** and the **publishable key** (or the key labelled `anon`), and paste them into `CONFIG` at the top of `sitstart/js/core.js`:
 
 ```js
 const CONFIG = {
@@ -70,7 +70,7 @@ GitHub Pages publishes the site straight from the repo, free, and every push to 
 2. In the repo on GitHub: **Settings → Pages → Build and deployment**. Source: **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
 3. After a minute or two the page shows the address, like `https://your-name.github.io/VSWebsite/`. The Sit Start app is at `/VSWebsite/sitstart/`. The `.nojekyll` file in the repo root tells Pages to serve the files as they are.
 
-Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `sitstart/index.html`) to it, e.g. `https://your-name.github.io/VSWebsite/sitstart/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
+Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `sitstart/js/core.js`) to it, e.g. `https://your-name.github.io/VSWebsite/sitstart/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
 
 ## Good to know
 

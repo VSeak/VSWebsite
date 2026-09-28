@@ -20,7 +20,7 @@ async function adminExercises() {
   view(`${crumbs([['Home', '#/'], ['Master Exercise List']])}
   <h1>Master Exercise List</h1>
   <div class="grid2">
-    <section class="card">
+    <section class="card"><h2>Exercises (<span id="exCount"></span>)</h2>
       <p class="hint">Every exercise you can pick in a training plan, with the values it fills in. Search, edit or delete them here.</p>
       <input id="exSearch" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
       <div class="list-head" id="exHead"><span>Exercise</span><span class="ex-actions">Action</span></div>
@@ -39,6 +39,7 @@ async function adminExercises() {
   function renderList() {
     const q = exKey(search.value);
     const shown = list.filter(x => !q || x.name_key.includes(q));
+    $('#exCount').textContent = list.length;
     $('#exHead').hidden = !shown.length;
     $('#exList').innerHTML = shown.map(x => {
       const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l}: ${esc(x[f])}`).join(' · ');

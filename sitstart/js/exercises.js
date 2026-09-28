@@ -2,6 +2,7 @@
 
 // Plans copy an exercise's values when it's picked, so editing either one never changes the other.
 const EX_PAGE = 10;   // exercises per page on the Master Exercise List
+const PUR_PAGE = 5;   // purposes per page in the Purposes card
 const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps / Time'], ['rest', 'Rest'], ['notes', 'Notes']];
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
@@ -59,10 +60,11 @@ async function adminExercises() {
           New exercises typed into a plan are added here when the plan is saved.</p>
         <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, purNames())}<button class="primary">+ Add Exercise</button></form>
       </section>
-      <div data-folds="exercises"><section class="card" data-fold="purposes"><h2>Purposes (<span id="purCount"></span>)</h2>
+      <div data-folds="exercises"><section class="card" data-fold="purposes" data-fold-start><h2>Purposes (<span id="purCount"></span>)</h2>
         <p class="hint">The purposes to pick from for an exercise. Renaming or deleting a purpose changes every exercise that has it.</p>
         <form id="purAdd" class="stack" data-save>${purFieldHTML()}<button class="primary">+ Add Purpose</button></form>
         <ul class="list" id="purList"></ul>
+        <div id="purPager"></div>
       </section></div>
     </aside>
   </div>`);
@@ -83,9 +85,15 @@ async function adminExercises() {
     purposeSel.value = was;
     purposeSel.hidden = !used.length;
   }
+  let purPage = 1;
+  const purPageWith = p => { const i = purposes.indexOf(p); if (i >= 0) purPage = Math.floor(i / PUR_PAGE) + 1; };
   function renderPurposes() {
+    const [items, pg] = pageOf(purposes, purPage, PUR_PAGE);
+    purPage = pg;
     $('#purCount').textContent = purposes.length;
-    $('#purList').innerHTML = purposes.map(p => { const n = usedBy(p.name);
+    $('#purPager').innerHTML = pagerHTML(purPage, purposes.length, PUR_PAGE, ['Previous', 'Next']);
+    bindPager($('#purPager'), n => { purPage = n; renderPurposes(); });
+    $('#purList').innerHTML = items.map(p => { const n = usedBy(p.name);
       return `<li class="goal"><div class="goal-text"><strong>${esc(p.name)}</strong>
         <span class="item-sub">${n ? `${n} exercise${n === 1 ? '' : 's'}` : 'Not used yet'}</span></div>
         <div class="row ex-actions"><button type="button" class="small ghost" data-act="pur-rename" data-pur="${p.id}">Rename</button>
@@ -148,7 +156,7 @@ async function adminExercises() {
     busy(e.submitter, async () => {
       const { data, error } = await sb.from('exercise_purposes').insert({ name }).select().single();
       if (error) throw purDupError(error);
-      purposes.push(data); sortPurposes();
+      purposes.push(data); sortPurposes(); purPageWith(data);
       e.target.reset();
       renderPurposes(); redrawPicks();
       e.target.elements.name.focus();
@@ -166,7 +174,7 @@ async function adminExercises() {
         const old = p.name;
         const { data, error } = await sb.from('exercise_purposes').update({ name: f.get('name').trim() }).eq('id', p.id).select().single();
         if (error) throw purDupError(error);
-        Object.assign(p, data); sortPurposes();
+        Object.assign(p, data); sortPurposes(); purPageWith(p);
         list.forEach(x => { x.purposes = x.purposes.map(g => g === old ? p.name : g); });
         renderPurposes(); redrawPicks({ [old]: p.name }); renderList();
         flash('Purpose saved.');

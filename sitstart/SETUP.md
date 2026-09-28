@@ -33,14 +33,14 @@ Then, under **Authentication → Emails → Templates**, replace **Confirm signu
 
 **Authentication → URL Configuration:**
 
-- **Site URL:** your site's address, e.g. `https://your-name.github.io/VSWebsite/coaching/` (use `http://localhost:3000` until it's hosted).
+- **Site URL:** your site's address, e.g. `https://your-name.github.io/VSWebsite/sitstart/` (use `http://localhost:3000` until it's hosted).
 - **Redirect URLs:** add `http://localhost:3000/**` and, once hosted, `https://your-site-address/**`.
 
 Leave **Authentication → Sign In / Providers → Email** on, and leave "Allow new users to sign up" **on**. The database only lets emails on your student list create an account, so strangers can't sign up.
 
 ## 6. Connect the site
 
-**Project Settings → API Keys.** Copy the **Project URL** and the **publishable key** (or the key labelled `anon`), and paste them into `CONFIG` near the top of the script in `coaching/index.html`:
+**Project Settings → API Keys.** Copy the **Project URL** and the **publishable key** (or the key labelled `anon`), and paste them into `CONFIG` near the top of the script in `sitstart/index.html`:
 
 ```js
 const CONFIG = {
@@ -54,13 +54,13 @@ The publishable key is meant to be public. **Never** paste the secret or `servic
 
 ## 7. Try it locally
 
-Sign-in links need a real web address, so run the site with a local server rather than double-clicking the file. With Node.js installed, run this from the repo root (the folder above `coaching/`):
+Sign-in links need a real web address, so run the site with a local server rather than double-clicking the file. With Node.js installed, run this from the repo root (the folder above `sitstart/`):
 
 ```bash
 npx serve .
 ```
 
-Open http://localhost:3000/coaching/, sign in as the coach, and add a test student by name. On their page, send the invite to a second address of yours (a Gmail alias like `you+student@gmail.com` works). Open the invite in a private window to check you only see that student's plan.
+Open http://localhost:3000/sitstart/, sign in as the coach, and add a test student by name. On their page, send the invite to a second address of yours (a Gmail alias like `you+student@gmail.com` works). Open the invite in a private window to check you only see that student's plan.
 
 ## 8. Put it online
 
@@ -68,9 +68,9 @@ GitHub Pages publishes the site straight from the repo, free, and every push to 
 
 1. The repo must be **public** (free GitHub accounts only get Pages on public repos). That's safe: the only key in it is the publishable key.
 2. In the repo on GitHub: **Settings → Pages → Build and deployment**. Source: **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
-3. After a minute or two the page shows the address, like `https://your-name.github.io/VSWebsite/`. The coaching app is at `/VSWebsite/coaching/`. The `.nojekyll` file in the repo root tells Pages to serve the files as they are.
+3. After a minute or two the page shows the address, like `https://your-name.github.io/VSWebsite/`. The Sit Start app is at `/VSWebsite/sitstart/`. The `.nojekyll` file in the repo root tells Pages to serve the files as they are.
 
-Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `coaching/index.html`) to it, e.g. `https://your-name.github.io/VSWebsite/coaching/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
+Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `sitstart/index.html`) to it, e.g. `https://your-name.github.io/VSWebsite/sitstart/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
 
 ## Good to know
 

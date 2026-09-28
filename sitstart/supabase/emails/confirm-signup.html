@@ -1,13 +1,10 @@
-<!-- Supabase → Authentication → Emails → Templates → Magic Link.
-     Sent when the coach clicks Send Sign-In Link for a student (or an admin does, for anyone) who already has an account
-     (usually a forgotten password). The link leads to "Choose a Password".
-     Subject: Sit Start: {{ if .Data.email_changed_to }}Your Email Was Changed{{ else }}Your Sign-In Link{{ end }} 🧗
-     (If Supabase won't take the if in the subject, use: Sit Start: Your Account 🧗)
+<!-- Supabase → Authentication → Emails → Templates → Confirm signup.
+     Subject: Sit Start: {{ if .Data.staff }}You're Invited{{ else }}Your Training Plan Is Ready{{ end }} 🧗
+     (If Supabase won't take the if in the subject, use: Sit Start: Your Invite 🧗)
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
-     {{ .Data.first_name }} was saved on the student's login with their invite (sendLink in index.html).
-     {{ .Data.sent_by }} is the first name of the coach or admin who sent this link (stamp_sender writes it just before).
-     {{ .Data.email_changed_to }} is set when an admin is changing the student's email (prepare_email_change): this email
-     goes to the OLD address, just before the change, as a notice only, with no sign-in button. -->
+     {{ .Data.first_name }} is the student's first name, sent by the page with the invite (sendLink in index.html).
+     {{ .Data.staff }} is set when an admin invites a coach or admin, so the wording changes for them.
+     {{ .Data.sent_by }} is the first name of the coach or admin who sent it (sendLink and stamp_sender). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,7 +12,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>Sit Start: Your Sign-In Link</title>
+<title>Sit Start: Your Training Plan Is Ready</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&family=Sora:wght@600&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0; padding:0; background:#F3F0EA;">
@@ -30,7 +27,7 @@
             <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
               <tr>
                 <td valign="middle" style="padding-right:10px;">
-                  <img src="https://vseak.github.io/VSWebsite/coaching/email-badge.png" width="32" height="32" alt="" style="display:block; border:0;">
+                  <img src="https://vseak.github.io/VSWebsite/sitstart/email-badge.png" width="32" height="32" alt="" style="display:block; border:0;">
                 </td>
                 <td valign="middle" align="left" style="font-family:Sora, Arial, sans-serif; color:#2C2620; text-align:left;">
                   <div style="font-size:17px; line-height:18px; font-weight:600;">Private</div>
@@ -46,23 +43,16 @@
           <td style="background:#FFFDF9; border:1px solid #E1DAD0; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#2C2620;">
 
             <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#2C2620;">
-              {{ if .Data.email_changed_to }}Your Email Was Changed{{ else }}Your Sign-In Link{{ end }}
+              {{ if .Data.staff }}You're Invited{{ else }}Your Training Plan Is Ready{{ end }}
             </h1>
 
             <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
               Hi {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},
             </p>
-            {{ if .Data.email_changed_to }}
-            <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
-              The email you sign in to your training plan with has been changed from {{ .Email }} to {{ .Data.email_changed_to }}. Your password stays the same, so use it with the new email from now on.
-            </p>
             <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
-              If this was a mistake, please contact your coach or an admin.
-            </p>
-            {{ else }}
-            <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
-              Here's a new link to get back into {{ if .Data.staff }}the coaching site{{ else }}your training plan{{ end }}. Tap the button below to sign in, then set a new password.
-              You'll use it to sign in from then on.
+              {{ if .Data.sent_by }}It's {{ .Data.sent_by }}. {{ end }}{{ if .Data.staff }}I've added you to the team on our bouldering coaching site.
+              {{ else }}I've set you up on our bouldering coaching site, where you'll find your training plan and can leave notes on each session for your coach.{{ end }}
+              Tap the button below to confirm your email and create a password for your account. You'll use it to sign in from then on.
             </p>
 
             <!-- Button -->
@@ -71,7 +61,7 @@
                 <td align="center" bgcolor="#4F6441" style="border-radius:8px;">
                   <a href="{{ .ConfirmationURL }}" target="_blank"
                      style="display:inline-block; padding:14px 28px; font-family:Inter, Arial, sans-serif; font-size:16px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:8px;">
-                    Sign In
+                    Confirm Email and Get Started
                   </a>
                 </td>
               </tr>
@@ -80,11 +70,10 @@
             <p style="margin:0 0 24px; font-size:14px; line-height:1.6; color:#766B60; text-align:center;">
               The button works once. If it has expired, just let me know and I'll send a new one.
             </p>
-            {{ end }}
 
             <!-- Signature -->
             <p style="margin:0; font-size:16px; line-height:1.6;">
-              {{ if .Data.staff }}Thanks for being on the team!{{ else }}Happy training!{{ end }}<br>
+              {{ if .Data.staff }}Welcome aboard!{{ else }}Happy training!{{ end }}<br>
               <strong style="font-family:'Space Grotesk', Arial, sans-serif;">{{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }}</strong>
             </p>
 
@@ -94,7 +83,7 @@
         <!-- Footer -->
         <tr>
           <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#766B60;">
-            {{ if .Data.email_changed_to }}This email was sent to {{ .Email }} because it was the sign-in email for your Sit Start account.{{ else }}This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.{{ end }}
+            This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }} added you as {{ if .Data.staff }}staff{{ else }}a student{{ end }}. If you weren't expecting it, you can ignore it.
           </td>
         </tr>
 

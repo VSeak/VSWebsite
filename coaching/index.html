@@ -205,7 +205,7 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 .next-session { margin: 0 0 .8rem; }
 
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
-.feed :is(h2, .hint) + .note-wrap { border-top: 0; }
+.feed :is(h2, .hint) + .note-wrap, .list-head + .note-wrap { border-top: 0; }
 .note-wrap p { margin: .2rem 0 0; }
 /* A note in a feed (noteFeedItem) is one link, reaching past the text like list rows so the hover fills it */
 a.note-link { display: block; padding: .6rem; margin: 0 -.6rem; border-radius: 8px; color: var(--ink); text-decoration: none; }
@@ -259,7 +259,7 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .note.mine .note-meta { text-align: right; }
 .note p { margin: .2rem 0 0; }
 .note-meta { font-size: .8rem; color: var(--muted); }
-.note-form { margin-top: .6rem; display: grid; gap: .4rem; justify-items: start; }
+.note-form { margin-top: .6rem; display: grid; gap: .4rem; justify-items: end; }
 
 /* Plan editor */
 .savebar { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
@@ -773,14 +773,14 @@ function route() {
   $('#signOut').hidden = !me;
   if (!me) return viewLogin();
   if (wantsPassword || (!me.isStaff && !me.user.user_metadata?.password_set)) return viewSetPassword();
-  const [, page, id] = location.hash.split('/');
+  const [, page, id, sub] = location.hash.split('/');
   // Staff who are also students: #/me is their own student home. Their own plans and student page open as the
   // student sees them (adminPlan, adminStudent), never as a coach.
   const go = me.isStaff
     ? (me.student && page === 'me' ? studentHome()
       : me.student && !me.isCoach && page === 'plan' && id ? studentPlan(id)
       : me.isCoach && page === 'students' ? adminStudents() : me.isCoach && page === 'student' && id ? adminStudent(id)
-      : me.isCoach && page === 'plan' && id ? adminPlan(id)
+      : me.isCoach && page === 'plan' && id ? adminPlan(id, sub)
       : (me.isCoach || me.isAdmin) && page === 'exercises' ? adminExercises()
       : me.isAdmin && page === 'users' ? adminUsers() : me.isAdmin && page === 'user' && id ? adminUser(id) : adminHome())
     : !me.student ? viewNoAccess()
@@ -1256,8 +1256,8 @@ async function adminUser(id, again = false) {
 const accountStatus = s => s.user_id ? 'Active' : s.invited_at ? 'Invited' : 'Not Invited';
 
 // One student note in a feed: who (on the Students list; left out on a student's own page), when, and its plan and week.
-// The whole note is the link to its plan, so it's easy to tap on a phone.
-const noteFeedItem = (n, name) => `<a class="note-wrap note-link" href="#/plan/${n.session?.plan?.id}"><div class="note-meta">
+// The whole note is the link to its plan, opened at that session's notes (#/plan/<id>/<session id>), so it's easy to tap on a phone.
+const noteFeedItem = (n, name) => `<a class="note-wrap note-link" href="#/plan/${n.session?.plan?.id}/${n.session_id}"><div class="note-meta">
     ${name ? `<strong>${esc(name)}</strong> · ` : ''}${fmtWhen(n.created_at)} ·
     <span class="note-plan">${esc(n.session?.plan?.title || 'Untitled Plan')}, ${n.session?.plan?.repeats
       ? esc(n.session?.title || 'Session') : `Week ${n.session?.week}`}</span></div>
@@ -1268,7 +1268,7 @@ async function adminStudents() {
   view(loading);
   const [students, recent, coachList] = await Promise.all([
     sb.from('students').select(`id,name,pronouns,email,invited_at,user_id,coach_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
-    sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,repeats,student:students(id,name,email,coach_id)))')
+    sb.from('notes').select('id,session_id,body,created_at,session:sessions(title,week,plan:plans(id,title,repeats,student:students(id,name,email,coach_id)))')
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(40).then(must),
     sb.rpc('coach_list').then(must),
   ]);
@@ -1678,12 +1678,13 @@ const cnoteDateField = (value = '') => `<label>Session Date<span class="hint fie
     <input type="date" name="session_date" value="${esc(value)}" max="${localToday()}" data-high="Pick today or an earlier day."></label>`;
 
 // edit: the student's coach, who can edit any note; other coaches edit only their own.
-const coachNoteItem = (n, edit) => `<div class="note-wrap" id="cnote-${n.id}"><div class="row between">
+// Laid out like the Master Exercise List: the note on the left, its actions on the right, under a Notes / Actions head.
+const coachNoteItem = (n, edit) => `<div class="note-wrap goal" id="cnote-${n.id}"><div class="goal-text">
     <strong>${n.session_date ? 'Session on ' + esc(fmtSessionDay(n.session_date)) : 'General Note'}</strong>
-    ${edit || n.author_id === me.user.id ? `<div class="row"><button type="button" class="small ghost" data-act="cnote-edit" data-cnote="${n.id}">Edit</button>
-    <button type="button" class="small ghost danger" data-act="cnote-delete" data-cnote="${n.id}">Delete</button></div>` : ''}</div>
     <p>${para(n.body)}</p>
-    <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>`;
+    <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>
+    ${edit || n.author_id === me.user.id ? `<div class="row ex-actions"><button type="button" class="small ghost" data-act="cnote-edit" data-cnote="${n.id}">Edit</button>
+    <button type="button" class="small ghost danger" data-act="cnote-delete" data-cnote="${n.id}">Delete</button></div>` : ''}</div>`;
 
 // Days of past sessions with no note, newest first: every one newer than the newest session that has a note
 // (so older, backfilled sessions stop counting once a newer one is noted). Past sessions come from historyOf:
@@ -1725,7 +1726,8 @@ function coachNotesHTML(notes, s, log, at) {
     </form>
     ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
       `<label><input type="radio" name="cnote_filter" value="${k}"${k === at.filter ? ' checked' : ''}>${label} (${notes.filter(n => cnoteIn(n, k)).length})</label>`).join('')}</div>` : ''}
-    ${shown.map(n => coachNoteItem(n, canCoach(s))).join('') || `<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
+    ${shown.length ? '<div class="list-head"><span>Notes</span><span class="ex-actions">Actions</span></div>' : ''}
+    ${shown.map(n => coachNoteItem(n, canCoach(s))).join('') ||`<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
     ${pagerHTML(page, list.length, CNOTES_PAGE)}`;
 }
 
@@ -1739,7 +1741,7 @@ async function adminStudent(id, again = false) {
     sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
-    sb.from('notes').select('id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
+    sb.from('notes').select('id,session_id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
       .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).then(must),
     sb.from('coach_notes').select('*').eq('student_id', id).then(must),
     sb.from('session_history').select('*').eq('student_id', id).then(must),
@@ -2235,7 +2237,8 @@ addEventListener('resize', () => exMenuFor && exMenuOpen(exMenuFor));
 const blankEx = () => ({ name: '', sets: '', reps: '', rest: '', notes: '' });
 const blankSession = week => ({ id: crypto.randomUUID(), week, title: '', details: '', exercises: [blankEx()] });
 
-async function adminPlan(id) {
+// sid: a session to open at, from a student note in a feed (openNotes).
+async function adminPlan(id, sid) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions, library] = await Promise.all([
@@ -2260,6 +2263,7 @@ async function adminPlan(id) {
       <p class="alert">You're viewing ${esc(plan.student.name)}'s plan. Only ${p.their} coach can change it or reply to ${p.their} notes.</p>
       ${planReadHTML(plan, sessions)}`);
     window.scrollTo(0, 0);
+    openNotes(sid);
     return;
   }
 
@@ -2268,6 +2272,17 @@ async function adminPlan(id) {
   dirty = false;
   renderEditor();
   window.scrollTo(0, 0);
+  openNotes(sid);
+}
+
+// Straight to one session's notes, opened and scrolled to, with the reply box focused (if they can reply).
+function openNotes(sid) {
+  const box = sid && app.querySelector(`[data-notes="${CSS.escape(sid)}"]`);
+  if (!box) return;
+  box.open = true;
+  const field = box.querySelector('textarea');
+  (field || box).scrollIntoView({ block: 'center' });
+  field?.focus({ preventScroll: true });
 }
 
 function displayOrder() {
@@ -2667,7 +2682,7 @@ function notesHTML(sid) {
       <textarea name="body" rows="2" maxlength="4000" required data-need="Write your note first."
         placeholder="${notesCtx.coach ? 'Reply to your student…'
           : list.some(n => !n.from_coach) ? 'Any other thoughts?' : 'How did the session go? Any questions?'}"></textarea>
-      <button class="small">+ Post Note</button>
+      <button class="small">+ Post Notes</button>
     </form>` : ''}
   </details>`;
 }

@@ -18,7 +18,7 @@ const exFieldsHTML = (x = {}, choices = []) => `<label>Name<input name="name" va
     `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" autocomplete="off"></label>`).join('')}</div>
   <label>Notes<textarea name="notes" rows="2">${esc(x.notes)}</textarea></label>
   <fieldset class="picks"><legend>Purpose</legend>
-    <span class="hint field-hint">What it's for, to help coaches search. Students don't see these. Add more in the Purposes card.</span>
+    <span class="hint field-hint">What the exercise is for. This also helps coaches search and filter through exercises. Students don't see these on their training plans. Add more in the Purposes card.</span>
     <div class="pick-row">${exPicksHTML(choices, x.purposes)}</div>
   </fieldset>`;
 function exFromForm(f) {
@@ -59,11 +59,11 @@ async function adminExercises() {
           New exercises typed into a plan are added here when the plan is saved.</p>
         <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, purNames())}<button class="primary">+ Add Exercise</button></form>
       </section>
-      <section class="card"><h2>Purposes (<span id="purCount"></span>)</h2>
-        <p class="hint">The purposes to pick from on an exercise. Renaming or deleting one changes every exercise that has it.</p>
+      <div data-folds="exercises"><section class="card" data-fold="purposes"><h2>Purposes (<span id="purCount"></span>)</h2>
+        <p class="hint">The purposes to pick from for an exercise. Renaming or deleting a purpose changes every exercise that has it.</p>
         <form id="purAdd" class="stack" data-save>${purFieldHTML()}<button class="primary">+ Add Purpose</button></form>
         <ul class="list" id="purList"></ul>
-      </section>
+      </section></div>
     </aside>
   </div>`);
 

@@ -44,7 +44,7 @@ p { margin: 0 0 .75rem; }
 main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem; box-shadow: var(--shadow); }
-.card + .card, .stack > * + * { margin-top: .9rem; }
+.card + .card, .card + [data-folds], .stack > * + * { margin-top: .9rem; }
 .narrow { max-width: 420px; margin: 2rem auto; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }

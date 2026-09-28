@@ -145,6 +145,8 @@ create table public.session_history (
 -- The master exercise list: defaults a plan copies when the coach picks an
 -- exercise. Plans keep their own copy, so editing either never changes the other.
 -- name_key makes names unique ignoring case and spaces at the ends.
+-- goals (Mobility, Injury Prevention, ...) are for coaches to search by. Plans
+-- don't copy them, so students never see them.
 create table public.exercises (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(trim(name)) between 1 and 200),
@@ -153,6 +155,7 @@ create table public.exercises (
   reps text not null default '',
   rest text not null default '',
   notes text not null default '',
+  goals text[] not null default '{}' check (cardinality(goals) <= 12),
   created_at timestamptz not null default now()
 );
 

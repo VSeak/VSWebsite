@@ -283,6 +283,16 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .combo-menu li:hover { background: color-mix(in srgb, var(--soft) 60%, transparent); }
 .combo-menu li[aria-selected="true"] { background: var(--soft); }
 .combo-menu mark { background: none; color: var(--accent); font-weight: 600; }
+/* Master Exercise List goals: pills to tick in the form, tags under each exercise */
+fieldset.picks { border: 0; margin: 0; padding: 0; display: grid; gap: .5rem; }
+fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
+.pick-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+.pick-row label { margin: 0; padding: .3rem .75rem; border: 1px solid var(--line); border-radius: 999px; background: var(--field);
+  cursor: pointer; font-weight: 500; font-size: .85rem; color: var(--muted); }
+.pick-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pick-row label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.pick-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ex-goals { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
 @media (max-width: 700px) {
   .ex-head { display: none; }
   .ex-row { grid-template-columns: 1fr 1fr 1fr auto; padding: .5rem 0; border-top: 1px solid var(--line); }

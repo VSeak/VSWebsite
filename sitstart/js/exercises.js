@@ -5,12 +5,37 @@ const EX_PAGE = 10;   // exercises per page on the Master Exercise List
 const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps / Time'], ['rest', 'Rest'], ['notes', 'Notes']];
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
-const exFieldsHTML = (x = {}) => `<label>Name<input name="name" value="${esc(x.name)}" maxlength="200" required
+// Goals say what an exercise is for, so coaches can search by them. They stay on the master list:
+// plans don't copy them and students never see them.
+const EX_GOALS = ['Mobility', 'Injury Prevention', 'Strength Training', 'Finger Strength', 'Power', 'Core',
+  'Endurance', 'Technique', 'Warm-Up', 'Recovery'];
+const EX_GOALS_MAX = 12;   // matches the check on exercises.goals
+// The goals to pick from: the usual ones, then any others already on the list.
+const exGoalChoices = list => [...EX_GOALS, ...[...new Set(list.flatMap(x => x.goals))]
+  .filter(g => !EX_GOALS.some(d => exKey(d) === exKey(g))).sort((a, b) => a.localeCompare(b))];
+const exGoalTags = goals => goals?.length ? `<span class="ex-goals">${goals.map(g => `<span class="tag">${esc(g)}</span>`).join('')}</span>` : '';
+const exFieldsHTML = (x = {}, choices = EX_GOALS) => `<label>Name<input name="name" value="${esc(x.name)}" maxlength="200" required
     data-need="Name the exercise." autocomplete="off"></label>
   <div class="row">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
     `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" autocomplete="off"></label>`).join('')}</div>
-  <label>Notes<textarea name="notes" rows="2">${esc(x.notes)}</textarea></label>`;
-const exFromForm = f => Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()]));
+  <label>Notes<textarea name="notes" rows="2">${esc(x.notes)}</textarea></label>
+  <fieldset class="picks"><legend>Goals</legend>
+    <span class="hint field-hint">What it's for, to help coaches search. Students don't see these.</span>
+    <div class="pick-row">${choices.map(g => `<label><input type="checkbox" name="goals" value="${esc(g)}"${x.goals?.includes(g) ? ' checked' : ''}>${esc(g)}</label>`).join('')}</div>
+    <label>Other Goals<input name="goals_new" maxlength="200" placeholder="E.g. Balance, Flexibility" autocomplete="off"></label>
+  </fieldset>`;
+// Other Goals is split on commas. A typed goal that matches one to pick (ignoring case) uses that spelling.
+function exGoalsFromForm(f, choices) {
+  const typed = (f.get('goals_new') || '').split(',').map(g => g.trim().slice(0, 40)).filter(Boolean)
+    .map(g => choices.find(c => exKey(c) === exKey(g)) || g.charAt(0).toUpperCase() + g.slice(1));
+  const goals = [];
+  for (const g of [...f.getAll('goals'), ...typed]) if (!goals.some(h => exKey(h) === exKey(g))) goals.push(g);
+  if (goals.length > EX_GOALS_MAX) throw new Error(`Pick at most ${EX_GOALS_MAX} goals.`);
+  return goals;
+}
+const exFromForm = (f, choices = EX_GOALS) => ({
+  ...Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()])),
+  goals: exGoalsFromForm(f, choices) });
 
 async function adminExercises() {
   const t = ++navToken;
@@ -22,8 +47,11 @@ async function adminExercises() {
   <h1>Master Exercise List</h1>
   <div class="grid2">
     <section class="card"><h2>All Exercises (<span id="exCount"></span>)</h2>
-      <p class="hint">Every exercise you can pick in a training plan, with the values it fills in. Search, edit or delete them here.</p>
-      <input id="exSearch" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
+      <p class="hint">Every exercise you can pick in a training plan, with the values it fills in. Search by name or goal, or filter by goal. Edit or delete them here.</p>
+      <div class="row">
+        <input id="exSearch" class="grow" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
+        <select id="exGoal" aria-label="Goal" style="width:auto"></select>
+      </div>
       <div class="list-head" id="exHead"><span>Exercise</span><span class="ex-actions">Action</span></div>
       <ul class="list" id="exList"></ul>
       <div id="exPager"></div>
@@ -32,17 +60,33 @@ async function adminExercises() {
       <section class="card"><h2>Add Exercise</h2>
         <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
           New exercises typed into a plan are added here when the plan is saved.</p>
-        <form id="exAdd" class="stack" data-save>${exFieldsHTML()}<button class="primary">+ Add Exercise</button></form>
+        <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, exGoalChoices(list))}<button class="primary">+ Add Exercise</button></form>
       </section>
     </aside>
   </div>`);
 
-  const search = $('#exSearch');
+  const search = $('#exSearch'), goalSel = $('#exGoal');
   let page = 1;
-  const matches = () => { const q = exKey(search.value); return list.filter(x => !q || x.name_key.includes(q)); };
+  const matches = () => {
+    const q = exKey(search.value), g = goalSel.value;
+    return list.filter(x => (!g || x.goals.includes(g)) && (!q || x.name_key.includes(q) || x.goals.some(h => exKey(h).includes(q))));
+  };
+  // The goal filter lists goals in use, with counts. A goal no exercise has any more drops off.
+  function renderGoalFilter() {
+    const used = exGoalChoices(list).filter(g => list.some(x => x.goals.includes(g)));
+    if (!used.includes(goalSel.value)) goalSel.value = '';
+    const was = goalSel.value;
+    goalSel.innerHTML = `<option value="">All Goals</option>` + used.map(g =>
+      `<option value="${esc(g)}">${esc(g)} (${list.filter(x => x.goals.includes(g)).length})</option>`).join('');
+    goalSel.value = was;
+    goalSel.hidden = !used.length;
+  }
+  // The Add form's goals to pick grow as new ones are typed. Only redrawn right after an add (the form is empty then).
+  const drawAddForm = () => { $('#exAdd').innerHTML = `${exFieldsHTML({}, exGoalChoices(list))}<button class="primary">+ Add Exercise</button>`; };
   // Goes to the page that holds x, if the search shows it.
   const pageWith = x => { const i = matches().indexOf(x); if (i >= 0) page = Math.floor(i / EX_PAGE) + 1; };
   function renderList() {
+    renderGoalFilter();
     const shown = matches();
     const [items, p] = pageOf(shown, page, EX_PAGE);
     page = p;
@@ -53,24 +97,24 @@ async function adminExercises() {
     $('#exList').innerHTML = items.map(x => {
       const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l}: ${esc(x[f])}`).join(' · ');
       return `<li class="goal"><div class="goal-text"><strong>${esc(x.name)}</strong>
-        ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">Notes: ${para(x.notes)}</span>` : ''}</div>
+        ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">Notes: ${para(x.notes)}</span>` : ''}${exGoalTags(x.goals)}</div>
         <div class="row ex-actions"><button type="button" class="small ghost" data-act="ex-edit" data-ex="${x.id}">Edit</button>
         <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></div></li>`;
-    }).join('') || `<li><p class="muted" style="margin:.6rem 0">${list.length ? 'No exercise matches that search.' : 'No exercises yet. Add your first one.'}</p></li>`;
+    }).join('') || `<li><p class="muted" style="margin:.6rem 0">${list.length ? 'No exercise matches that search or goal.' : 'No exercises yet. Add your first one.'}</p></li>`;
   }
   const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));
   renderList();
-  search.oninput = () => { page = 1; renderList(); };
+  search.oninput = goalSel.onchange = () => { page = 1; renderList(); };
 
   $('#exAdd').onsubmit = e => {
     e.preventDefault();
-    const row = exFromForm(new FormData(e.target));
+    const form = new FormData(e.target);
     busy(e.submitter, async () => {
-      const { data, error } = await sb.from('exercises').insert(row).select().single();
+      const { data, error } = await sb.from('exercises').insert(exFromForm(form, exGoalChoices(list))).select().single();
       if (error) throw exDupError(error);
       list.push(data); sortList();
-      e.target.reset();
-      search.value = '';
+      drawAddForm();
+      search.value = ''; goalSel.value = '';
       pageWith(data);
       renderList();
       e.target.elements.name.focus();
@@ -83,10 +127,10 @@ async function adminExercises() {
     const x = b && list.find(y => y.id === b.dataset.ex);
     if (!x) return;
     if (b.dataset.act === 'ex-edit') {
-      const f = await ask({ title: 'Edit Exercise', ok: 'Save Exercise', body: `<div class="stack">${exFieldsHTML(x)}</div>
+      const f = await ask({ title: 'Edit Exercise', ok: 'Save Exercise', body: `<div class="stack">${exFieldsHTML(x, exGoalChoices(list))}</div>
         <p class="hint">Plans that already use it keep their own values.</p>` });
       if (f) busy(b, async () => {
-        const { data, error } = await sb.from('exercises').update(exFromForm(f)).eq('id', x.id).select().single();
+        const { data, error } = await sb.from('exercises').update(exFromForm(f, exGoalChoices(list))).eq('id', x.id).select().single();
         if (error) throw exDupError(error);
         Object.assign(x, data); sortList();
         pageWith(x);

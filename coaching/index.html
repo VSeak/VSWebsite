@@ -1116,7 +1116,7 @@ async function adminUser(id, again = false) {
       </form>
       ${coachesHTML(coaches.filter(c => !c.is_current))}
     </section>
-    ${trainingCardHTML(stu)}`}
+    ${trainingCardHTML(stu, coaches)}`}
     </div>
     <aside>
       ${staff ? '' : sessionsCardHTML(stu)}
@@ -1305,7 +1305,7 @@ async function adminStudents() {
       ? section('My Students', mine, 'Students you are coaching now. Only you change their plans, goals and sessions.', 'No students yet.')
         + (none.length ? section('No Coach', none, 'Active students with no coach. Any coach can change them until an admin picks their coach.', '') : '')
         + section("Other Coaches' Students", others, 'You can read their plans and goals, add Coach Notes and add past sessions you ran.', 'None right now.', true)
-        + section('Inactive', inactive, 'Students no longer being coached. Resume Coaching on their page brings them back, with you as their coach.', 'No inactive students.', true)
+        + section('Inactive', inactive, 'Students no longer being coached. Resume Coaching on their page brings them back. You stay their coach only if you were when coaching ended; otherwise an admin picks one.', 'No inactive students.', true)
       : '<section class="card"><p class="muted">No students yet. Add your first one.</p></section>'}</div>
     <aside>
       <section class="card"><h2>Add a Student</h2>
@@ -1587,13 +1587,18 @@ function studentHistory(log, next) {
 // ---------- Coaching Status card (students.training_ended_at: null while they are coached) ----------
 
 // edit: false for a coach who isn't theirs (read only).
-function trainingCardHTML(s, edit = true) {
+// The coach they had when coaching ended: the one whose time as coach ended then (older ends used the browser clock).
+const endedCoach = (s, coaches) => s.training_ended_at && coaches.find(c => c.ended_at
+  && Math.abs(new Date(c.ended_at) - new Date(s.training_ended_at)) < 5 * 60e3)?.staff_id;
+// Resuming gives them back to that coach only if it's you (check_student_coach); otherwise an admin picks one.
+function trainingCardHTML(s, coaches, edit = true) {
   const done = s.training_ended_at, p = pro(s.pronouns);
+  const back = me.isCoach && !isSelf(s) && endedCoach(s, coaches) === me.staffId;
   return `<section class="card" id="trainingCard" data-fold-start>
     <div class="row between"><h2>Coaching Status</h2><span class="tag ${done ? 'danger' : 'ok'}">${done ? 'Inactive' : 'Active'}</span></div>
     ${!edit ? `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}.` : 'Being coached.'} Only ${p.their} coach can change this.</p>`
     : `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
-        ${me.isCoach && !isSelf(s) ? `Resuming makes you ${p.their} coach.` : `After resuming, pick ${p.their} coach.`}
+        ${back ? `Resuming makes you ${p.their} coach again.` : me.isAdmin ? `After resuming, pick ${p.their} coach.` : `After resuming, an admin picks ${p.their} coach.`}
         Delete ${p.them} only if ${p.they} ${p.v('were', 'was')} added by mistake.`
       : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list, ${p.their} current plan becomes a past plan and ${p.they} ${p.v('have', 'has')} no coach.`}</p>
     <div class="row"><button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>
@@ -1785,7 +1790,7 @@ async function adminStudent(id, again = false) {
         <p class="hint">${p.Their} notes on ${p.their} sessions, newest first. Open one to reply in the plan.</p>
         ${notes.length ? `<div id="snotesBox">${snotesHTML(1)}</div>` : `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
       <section class="card" id="coachNotesCard"></section>
-      ${trainingCardHTML(s, edit)}
+      ${trainingCardHTML(s, coaches, edit)}
     </div>
     <aside>
       ${sessionsCardHTML(s, edit)}

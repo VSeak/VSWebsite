@@ -159,6 +159,33 @@ create table public.exercises (
   created_at timestamptz not null default now()
 );
 
+-- The purposes to pick from, added, renamed and deleted on the Master Exercise List.
+-- Renaming one renames it on every exercise; deleting one takes it off every exercise.
+create table public.exercise_purposes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(trim(name)) between 1 and 40),
+  name_key text generated always as (lower(trim(name))) stored unique,
+  created_at timestamptz not null default now()
+);
+insert into public.exercise_purposes (name) values ('Mobility'), ('Injury Prevention'), ('Strength Training'),
+  ('Finger Strength'), ('Power'), ('Core'), ('Endurance'), ('Technique'), ('Warm-Up'), ('Recovery');
+
+create function public.sync_exercise_purpose() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'DELETE' then
+    update public.exercises set purposes = array_remove(purposes, old.name) where old.name = any(purposes);
+    return old;
+  end if;
+  if new.name <> old.name then
+    update public.exercises set purposes = array_replace(purposes, old.name, new.name) where old.name = any(purposes);
+  end if;
+  return new;
+end;
+$$;
+create trigger sync_exercise_purpose after update of name or delete on public.exercise_purposes
+  for each row execute function public.sync_exercise_purpose();
+
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
 -- The signed-in person's staff roles, e.g. {admin,coach}, or null for a student.
@@ -349,7 +376,7 @@ create trigger stamp_coach_note before insert or update on public.coach_notes
 -- delete their own notes.
 -- Coach notes are for coaches only: students and admin-only staff can't see them.
 -- Coaches and admins can do everything with the master exercise list. Students
--- can't see it at all.
+-- can't see it at all. The same goes for its purposes.
 
 alter table public.staff    enable row level security;
 alter table public.students enable row level security;
@@ -360,10 +387,11 @@ alter table public.goals    enable row level security;
 alter table public.coach_notes enable row level security;
 alter table public.session_history enable row level security;
 alter table public.exercises enable row level security;
+alter table public.exercise_purposes enable row level security;
 
 grant select, insert, update, delete
   on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.session_history,
-     public.exercises
+     public.exercises, public.exercise_purposes
   to authenticated;
 
 create policy "admin: everything" on public.staff for all to authenticated
@@ -438,6 +466,8 @@ create policy "student: own history" on public.session_history for select to aut
   using (student_id = public.my_student_id());
 
 create policy "staff: everything" on public.exercises for all to authenticated
+  using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
+create policy "staff: everything" on public.exercise_purposes for all to authenticated
   using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
 
 -- 4. Sign-up gate ---------------------------------------------------------------

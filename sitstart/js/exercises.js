@@ -6,42 +6,39 @@ const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps / Time'], ['rest', 'Rest'], 
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
 // Purposes say what an exercise is for, so coaches can search by them. They stay on the master list:
-// plans don't copy them and students never see them.
-const EX_PURPOSES = ['Mobility', 'Injury Prevention', 'Strength Training', 'Finger Strength', 'Power', 'Core',
-  'Endurance', 'Technique', 'Warm-Up', 'Recovery'];
+// plans don't copy them and students never see them. The ones to pick from are the exercise_purposes
+// rows, managed in the Purposes card; renaming or deleting one there changes every exercise (a trigger).
 const EX_PURPOSES_MAX = 12;   // matches the check on exercises.purposes
-// The purposes to pick from: the usual ones, then any others already on the list.
-const exPurposeChoices = list => [...EX_PURPOSES, ...[...new Set(list.flatMap(x => x.purposes))]
-  .filter(g => !EX_PURPOSES.some(d => exKey(d) === exKey(g))).sort((a, b) => a.localeCompare(b))];
 const exPurposeTags = list => list?.length ? `<span class="ex-purposes">${list.map(g => `<span class="tag">${esc(g)}</span>`).join('')}</span>` : '';
-const exFieldsHTML = (x = {}, choices = EX_PURPOSES) => `<label>Name<input name="name" value="${esc(x.name)}" maxlength="200" required
+const exPicksHTML = (choices, picked = []) => choices.map(g =>
+  `<label><input type="checkbox" name="purposes" value="${esc(g)}"${picked.includes(g) ? ' checked' : ''}>${esc(g)}</label>`).join('');
+const exFieldsHTML = (x = {}, choices = []) => `<label>Name<input name="name" value="${esc(x.name)}" maxlength="200" required
     data-need="Name the exercise." autocomplete="off"></label>
   <div class="row">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
     `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" autocomplete="off"></label>`).join('')}</div>
   <label>Notes<textarea name="notes" rows="2">${esc(x.notes)}</textarea></label>
   <fieldset class="picks"><legend>Purpose</legend>
-    <span class="hint field-hint">What it's for, to help coaches search. Students don't see these.</span>
-    <div class="pick-row">${choices.map(g => `<label><input type="checkbox" name="purposes" value="${esc(g)}"${x.purposes?.includes(g) ? ' checked' : ''}>${esc(g)}</label>`).join('')}</div>
-    <label>Other Purposes<input name="purposes_new" maxlength="200" placeholder="E.g. Balance, Flexibility" autocomplete="off"></label>
+    <span class="hint field-hint">What it's for, to help coaches search. Students don't see these. Add more in the Purposes card.</span>
+    <div class="pick-row">${exPicksHTML(choices, x.purposes)}</div>
   </fieldset>`;
-// Other Purposes is split on commas. A typed purpose that matches one to pick (ignoring case) uses that spelling.
-function exPurposesFromForm(f, choices) {
-  const typed = (f.get('purposes_new') || '').split(',').map(g => g.trim().slice(0, 40)).filter(Boolean)
-    .map(g => choices.find(c => exKey(c) === exKey(g)) || g.charAt(0).toUpperCase() + g.slice(1));
-  const picked = [];
-  for (const g of [...f.getAll('purposes'), ...typed]) if (!picked.some(h => exKey(h) === exKey(g))) picked.push(g);
-  if (picked.length > EX_PURPOSES_MAX) throw new Error(`Pick at most ${EX_PURPOSES_MAX} purposes.`);
-  return picked;
+function exFromForm(f) {
+  const purposes = f.getAll('purposes');
+  if (purposes.length > EX_PURPOSES_MAX) throw new Error(`Pick at most ${EX_PURPOSES_MAX} purposes.`);
+  return { ...Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()])), purposes };
 }
-const exFromForm = (f, choices = EX_PURPOSES) => ({
-  ...Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()])),
-  purposes: exPurposesFromForm(f, choices) });
+const purDupError = e => e.code === '23505' ? new Error('That purpose is already on the list.') : e;
+const purFieldHTML = (name = '') => `<label>Name<input name="name" value="${esc(name)}" maxlength="40" required
+    data-need="Name the purpose." placeholder="E.g. Balance" autocomplete="off"></label>`;
 
 async function adminExercises() {
   const t = ++navToken;
   view(loading);
-  let list = await sb.from('exercises').select('*').order('name_key').then(must);
+  let [list, purposes] = await Promise.all([
+    sb.from('exercises').select('*').order('name_key').then(must),
+    sb.from('exercise_purposes').select('*').order('name_key').then(must)]);
   if (t !== navToken) return;
+  const purNames = () => purposes.map(p => p.name);
+  const usedBy = name => list.filter(x => x.purposes.includes(name)).length;
 
   view(`${crumbs([['Home', '#/'], ['Master Exercise List']])}
   <h1>Master Exercise List</h1>
@@ -60,7 +57,12 @@ async function adminExercises() {
       <section class="card"><h2>Add Exercise</h2>
         <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
           New exercises typed into a plan are added here when the plan is saved.</p>
-        <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, exPurposeChoices(list))}<button class="primary">+ Add Exercise</button></form>
+        <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, purNames())}<button class="primary">+ Add Exercise</button></form>
+      </section>
+      <section class="card"><h2>Purposes (<span id="purCount"></span>)</h2>
+        <p class="hint">The purposes to pick from on an exercise. Renaming or deleting one changes every exercise that has it.</p>
+        <form id="purAdd" class="stack" data-save>${purFieldHTML()}<button class="primary">+ Add Purpose</button></form>
+        <ul class="list" id="purList"></ul>
       </section>
     </aside>
   </div>`);
@@ -73,16 +75,32 @@ async function adminExercises() {
   };
   // The purpose filter lists purposes in use, with counts. A purpose no exercise has any more drops off.
   function renderPurposeFilter() {
-    const used = exPurposeChoices(list).filter(g => list.some(x => x.purposes.includes(g)));
+    const used = purNames().filter(usedBy);
     if (!used.includes(purposeSel.value)) purposeSel.value = '';
     const was = purposeSel.value;
     purposeSel.innerHTML = `<option value="">All Purposes</option>` + used.map(g =>
-      `<option value="${esc(g)}">${esc(g)} (${list.filter(x => x.purposes.includes(g)).length})</option>`).join('');
+      `<option value="${esc(g)}">${esc(g)} (${usedBy(g)})</option>`).join('');
     purposeSel.value = was;
     purposeSel.hidden = !used.length;
   }
-  // The Add form's purposes to pick grow as new ones are typed. Only redrawn right after an add (the form is empty then).
-  const drawAddForm = () => { $('#exAdd').innerHTML = `${exFieldsHTML({}, exPurposeChoices(list))}<button class="primary">+ Add Exercise</button>`; };
+  function renderPurposes() {
+    $('#purCount').textContent = purposes.length;
+    $('#purList').innerHTML = purposes.map(p => { const n = usedBy(p.name);
+      return `<li class="goal"><div class="goal-text"><strong>${esc(p.name)}</strong>
+        <span class="item-sub">${n ? `${n} exercise${n === 1 ? '' : 's'}` : 'Not used yet'}</span></div>
+        <div class="row ex-actions"><button type="button" class="small ghost" data-act="pur-rename" data-pur="${p.id}">Rename</button>
+        <button type="button" class="small ghost danger" data-act="pur-delete" data-pur="${p.id}">Delete</button></div></li>`;
+    }).join('') || `<li><p class="muted" style="margin:.6rem 0">No purposes yet. Add your first one.</p></li>`;
+  }
+  // Redraws the Add form's pills after the purposes change, keeping what's ticked (renamed: old name → new).
+  // Ticks are set as properties, not attributes, so a tick the coach made still counts as unsaved.
+  function redrawPicks(renamed = {}) {
+    const row = $('#exAdd .pick-row');
+    const ticked = [...row.querySelectorAll('input:checked')].map(i => renamed[i.value] ?? i.value);
+    row.innerHTML = exPicksHTML(purNames());
+    row.querySelectorAll('input').forEach(i => { i.checked = ticked.includes(i.value); });
+  }
+  const sortPurposes = () => purposes.sort((a, b) => a.name_key.localeCompare(b.name_key));
   // Goes to the page that holds x, if the search shows it.
   const pageWith = x => { const i = matches().indexOf(x); if (i >= 0) page = Math.floor(i / EX_PAGE) + 1; };
   function renderList() {
@@ -104,16 +122,18 @@ async function adminExercises() {
   }
   const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));
   renderList();
+  renderPurposes();
   search.oninput = purposeSel.onchange = () => { page = 1; renderList(); };
 
   $('#exAdd').onsubmit = e => {
     e.preventDefault();
     const form = new FormData(e.target);
     busy(e.submitter, async () => {
-      const { data, error } = await sb.from('exercises').insert(exFromForm(form, exPurposeChoices(list))).select().single();
+      const { data, error } = await sb.from('exercises').insert(exFromForm(form)).select().single();
       if (error) throw exDupError(error);
       list.push(data); sortList();
-      drawAddForm();
+      e.target.reset();
+      renderPurposes();
       search.value = ''; purposeSel.value = '';
       pageWith(data);
       renderList();
@@ -122,19 +142,63 @@ async function adminExercises() {
     });
   };
 
+  $('#purAdd').onsubmit = e => {
+    e.preventDefault();
+    const name = new FormData(e.target).get('name').trim();
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.from('exercise_purposes').insert({ name }).select().single();
+      if (error) throw purDupError(error);
+      purposes.push(data); sortPurposes();
+      e.target.reset();
+      renderPurposes(); redrawPicks();
+      e.target.elements.name.focus();
+      flash(`${data.name} added.`);
+    });
+  };
+
+  // The trigger on exercise_purposes changes the exercises in the database; this mirrors it in the page.
+  async function purposeClick(b, p) {
+    const n = usedBy(p.name), them = `${n} exercise${n === 1 ? '' : 's'}`;
+    if (b.dataset.act === 'pur-rename') {
+      const f = await ask({ title: 'Rename Purpose', ok: 'Save Purpose', body: `<div class="stack">${purFieldHTML(p.name)}</div>
+        ${n ? `<p class="hint">It changes on the ${them} that ${n === 1 ? 'has' : 'have'} it.</p>` : ''}` });
+      if (f) busy(b, async () => {
+        const old = p.name;
+        const { data, error } = await sb.from('exercise_purposes').update({ name: f.get('name').trim() }).eq('id', p.id).select().single();
+        if (error) throw purDupError(error);
+        Object.assign(p, data); sortPurposes();
+        list.forEach(x => { x.purposes = x.purposes.map(g => g === old ? p.name : g); });
+        renderPurposes(); redrawPicks({ [old]: p.name }); renderList();
+        flash('Purpose saved.');
+      });
+    }
+    if (b.dataset.act === 'pur-delete' && await ask({ title: `Delete ${p.name}?`, warn: true, ok: 'Delete',
+      body: `<p>${n ? `It comes off the ${them} that ${n === 1 ? 'has' : 'have'} it.` : 'No exercise has it yet.'}</p>` }))
+      busy(b, async () => {
+        must(await sb.from('exercise_purposes').delete().eq('id', p.id));
+        purposes = purposes.filter(q => q !== p);
+        list.forEach(x => { x.purposes = x.purposes.filter(g => g !== p.name); });
+        renderPurposes(); redrawPicks(); renderList();
+      });
+  }
+
   app.onclick = async e => {
     const b = e.target.closest('[data-act]');
+    const p = b?.dataset.pur && purposes.find(q => q.id === b.dataset.pur);
+    if (p) return purposeClick(b, p);
     const x = b && list.find(y => y.id === b.dataset.ex);
     if (!x) return;
     if (b.dataset.act === 'ex-edit') {
-      const f = await ask({ title: 'Edit Exercise', ok: 'Save Exercise', body: `<div class="stack">${exFieldsHTML(x, exPurposeChoices(list))}</div>
+      // Any purpose the exercise has that isn't in the list any more still shows, so saving keeps it.
+      const choices = [...purNames(), ...x.purposes.filter(g => !purNames().includes(g))];
+      const f = await ask({ title: 'Edit Exercise', ok: 'Save Exercise', body: `<div class="stack">${exFieldsHTML(x, choices)}</div>
         <p class="hint">Plans that already use it keep their own values.</p>` });
       if (f) busy(b, async () => {
-        const { data, error } = await sb.from('exercises').update(exFromForm(f, exPurposeChoices(list))).eq('id', x.id).select().single();
+        const { data, error } = await sb.from('exercises').update(exFromForm(f)).eq('id', x.id).select().single();
         if (error) throw exDupError(error);
         Object.assign(x, data); sortList();
         pageWith(x);
-        renderList();
+        renderList(); renderPurposes();
         flash('Exercise saved.');
       });
     }
@@ -143,7 +207,7 @@ async function adminExercises() {
       busy(b, async () => {
         must(await sb.from('exercises').delete().eq('id', x.id));
         list = list.filter(y => y !== x);
-        renderList();
+        renderList(); renderPurposes();
       });
   };
 }

@@ -589,14 +589,12 @@ async function boot() {
 
 async function loadMe(user) {
   const roles = await sb.rpc('my_roles').then(must);
-  let student = null;
-  if (!roles) {
-    await sb.rpc('claim_student').then(must);
-    student = await sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must);
-  }
+  // Staff can be students too (View My Training), so everyone claims their student row.
+  await sb.rpc('claim_student').then(must);
+  const student = await sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must);
   // Staff read their own row for the greeting (admins can read every row, so match the email).
   // Falls back to the first name from their invite.
-  const staffRow = roles && (await sb.from('staff').select('first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
+  const staffRow = roles && (await sb.from('staff').select('id, first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
   const firstName = roles ? (staffRow?.first_name || user.user_metadata?.first_name || '') : (student?.first_name || '');
   const fullName = (roles ? staffRow?.name : student?.name) || firstName;
   // A deactivated staff member (staff_deactivated in schema.sql) can still sign in with their password, but gets no
@@ -610,8 +608,14 @@ async function loadMe(user) {
     deactivated = true;
     return;
   }
-  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'), student, firstName, fullName };
+  me = { user, roles: roles || [], isStaff: !!roles, isCoach: !!roles?.includes('coach'), isAdmin: !!roles?.includes('admin'),
+    staffId: staffRow?.id || null, student, firstName, fullName };
 }
+
+// A coach changes a student (plans, goals, details, next session, replies) only as their current coach, or when
+// they have no coach. Never themselves. Other coaches can read, add Coach Notes and log past sessions (can_coach()).
+const isSelf = s => !!me.student && s.id === me.student.id || !!s.email && s.email === me.user.email?.toLowerCase();
+const canCoach = s => me.isCoach && (!s.coach_id || s.coach_id === me.staffId) && !isSelf(s);
 
 const welcome = () => `Welcome${me.firstName ? ' ' + esc(me.firstName) : ''}!`;
 
@@ -770,14 +774,25 @@ function route() {
   if (!me) return viewLogin();
   if (wantsPassword || (!me.isStaff && !me.user.user_metadata?.password_set)) return viewSetPassword();
   const [, page, id] = location.hash.split('/');
+  // Staff who are also students: #/me is their own student home. Their own plans and student page open as the
+  // student sees them (adminPlan, adminStudent), never as a coach.
   const go = me.isStaff
-    ? (me.isCoach && page === 'students' ? adminStudents() : me.isCoach && page === 'student' && id ? adminStudent(id)
+    ? (me.student && page === 'me' ? studentHome()
+      : me.student && !me.isCoach && page === 'plan' && id ? studentPlan(id)
+      : me.isCoach && page === 'students' ? adminStudents() : me.isCoach && page === 'student' && id ? adminStudent(id)
       : me.isCoach && page === 'plan' && id ? adminPlan(id)
       : (me.isCoach || me.isAdmin) && page === 'exercises' ? adminExercises()
       : me.isAdmin && page === 'users' ? adminUsers() : me.isAdmin && page === 'user' && id ? adminUser(id) : adminHome())
     : !me.student ? viewNoAccess()
     : (page === 'plan' && id ? studentPlan(id) : studentHome());
   Promise.resolve(go).catch(showError);
+}
+
+// Swaps the current page for another without adding a history step (or asking about unsaved edits).
+function redirect(hash) {
+  history.replaceState(null, '', hash);
+  currentHash = location.hash;
+  route();
 }
 
 function showError(e) {
@@ -860,13 +875,15 @@ function viewNoAccess() {
 // ---------- Staff: home ----------
 
 // One tile per staff page. Add new pages here. stat() is optional and returns a short line for the tile.
-// roles says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page.
+// roles says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page, and
+// staff who are also students (role 'student', from me.student) their own training.
 const ADMIN_PAGES = [
   { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Add students, build their plans and goals, and send invites.',
     stat: async () => {
-      const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true }).is('training_ended_at', null);
+      const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true })
+        .is('training_ended_at', null).eq('coach_id', me.staffId);
       if (error) throw error;
-      return count === 1 ? '1 active student' : `${count} active students`;
+      return count === 1 ? 'Coaching 1 student' : `Coaching ${count} students`;
     } },
   { href: '#/exercises', title: 'Master Exercise List', roles: ['coach', 'admin'], blurb: 'The exercises plans pick from, with their usual sets, reps, rest and notes.',
     stat: async () => {
@@ -879,11 +896,13 @@ const ADMIN_PAGES = [
       const users = await sb.rpc('list_users').select('id').then(must);
       return users.length === 1 ? '1 user' : `${users.length} users`;
     } },
+  { href: '#/me', title: 'View My Training', roles: ['student'], blurb: 'Your own plans, goals and sessions, as your coach shares them with you.' },
 ];
 
 async function adminHome() {
   const t = ++navToken;
-  const pages = ADMIN_PAGES.filter(p => p.roles.some(r => me.roles.includes(r)));
+  const mine = me.student ? [...me.roles, 'student'] : me.roles;
+  const pages = ADMIN_PAGES.filter(p => p.roles.some(r => mine.includes(r)));
   view(`<h1>${welcome()}</h1>
     <div class="tiles">${pages.map((p, i) => `<a class="card tile" href="${p.href}">
       <h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p>
@@ -980,22 +999,36 @@ async function adminUsers() {
       if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
       // Send the invite before opening their page, so it draws once (with Invited) instead of twice.
       const { error: mailError } = await sendLink(row.email, row.first_name, true);
-      if (!mailError) must(await sb.from('staff').update({ invited_at: new Date().toISOString() }).eq('id', data.id));
+      const invitedAt = !mailError && new Date().toISOString();
+      if (invitedAt) must(await sb.from('staff').update({ invited_at: invitedAt }).eq('id', data.id));
+      // Student too: signs in with the same login, so the staff invite covers it.
+      const stuError = e.target.elements.student.checked && await addStudentRow(row, invitedAt).then(() => null, err => err);
       goTo('#/user/' + data.id);
       if (mailError) flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error');
+      else if (stuError) flash(`${row.first_name} added and invited, but couldn't be made a student: ${msgOf(stuError)}`, 'error');
       else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
     });
   };
 }
 
 // Role checkboxes for a staff form. locked roles stay ticked and can't be changed (your own Admin role).
-function rolesFieldset(current, locked = []) {
+// Student (not a staff role) makes a student row with the same name and email, so they also get View My Training.
+// student: their student row's id once they are one (ticked and locked, with a link), or null.
+function rolesFieldset(current, locked = [], student = null) {
   return `<fieldset class="roles"><legend>Roles</legend>
     ${STAFF_ROLES.map(r => `<label class="check"><input type="checkbox" name="roles" value="${r}"
       ${current.includes(r) ? 'checked' : ''} ${locked.includes(r) ? 'disabled' : ''}>
       <span><strong>${ROLE_LABEL[r]}</strong> <span class="muted">${ROLE_HINT[r]}</span></span></label>`).join('')}
+    <label class="check"><input type="checkbox" name="student"${student ? ' checked disabled' : ''}>
+      <span><strong>Student</strong> <span class="muted">${student
+        ? `Also coached, with their own plans. <a href="#/user/${student}">Open the student record</a>.`
+        : 'Also coached, with their own plans (View My Training).'}</span></span></label>
   </fieldset>`;
 }
+// Makes a staff member a student too: a student row with the same name, pronouns and email. They claim it the next
+// time they open the site. A coach who adds it becomes their coach (check_student_coach), as with any new student.
+const addStudentRow = (row, invitedAt) => sb.from('students').insert({ first_name: row.first_name, last_name: row.last_name,
+  pronouns: row.pronouns, email: row.email, invited_at: invitedAt || null }).select('id').single().then(must);
 // The ticked roles (disabled ones count), or null after showing an error when none are.
 function checkedRoles(form) {
   const boxes = [...form.querySelectorAll('input[name="roles"]')];
@@ -1022,18 +1055,20 @@ async function adminUser(id, again = false) {
   // Admins can't read plans or goals, so ask the database whether a student is ready for the invite.
   const ready = staff || active || await sb.rpc('student_ready', { p_id: id }).then(must);
   // Students: their row (coach and next session), who could coach them, past coaches and past sessions.
-  // Staff: the students they coach.
-  const [stu, coachOpts, coaches, log, pupils] = await Promise.all(staff
-    ? [null, [], [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must)]
-    : [sb.from('students').select('first_name,pronouns,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
+  // Staff: the students they coach. twin: the same person's other record (a staff member who is also a student).
+  const twinOf = t => u.email ? sb.from(t).select('id').eq('email', u.email).maybeSingle().then(must) : null;
+  const [stu, coachOpts, coaches, log, pupils, twin] = await Promise.all(staff
+    ? [null, [], [], [], sb.from('students').select('id,name').eq('coach_id', id).order('name').then(must), twinOf('students')]
+    : [sb.from('students').select('first_name,pronouns,email,coach_id,training_ended_at,' + NEXT_COLS).eq('id', id).single().then(must),
        sb.from('staff').select('id,name,email').contains('roles', ['coach']).is('deactivated_at', null).order('first_name').then(must),
        sb.rpc('coaches_of', { p_id: id }).then(must),
-       sb.from('session_history').select('*').eq('student_id', id).then(must), []]);
+       sb.from('session_history').select('*').eq('student_id', id).then(must), [], twinOf('staff')]);
   if (t !== navToken) return;
   const coachId = stu?.coach_id ?? null;
-  // Keep their coach in the list even if they've lost the Coach role since.
+  // Keep their coach in the list even if they've lost the Coach role since. Nobody can coach themselves.
   const cur = coaches.find(c => c.is_current);
   if (coachId && cur && !coachOpts.some(c => c.id === coachId)) coachOpts.push({ id: coachId, name: cur.name });
+  if (twin) coachOpts.splice(0, coachOpts.length, ...coachOpts.filter(c => c.id !== twin.id));
   const title = u.name || u.email;
   // The owner's access is theirs alone (protect_owner in schema.sql): other admins can't change their roles or remove them.
   const lockedRoles = u.owner ? (mine ? ['admin'] : STAFF_ROLES) : mine ? ['admin'] : [];
@@ -1046,12 +1081,13 @@ async function adminUser(id, again = false) {
     <div>
     <section class="card" data-fold-start><h2>Details</h2>
       ${staff ? `<p class="hint">Emails greet ${mine ? 'you' : p.them} by first name. Roles decide what ${mine ? 'you' : p.they} can see and do.</p>` : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
-        : `Coaches manage ${p.their} plans and goals.`} ${p.They} can change ${p.their} own pronouns too.</p>`}
+        : `Coaches manage ${p.their} plans and goals.`} ${twin ? `${p.They} ${p.v('are', 'is')} on the staff too: <a href="#/user/${twin.id}">open the staff record</a>.`
+        : `${p.They} can change ${p.their} own pronouns too.`}</p>`}
       <form id="userForm" class="stack" data-save>
         <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter ${mine ? 'your' : p.their} first name."></label>
         <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
         ${pronounsField(u.pronouns, mine ? 'Your' : 'Their')}
-        ${staff ? rolesFieldset(u.roles, lockedRoles) + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '') : ''}
+        ${staff ? rolesFieldset(u.roles, lockedRoles, twin?.id) + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '') : ''}
         <button class="primary">Save Details</button>
       </form>
     </section>
@@ -1113,10 +1149,12 @@ async function adminUser(id, again = false) {
     const f = new FormData(e.target);
     const patch = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f) };
     if (staff && !(patch.roles = checkedRoles(e.target))) return;
+    const newStudent = staff && !twin && e.target.elements.student.checked;
     busy(e.submitter, async () => {
       must(await sb.from(table).update(patch).eq('id', id));
+      if (newStudent) await addStudentRow({ ...patch, email: u.email }, u.invited_at);
       if (mine) { await loadMe(me.user); setWho(); }
-      flash('Details saved.');
+      flash(newStudent ? `Details saved. ${mine ? "You're" : `${u.first_name || title} is`} a student too now.` : 'Details saved.');
       adminUser(id, e.target);
     });
   };
@@ -1143,6 +1181,11 @@ async function adminUser(id, again = false) {
       if (email !== u.email) {
         const { error } = await sb.from(table).update({ email }).eq('id', id);
         if (error) throw error.code === '23505' ? new Error(`Another ${staff ? 'staff member' : 'student'} already has that email.`) : error;
+        // A staff member who is also a student signs in once, so their student record follows.
+        if (staff && twin) {
+          const { error } = await sb.from('students').update({ email }).eq('id', twin.id);
+          if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
+        }
       }
       const { error } = await sendLink(email, u.first_name, staff);
       if (error) throw error;
@@ -1223,39 +1266,48 @@ const noteFeedItem = (n, name) => `<a class="note-wrap note-link" href="#/plan/$
 async function adminStudents() {
   const t = ++navToken;
   view(loading);
-  const [students, recent] = await Promise.all([
-    sb.from('students').select(`id,name,pronouns,email,invited_at,user_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
-    sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,repeats,student:students(name)))')
-      .eq('from_coach', false).order('created_at', { ascending: false }).limit(8).then(must),
+  const [students, recent, coachList] = await Promise.all([
+    sb.from('students').select(`id,name,pronouns,email,invited_at,user_id,coach_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
+    sb.from('notes').select('id,body,created_at,session:sessions(title,week,plan:plans(id,title,repeats,student:students(id,name,email,coach_id)))')
+      .eq('from_coach', false).order('created_at', { ascending: false }).limit(40).then(must),
+    sb.rpc('coach_list').then(must),
   ]);
   if (t !== navToken) return;
-  // The section says Active or Inactive; Not Invited or Invited shows until an active student signs in.
+  const coachName = id => coachList.find(c => c.id === id)?.name || 'another coach';
+  // The section says whose they are, or Inactive. Warn tags and Not Invited or Invited only on students you coach.
   const row = s => {
-    const current = s.plans.filter(p => p.active).map(p => p.title || 'Untitled Plan').join(', ');
+    const current = s.plans.filter(p => p.active).map(p => p.title || 'Untitled Plan').join(', '), mine = canCoach(s);
     return `<li><a class="item" href="#/student/${s.id}">
-      <span><strong>${esc(s.name)}</strong>${pronounsTag(s.pronouns)}<span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}</span></span>
+      <span><strong>${esc(s.name)}</strong>${pronounsTag(s.pronouns)}${isSelf(s) ? ' <span class="muted">(you)</span>' : ''}
+        <span class="item-sub">${s.email ? esc(s.email) : 'No email yet'}${s.coach_id && s.coach_id !== me.staffId ? ` · Coached by ${esc(coachName(s.coach_id))}` : ''}</span></span>
       <span class="row"><span class="muted">${current ? esc(current) : 'No current plan'}</span>
-      ${s.training_ended_at ? '' : `
+      ${s.training_ended_at || !mine ? '' : `
       ${nextOverdue(s) ? '<span class="tag warn">Update Next Session</span>' : ''}
       ${s.user_id ? '' : `<span class="tag">${accountStatus(s)}</span>`}`}</span></a></li>`;
   };
   const active = students.filter(s => !s.training_ended_at), inactive = students.filter(s => s.training_ended_at);
-  const section = (title, list, hint, none) => `<section class="card" data-fold="${title}"${title === 'Inactive' ? ' data-fold-start' : ''}><h2>${title} (${list.length})</h2>
+  const mine = active.filter(s => s.coach_id && s.coach_id === me.staffId), none = active.filter(s => !s.coach_id),
+    others = active.filter(s => s.coach_id && s.coach_id !== me.staffId);
+  const section = (title, list, hint, empty, folded) => `<section class="card" data-fold="${title}"${folded ? ' data-fold-start' : ''}><h2>${title} (${list.length})</h2>
     <p class="hint">${hint}</p>
     ${list.length ? `<div class="list-head"><span>Student</span><span>Current Plan</span></div>
-    <ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${none}</p>`}</section>`;
-  const feed = recent.map(n => noteFeedItem(n, n.session?.plan?.student?.name)).join('');
+    <ul class="list">${list.map(row).join('')}</ul>` : `<p class="muted">${empty}</p>`}</section>`;
+  // Notes from the students you coach (or who have no coach): the ones you reply to.
+  const feed = recent.filter(n => n.session?.plan?.student && canCoach(n.session.plan.student)).slice(0, 8)
+    .map(n => noteFeedItem(n, n.session.plan.student.name)).join('');
 
   view(`${crumbs([['Home', '#/'], ['Students']])}
   <h1>Students</h1>
   <div class="grid2" data-folds="students">
     <div>${students.length
-      ? section('Active', active, 'Students you are coaching now.', 'No active students.')
-        + section('Inactive', inactive, 'Students you no longer coach. Resume Coaching on their page brings them back.', 'No inactive students.')
+      ? section('My Students', mine, 'Students you are coaching now. Only you change their plans, goals and sessions.', 'No students yet.')
+        + (none.length ? section('No Coach', none, 'Active students with no coach. Any coach can change them until an admin picks their coach.', '') : '')
+        + section("Other Coaches' Students", others, 'You can read their plans and goals, add Coach Notes and add past sessions you ran.', 'None right now.', true)
+        + section('Inactive', inactive, 'Students no longer being coached. Resume Coaching on their page brings them back, with you as their coach.', 'No inactive students.', true)
       : '<section class="card"><p class="muted">No students yet. Add your first one.</p></section>'}</div>
     <aside>
       <section class="card"><h2>Add a Student</h2>
-        <p class="hint">Build their plan and add a goal first, then add their email and send the invite from their page.</p>
+        <p class="hint">You'll be their coach. Build their plan and add a goal first, then add their email and send the invite from their page.</p>
         <form id="addForm" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
@@ -1374,7 +1426,7 @@ function historyHTML(s, hist) {
     const n = hist.notes?.(h.session_date) || 0;
     const btns = (!hist.notes ? '' : n ? `<button type="button" class="small ghost" data-hist-notes="${h.session_date}">Notes (${n})</button>`
       : `<button type="button" class="small ghost" data-hist-add-notes="${h.session_date}">Add Notes</button>`)
-      + `<button type="button" class="small ghost danger" data-hist-del="${h.id || 'next'}">Delete</button>`;
+      + (hist.readOnly ? '' : `<button type="button" class="small ghost danger" data-hist-del="${h.id || 'next'}">Delete</button>`);
     return `<div class="row">${btns}</div>`;
   };
   return `${historyCount(list)}
@@ -1383,8 +1435,16 @@ function historyHTML(s, hist) {
     <button type="button" class="small" data-hist-add style="margin-top:.6rem">+ Add Past Session</button>`;
 }
 
-function sessionsCardHTML(s) {
-  const p = pro(s.pronouns), ended = !!s.training_ended_at, overdue = !ended && nextOverdue(s);
+// edit: false for a coach who isn't theirs: they see the next session, and can only add past sessions.
+function sessionsCardHTML(s, edit = true) {
+  const p = pro(s.pronouns), ended = !!s.training_ended_at, overdue = edit && !ended && nextOverdue(s);
+  if (!edit) return `<section class="card" id="nextCard"><h2>Sessions</h2>
+    <p class="hint">Only ${p.their} coach can change the next session. You can add a past session you ran.</p>
+    ${ended ? '' : `<h3 class="sub-head">Next Session</h3>
+    <p${s.next_date ? '' : ' class="muted"'}>${s.next_date ? `${esc(nextWhen(s))}<br><span class="muted">${esc(s.next_location)}</span>` : 'No next session set.'}</p>`}
+    <h3 class="sub-head">Session History</h3>
+    <div id="historyBox"></div>
+  </section>`;
   return `<section class="card${overdue ? ' overdue' : ''}" id="nextCard">
     <div class="row between"><h2>Sessions</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
     <p class="hint">${ended ? `Coaching has ended, so there's no next session. ${p.They} can still see ${p.their} past sessions.`
@@ -1424,7 +1484,8 @@ const addMinute = t => {
 };
 
 // Saves or clears the next session (redrawing the card), and runs Session History in place.
-// hist = { log, page, notes?, showNotes?, addNotes?, changed? }: showNotes(date) opens Coach Notes from that day;
+// hist = { log, page, readOnly?, notes?, showNotes?, addNotes?, changed? }: readOnly (another coach's student) has no
+// Delete buttons and no next session form; showNotes(date) opens Coach Notes from that day;
 // addNotes(date) starts a Coach Note for that day;
 // changed() runs after the next session or the history changes.
 function bindSessions(id, s, hist) {
@@ -1440,7 +1501,7 @@ function bindSessions(id, s, hist) {
     if (keep) await logEnded(id, s, hist.log);
     Object.assign(s, await sb.from('students').update(patch).eq('id', id).select(NEXT_COLS).single().then(must));
     hist.page = 1;
-    $('#nextCard').outerHTML = sessionsCardHTML(s);
+    $('#nextCard').outerHTML = sessionsCardHTML(s, !hist.readOnly);
     bindSessions(id, s, hist);
     hist.changed?.();
     flash(msg);
@@ -1523,25 +1584,29 @@ function studentHistory(log, next) {
 
 // ---------- Coaching Status card (students.training_ended_at: null while they are coached) ----------
 
-function trainingCardHTML(s) {
+// edit: false for a coach who isn't theirs (read only).
+function trainingCardHTML(s, edit = true) {
   const done = s.training_ended_at, p = pro(s.pronouns);
   return `<section class="card" id="trainingCard" data-fold-start>
     <div class="row between"><h2>Coaching Status</h2><span class="tag${done ? '' : ' ok'}">${done ? 'Inactive' : 'Active'}</span></div>
-    <p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
+    ${!edit ? `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}.` : 'Being coached.'} Only ${p.their} coach can change this.</p>`
+    : `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
+        ${me.isCoach && !isSelf(s) ? `Resuming makes you ${p.their} coach.` : `After resuming, pick ${p.their} coach.`}
         Delete ${p.them} only if ${p.they} ${p.v('were', 'was')} added by mistake.`
-      : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list.`}</p>
+      : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list and ${p.v('have', 'has')} no coach.`}</p>
     <div class="row"><button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>
-      ${done ? '<button type="button" class="ghost danger" data-act="del-student">Delete Student</button>' : ''}</div>
+      ${done ? '<button type="button" class="ghost danger" data-act="del-student">Delete Student</button>' : ''}</div>`}
   </section>`;
 }
 
-// Ends their coaching (clearing the next session, after logging it if it has ended) or resumes it, then redraw() the page.
+// Ends their coaching (clearing the next session and their coach, after logging it if it has ended) or resumes it,
+// then redraw() the page.
 function bindTraining(id, s, redraw) {
-  $('#trainingCard [data-act="training"]').addEventListener('click', async e => {
+  $('#trainingCard [data-act="training"]')?.addEventListener('click', async e => {
     e.stopPropagation();   // not the page's own data-act handler
     const done = !s.training_ended_at, btn = e.currentTarget, p = pro(s.pronouns);
     if (done && !await ask({ title: `End Coaching for ${s.first_name}?`, ok: 'End Coaching',
-      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive and ${p.their} next session is cleared. Plans, goals, notes and past sessions stay, and ${p.they} can still sign in.</p>` })) return;
+      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive, ${p.their} next session is cleared and ${p.they} no longer ${p.v('have', 'has')} a coach. Plans, goals, notes and past sessions stay, and ${p.they} can still sign in.</p>` })) return;
     busy(btn, async () => {
       if (done) await logEnded(id, s);
       must(await sb.from('students').update(done
@@ -1571,17 +1636,18 @@ const GOALS_PAGE = 3;   // goals per page, in each group
 const goalBtns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]) =>
   `<button type="button" class="small ${cls || 'ghost'}" data-act="${act}" data-goal="${g.id}">${label}</button>`).join('')}</div>`;
 // Each group pages by itself. Current goals are oldest first, so their buttons aren't Newer and Older.
+// Each group: [the line under a goal, its buttons, pager names].
 const GOAL_GROUPS = {
-  current: [g => goalItem(g, '', goalBtns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive'])),
+  current: [() => '', g => goalBtns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']),
     ['Previous', 'Next']],
-  achieved: [g => goalItem(g, 'Achieved ' + fmtDay(g.done_at), goalBtns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive']))],
-  archived: [g => goalItem(g, 'Archived ' + fmtDay(g.done_at), goalBtns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger']))],
+  achieved: [g => 'Achieved ' + fmtDay(g.done_at), g => goalBtns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive'])],
+  archived: [g => 'Archived ' + fmtDay(g.done_at), g => goalBtns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger'])],
 };
-// One group's page (at[st].page, kept in range here), with its pager.
+// One group's page (at[st].page, kept in range here), with its pager. at.readOnly: no buttons (another coach's student).
 function goalGroupHTML(goals, st, at) {
-  const list = goals.filter(g => g.status === st), [item, names] = GOAL_GROUPS[st], [shown, page] = pageOf(list, at[st].page, GOALS_PAGE);
+  const list = goals.filter(g => g.status === st), [sub, btns, names] = GOAL_GROUPS[st], [shown, page] = pageOf(list, at[st].page, GOALS_PAGE);
   at[st].page = page;
-  return `<ul class="list">${shown.map(item).join('')}</ul>${pagerHTML(page, list.length, GOALS_PAGE, names)}`;
+  return `<ul class="list">${shown.map(g => goalItem(g, sub(g), at.readOnly ? '' : btns(g))).join('')}</ul>${pagerHTML(page, list.length, GOALS_PAGE, names)}`;
 }
 
 function coachGoalsHTML(goals, p, at) {
@@ -1590,10 +1656,10 @@ function coachGoalsHTML(goals, p, at) {
   return `<h2>Goals</h2>
     <p class="hint">${p.They} ${p.v('see', 'sees')} current and achieved goals on ${p.their} page. Archived goals are hidden from ${p.them}.</p>
     ${n('current') ? box('current') : '<p class="muted">No current goals.</p>'}
-    <form id="goalForm" class="row" data-save style="margin-top:.6rem">
+    ${at.readOnly ? '' : `<form id="goalForm" class="row" data-save style="margin-top:.6rem">
       <input name="body" class="grow" maxlength="500" required data-need="Write the goal first." autocomplete="off" placeholder="e.g. Send a V5 by spring">
       <button class="primary">+ Add Goal</button>
-    </form>
+    </form>`}
     ${n('achieved') ? `<h3 class="goal-group">Achieved</h3>${box('achieved')}` : ''}
     ${n('archived') ? `<details class="goal-group"${at.archivedOpen ? ' open' : ''}><summary>Archived (${n('archived')})</summary>${box('archived')}</details>` : ''}`;
 }
@@ -1611,18 +1677,19 @@ const cnoteIn = (n, filter) => filter === 'all' || (filter === 'session') === !!
 const cnoteDateField = (value = '') => `<label>Session Date<span class="hint field-hint">Leave the date empty for a general note.</span>
     <input type="date" name="session_date" value="${esc(value)}" max="${localToday()}" data-high="Pick today or an earlier day."></label>`;
 
-const coachNoteItem = n => `<div class="note-wrap" id="cnote-${n.id}"><div class="row between">
+// edit: the student's coach, who can edit any note; other coaches edit only their own.
+const coachNoteItem = (n, edit) => `<div class="note-wrap" id="cnote-${n.id}"><div class="row between">
     <strong>${n.session_date ? 'Session on ' + esc(fmtSessionDay(n.session_date)) : 'General Note'}</strong>
-    <div class="row"><button type="button" class="small ghost" data-act="cnote-edit" data-cnote="${n.id}">Edit</button>
-    <button type="button" class="small ghost danger" data-act="cnote-delete" data-cnote="${n.id}">Delete</button></div></div>
+    ${edit || n.author_id === me.user.id ? `<div class="row"><button type="button" class="small ghost" data-act="cnote-edit" data-cnote="${n.id}">Edit</button>
+    <button type="button" class="small ghost danger" data-act="cnote-delete" data-cnote="${n.id}">Delete</button></div>` : ''}</div>
     <p>${para(n.body)}</p>
     <div class="note-meta">${esc(n.author_name || 'Coach')} · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited ' + fmtWhen(n.edited_at) : ''}</div></div>`;
 
 // Days of past sessions with no note, newest first: every one newer than the newest session that has a note
 // (so older, backfilled sessions stop counting once a newer one is noted). Past sessions come from historyOf:
-// Session History plus an ended next session. None once coaching ends. log: session_history rows.
+// Session History plus an ended next session. None once coaching ends, or for another coach's student. log: session_history rows.
 function cnoteMissing(notes, s, log) {
-  if (s.training_ended_at) return [];
+  if (s.training_ended_at || !canCoach(s)) return [];
   const noted = new Set(notes.map(n => n.session_date)), days = [...new Set(historyOf(log, s).map(h => h.session_date))];
   const upTo = days.findIndex(d => noted.has(d));
   return upTo < 0 ? days : days.slice(0, upTo);
@@ -1658,7 +1725,7 @@ function coachNotesHTML(notes, s, log, at) {
     </form>
     ${notes.length ? `<div class="seg" role="radiogroup" aria-label="Show" style="margin:1.1rem 0 .3rem">${CNOTE_FILTERS.map(([k, label]) =>
       `<label><input type="radio" name="cnote_filter" value="${k}"${k === at.filter ? ' checked' : ''}>${label} (${notes.filter(n => cnoteIn(n, k)).length})</label>`).join('')}</div>` : ''}
-    ${shown.map(coachNoteItem).join('') || `<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
+    ${shown.map(n => coachNoteItem(n, canCoach(s))).join('') || `<p class="muted">${notes.length ? 'None here yet.' : 'No coach notes yet.'}</p>`}
     ${pagerHTML(page, list.length, CNOTES_PAGE)}`;
 }
 
@@ -1679,10 +1746,12 @@ async function adminStudent(id, again = false) {
   ]);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/students'; return; }
+  // Your own student page: as your students see theirs.
+  if (isSelf(s)) return redirect('#/me');
   s.plans.sort((a, b) => (b.active - a.active) || b.updated_at.localeCompare(a.updated_at));
   sortGoals(s.goals);
   sortCoachNotes(cnotes);
-  const p = pro(s.pronouns);
+  const p = pro(s.pronouns), edit = canCoach(s), coach = coaches.find(c => c.is_current);
 
   // Training Plans and Student Notes, a page at a time.
   const plansHTML = page => {
@@ -1698,11 +1767,13 @@ async function adminStudent(id, again = false) {
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
   <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag">Inactive</span>' : ''}</div>
+  ${edit ? '' : `<p class="alert">${esc(s.first_name)} is coached by ${esc(coach?.name || 'another coach')}. You can read everything here,
+    add Coach Notes and add past sessions you ran. Only ${p.their} coach can change the rest.</p>`}
   <div class="grid2 phone-order" data-folds="student">
     <div>
       <section class="card">
-        <div class="row between"><h2>Training Plans</h2><button class="primary" data-act="new-plan">+ New Plan</button></div>
-        <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current plan first, and past plans below it. Open a plan to edit it.</p>
+        <div class="row between"><h2>Training Plans</h2>${edit ? '<button class="primary" data-act="new-plan">+ New Plan</button>' : ''}</div>
+        <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current plan first, and past plans below it. Open a plan to ${edit ? 'edit' : 'read'} it.</p>
         ${s.plans.length ? `<div id="plansBox">${plansHTML(1)}</div>` : '<p class="muted">No plans yet.</p>'}
       </section>
       <section class="card" id="goalsCard"></section>
@@ -1710,11 +1781,11 @@ async function adminStudent(id, again = false) {
         <p class="hint">${p.Their} notes on ${p.their} sessions, newest first. Open one to reply in the plan.</p>
         ${notes.length ? `<div id="snotesBox">${snotesHTML(1)}</div>` : `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
       <section class="card" id="coachNotesCard"></section>
-      ${trainingCardHTML(s)}
+      ${trainingCardHTML(s, edit)}
     </div>
     <aside>
-      ${sessionsCardHTML(s)}
-      <section class="card" data-fold-start><h2>Details</h2>
+      ${sessionsCardHTML(s, edit)}
+      ${edit ? `<section class="card" data-fold-start><h2>Details</h2>
         <p class="hint">Emails and ${p.their} page greet ${p.them} by first name. ${p.They} can change ${p.their} own pronouns too.</p>
         <form id="stuForm" class="stack" data-save>
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter ${p.their} first name."></label>
@@ -1722,12 +1793,14 @@ async function adminStudent(id, again = false) {
           ${pronounsField(s.pronouns)}
           <button class="primary">Save Details</button>
         </form>
-      </section>
+      </section>` : ''}
       <section class="card" data-fold-start><h2>Coach</h2>
         <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} coach.`}</p>
         ${coachesHTML(coaches, 'No coach yet.')}</section>
-      ${accountCardStart(!!s.user_id, s.invited_at, s.first_name, p)}
-        ${s.user_id ? `
+      ${accountCardStart(!!s.user_id || !edit, s.invited_at, s.first_name, p)}
+        ${!edit && !s.user_id ? `<p class="muted">${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}
+          ${p.Their} coach sends the invite.</p>`
+        : s.user_id ? `
         <p class="hint">How ${p.they} ${p.v('sign', 'signs')} in. Send a new sign-in link if ${p.they}${p.v("'re", "'s")} locked out.
           ${me.isAdmin ? `Change ${p.their} email on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} email.`}</p>
         <p>Signs in as ${esc(s.email)}.</p>
@@ -1747,11 +1820,11 @@ async function adminStudent(id, again = false) {
   if (notes.length) pagedBox($('#snotesBox'), { page: 1 }, snotesHTML);
   // Session History links to Coach Notes from the same day.
   // Coach Notes redraw when the sessions change, for their prompt about the newest past session.
-  const hist = { log, page: 1, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
+  const hist = { log, page: 1, readOnly: !edit, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
     addNotes: startCoachNote, changed: () => renderCoachNotes() };
   bindSessions(id, s, hist);
 
-  $('#stuForm').onsubmit = e => {
+  if (edit) $('#stuForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
     busy(e.submitter, async () => {
@@ -1772,7 +1845,7 @@ async function adminStudent(id, again = false) {
   // Goals change in place, so the rest of the page (and the scroll) stays put.
   // focusAdd: a goal was just added, so the box starts empty; otherwise a goal being typed stays.
   // added: the goal just added, so its page shows. Archived stays open or shut.
-  const goalAt = { current: { page: 1 }, achieved: { page: 1 }, archived: { page: 1 } };
+  const goalAt = { current: { page: 1 }, achieved: { page: 1 }, archived: { page: 1 }, readOnly: !edit };
   function renderGoals(focusAdd, added) {
     gateInvite(inviteNeed());
     const typing = !focusAdd && $('#goalForm')?.elements.body.value;
@@ -1782,6 +1855,7 @@ async function adminStudent(id, again = false) {
     $('#goalsCard').querySelectorAll('[data-goals]').forEach(box =>
       pagedBox(box, goalAt[box.dataset.goals], () => goalGroupHTML(s.goals, box.dataset.goals, goalAt)));
     const form = $('#goalForm');
+    if (!form) return;
     if (typing) form.elements.body.value = typing;
     if (focusAdd) form.elements.body.focus();
     form.onsubmit = e => {
@@ -2165,19 +2239,32 @@ async function adminPlan(id) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions, library] = await Promise.all([
-    sb.from('plans').select('*, student:students(id,name,pronouns)').eq('id', id).maybeSingle().then(must),
+    sb.from('plans').select('*, student:students(id,name,pronouns,email,coach_id)').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
     sb.from('exercises').select('*').then(must),
   ]);
   if (t !== navToken) return;
   if (!plan) { location.hash = '#/'; return; }
+  // Your own plan: as your students see theirs.
+  if (isSelf(plan.student)) return studentPlan(id);
   const notes = sessions.length
     ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
   if (t !== navToken) return;
+  const edit = canCoach(plan.student);
+  notesCtx = { notes, studentName: plan.student.name, coach: edit, canPost: edit };
+  dirty = false;
+  // Another coach's student: read only.
+  if (!edit) {
+    const p = pro(plan.student.pronouns);
+    view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [plan.student.name, '#/student/' + plan.student.id], [plan.title || 'Untitled Plan']])}
+      <p class="alert">You're viewing ${esc(plan.student.name)}'s plan. Only ${p.their} coach can change it or reply to ${p.their} notes.</p>
+      ${planReadHTML(plan, sessions)}`);
+    window.scrollTo(0, 0);
+    return;
+  }
 
   // library: the master exercise list, for the Exercise picker.
   draft = { plan, sessions, library, savedIds: new Set(sessions.map(s => s.id)), preview: false };
-  notesCtx = { notes, studentName: plan.student.name };
   dirty = false;
   renderEditor();
   window.scrollTo(0, 0);
@@ -2463,10 +2550,11 @@ function sessionReadHTML(s, withNotes) {
 async function studentHome() {
   const t = ++navToken;
   view(loading);
+  // Coaches can read every student's plans and goals, so ask for this student's (and not archived goals) by name.
   const [plans, goals, coaches, next, log] = await Promise.all([
-    sb.from('plans').select('id,title,active,start_date')
+    sb.from('plans').select('id,title,active,start_date').eq('student_id', me.student.id)
       .order('active', { ascending: false }).order('created_at', { ascending: false }).then(must),
-    sb.from('goals').select('*').then(must).then(sortGoals),   // RLS leaves out archived goals
+    sb.from('goals').select('*').eq('student_id', me.student.id).neq('status', 'archived').then(must).then(sortGoals),
     sb.rpc('coaches_of', { p_id: me.student.id }).then(must),
     sb.from('students').select(NEXT_COLS).eq('id', me.student.id).maybeSingle().then(must),
     sb.from('session_history').select('*').eq('student_id', me.student.id).then(must),
@@ -2477,7 +2565,7 @@ async function studentHome() {
   if (current) return studentPlan(current.id, plans, goals, coaches, next, history);
 
   // No current plan, so any plans here are past ones.
-  view(`<h1>${welcome()}</h1>${nextSessionAlert(next)}${goalHTML(goals)}
+  view(`${myTop()}${nextSessionAlert(next)}${goalHTML(goals)}
     ${plans.length ? `<section class="card"><h2>Past Plans</h2>
       <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(plans)}</ul></section>`
       : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
@@ -2486,15 +2574,20 @@ async function studentHome() {
   bindMyDetails();
 }
 
+// The top of a student's home page: the greeting, or for staff who are also students, My Training under Home.
+const myTop = () => me.isStaff ? `${crumbs([['Home', '#/'], ['My Training']])}<h1>My Training</h1>` : `<h1>${welcome()}</h1>`;
+
 // Students change only their own pronouns (update_my_pronouns() in schema.sql), at the bottom of their home page.
 // Their name stays the coach's to change, so the coach always knows who they are.
-const myDetailsHTML = () => `<section class="card" id="myDetails" style="margin-top:2rem"><h2>Your Pronouns</h2>
+// Staff who are also students don't get it: their pronouns are on their staff details.
+const myDetailsHTML = () => me.isStaff ? '' : `<section class="card" id="myDetails" style="margin-top:2rem"><h2>Your Pronouns</h2>
   <p class="hint">Your coach sees these next to your name. To change your name, ask your coach.</p>
   <form id="myForm" class="stack" data-save>
     ${pronounsField(me.student.pronouns, 'Your')}
     <button class="primary">Save Pronouns</button>
   </form></section>`;
 function bindMyDetails() {
+  if (!$('#myForm')) return;
   $('#myForm').onsubmit = e => {
     e.preventDefault();
     busy(e.submitter, async () => {
@@ -2534,13 +2627,14 @@ async function studentPlan(id, allPlans, goals, coaches, next, history) {
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
   ]);
   if (t !== navToken) return;
-  if (!plan) { view(`<section class="card narrow"><h1>Plan Not Found</h1><p><a href="#/">Back to your plans</a></p></section>`); return; }
+  const home = me.isStaff ? '#/me' : '#/';
+  if (!plan) { view(`<section class="card narrow"><h1>Plan Not Found</h1><p><a href="${home}">Back to your plans</a></p></section>`); return; }
   const notes = sessions.length
     ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
   if (t !== navToken) return;
-  notesCtx = { notes, studentName: me.student.name };
+  notesCtx = { notes, studentName: me.student.name, coach: false, canPost: true };
   const others = allPlans?.filter(p => p.id !== id) || [];
-  view(`${allPlans ? `<h1>${welcome()}</h1>` : crumbs([['Home', '#/'], [plan.title || 'Untitled Plan']])}
+  view(`${allPlans ? myTop() : crumbs([['Home', '#/'], ...(me.isStaff ? [['My Training', '#/me']] : []), [plan.title || 'Untitled Plan']])}
     ${nextSessionAlert(next)}
     ${goals ? goalHTML(goals) : ''}
     ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}
@@ -2557,21 +2651,24 @@ async function studentPlan(id, allPlans, goals, coaches, next, history) {
 
 // ---------- Notes (shared by the student's view and the coach's editor) ----------
 
+// notesCtx.coach: posting as the student's coach (their plan editor); otherwise as the student.
+// notesCtx.canPost: false for a coach reading another coach's student's plan.
 function notesHTML(sid) {
   const list = notesCtx.notes.filter(n => n.session_id === sid);
-  const canDelete = n => me.isCoach || (n.author_id === me.user.id && !n.from_coach);
+  const canDelete = n => notesCtx.coach || (n.author_id === me.user.id && !n.from_coach);
+  if (!notesCtx.canPost && !list.length) return '';
   return `<details class="notes" data-notes="${sid}" ${list.length ? 'open' : ''}>
     <summary>${list.length ? `Notes (${list.length})` : 'Add a Note'}</summary>
     ${list.map(n => `<div class="note${n.author_id === me.user.id ? ' mine' : ''}">
       <div class="note-meta"><strong>${n.from_coach ? esc(n.author_name || 'Coach') : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}
       ${canDelete(n) ? ` · <button type="button" class="link" data-del-note="${n.id}">Delete</button>` : ''}</div>
       <p>${para(n.body)}</p></div>`).join('')}
-    <form class="note-form" data-note-form="${sid}">
+    ${notesCtx.canPost ? `<form class="note-form" data-note-form="${sid}">
       <textarea name="body" rows="2" maxlength="4000" required data-need="Write your note first."
-        placeholder="${me.isCoach ? 'Reply to your student…'
+        placeholder="${notesCtx.coach ? 'Reply to your student…'
           : list.some(n => !n.from_coach) ? 'Any other thoughts?' : 'How did the session go? Any questions?'}"></textarea>
       <button class="small">+ Post Note</button>
-    </form>
+    </form>` : ''}
   </details>`;
 }
 
@@ -2587,7 +2684,7 @@ app.addEventListener('submit', e => {
   const body = f.elements.body.value.trim();
   if (!body) return;
   busy(e.submitter, async () => {
-    const n = await sb.from('notes').insert({ session_id: f.dataset.noteForm, body, from_coach: me.isCoach }).select().single().then(must);
+    const n = await sb.from('notes').insert({ session_id: f.dataset.noteForm, body, from_coach: !!notesCtx.coach }).select().single().then(must);
     notesCtx.notes.push(n);
     refreshNotes(n.session_id);
   });

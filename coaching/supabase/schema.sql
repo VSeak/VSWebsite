@@ -201,6 +201,41 @@ language sql stable security definer set search_path = '' as $$
   );
 $$;
 
+create function public.my_staff_id() returns uuid
+language sql stable security definer set search_path = '' as $$
+  select id from public.staff where email = lower(auth.jwt() ->> 'email');
+$$;
+
+-- A staff member can also be a student. True when the student is the signed-in person (their claimed login,
+-- or their email before they claim it): nobody coaches themselves or sees Coach Notes about themselves.
+create function public.is_self(p uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.students
+    where id = p and (user_id = auth.uid() or email = lower(auth.jwt() ->> 'email'))
+  );
+$$;
+
+-- True when the signed-in coach may change this student: they are the student's coach, or the student has none.
+-- Never for themselves. Other coaches can only read.
+create function public.can_coach(p uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select public.is_coach() and exists (
+    select 1 from public.students
+    where id = p and (coach_id is null or coach_id = public.my_staff_id())
+  ) and not public.is_self(p);
+$$;
+
+create function public.can_coach_plan(p uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select public.can_coach((select student_id from public.plans where id = p));
+$$;
+
+create function public.can_coach_session(s uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select public.can_coach_plan((select plan_id from public.sessions where id = s));
+$$;
+
 -- Called by the site after sign-in: links the account to its student row.
 create function public.claim_student() returns void
 language sql volatile security definer set search_path = '' as $$
@@ -230,8 +265,8 @@ language plpgsql volatile security definer set search_path = '' as $$
 declare
   s public.students;
 begin
-  if not (public.is_coach() or public.is_admin()) then
-    raise exception 'Only a coach or an admin can delete students.';
+  if not (public.is_admin() or public.can_coach(p_id)) then
+    raise exception 'Only an admin or their coach can delete a student.';
   end if;
   if exists (select 1 from public.students where id = p_id and training_ended_at is null) then
     raise exception 'End their coaching before deleting them.';
@@ -301,7 +336,9 @@ create trigger stamp_coach_note before insert or update on public.coach_notes
   for each row execute function public.stamp_coach_note();
 
 -- 3. Access rules -------------------------------------------------------------
--- Coaches can do everything with students, plans, sessions, notes and goals.
+-- Every coach can read every student, plan, session, note and goal. Only a student's current coach (or any
+-- coach, for a student with no coach: can_coach()) changes them or replies to notes. Any coach adds Coach Notes
+-- (the author or the student's coach edits them) and logs past sessions. Nobody coaches themselves.
 -- Admins can read and change the staff list and students (not plans or goals).
 -- A student can read their own row (and change their pronouns through
 -- update_my_pronouns()), plans and sessions, read their current and
@@ -331,25 +368,37 @@ create policy "admin: everything" on public.staff for all to authenticated
 create policy "staff: own row" on public.staff for select to authenticated
   using (email = lower(auth.jwt() ->> 'email'));
 
-create policy "coach: everything" on public.students for all to authenticated
-  using (public.is_coach()) with check (public.is_coach());
+create policy "coach: read" on public.students for select to authenticated using (public.is_coach());
+create policy "coach: add" on public.students for insert to authenticated with check (public.is_coach());
+create policy "coach: change own" on public.students for update to authenticated
+  using (public.can_coach(id))
+  with check (public.is_coach() and (coach_id is null or coach_id = public.my_staff_id()));
+create policy "coach: delete own" on public.students for delete to authenticated using (public.can_coach(id));
 create policy "admin: students" on public.students for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 create policy "student: own row" on public.students for select to authenticated
   using (user_id = auth.uid());
 
-create policy "coach: everything" on public.plans for all to authenticated
-  using (public.is_coach()) with check (public.is_coach());
+create policy "coach: read" on public.plans for select to authenticated using (public.is_coach());
+create policy "coach: add" on public.plans for insert to authenticated with check (public.can_coach(student_id));
+create policy "coach: change" on public.plans for update to authenticated
+  using (public.can_coach(student_id)) with check (public.can_coach(student_id));
+create policy "coach: delete" on public.plans for delete to authenticated using (public.can_coach(student_id));
 create policy "student: own plans" on public.plans for select to authenticated
   using (student_id = public.my_student_id());
 
-create policy "coach: everything" on public.sessions for all to authenticated
-  using (public.is_coach()) with check (public.is_coach());
+create policy "coach: read" on public.sessions for select to authenticated using (public.is_coach());
+create policy "coach: add" on public.sessions for insert to authenticated with check (public.can_coach_plan(plan_id));
+create policy "coach: change" on public.sessions for update to authenticated
+  using (public.can_coach_plan(plan_id)) with check (public.can_coach_plan(plan_id));
+create policy "coach: delete" on public.sessions for delete to authenticated using (public.can_coach_plan(plan_id));
 create policy "student: own sessions" on public.sessions for select to authenticated
   using (public.owns_plan(plan_id));
 
-create policy "coach: everything" on public.notes for all to authenticated
-  using (public.is_coach()) with check (public.is_coach());
+create policy "coach: read" on public.notes for select to authenticated using (public.is_coach());
+create policy "coach: reply" on public.notes for insert to authenticated
+  with check (from_coach and author_id = auth.uid() and public.can_coach_session(session_id));
+create policy "coach: delete" on public.notes for delete to authenticated using (public.can_coach_session(session_id));
 create policy "student: read notes" on public.notes for select to authenticated
   using (public.owns_session(session_id));
 create policy "student: add notes" on public.notes for insert to authenticated
@@ -357,16 +406,31 @@ create policy "student: add notes" on public.notes for insert to authenticated
 create policy "student: delete own notes" on public.notes for delete to authenticated
   using (author_id = auth.uid() and not from_coach);
 
-create policy "coach: everything" on public.goals for all to authenticated
-  using (public.is_coach()) with check (public.is_coach());
+create policy "coach: read" on public.goals for select to authenticated using (public.is_coach());
+create policy "coach: add" on public.goals for insert to authenticated with check (public.can_coach(student_id));
+create policy "coach: change" on public.goals for update to authenticated
+  using (public.can_coach(student_id)) with check (public.can_coach(student_id));
+create policy "coach: delete" on public.goals for delete to authenticated using (public.can_coach(student_id));
 create policy "student: own goals" on public.goals for select to authenticated
   using (student_id = public.my_student_id() and status <> 'archived');
 
-create policy "coach: everything" on public.coach_notes for all to authenticated
-  using (public.is_coach()) with check (public.is_coach());
+create policy "coach: read" on public.coach_notes for select to authenticated
+  using (public.is_coach() and not public.is_self(student_id));
+create policy "coach: add" on public.coach_notes for insert to authenticated
+  with check (public.is_coach() and not public.is_self(student_id));
+create policy "coach: change" on public.coach_notes for update to authenticated
+  using (public.is_coach() and not public.is_self(student_id) and (author_id = auth.uid() or public.can_coach(student_id)))
+  with check (public.is_coach() and not public.is_self(student_id));
+create policy "coach: delete" on public.coach_notes for delete to authenticated
+  using (public.is_coach() and not public.is_self(student_id) and (author_id = auth.uid() or public.can_coach(student_id)));
 
-create policy "staff: everything" on public.session_history for all to authenticated
-  using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
+create policy "staff: read" on public.session_history for select to authenticated using (public.is_coach() or public.is_admin());
+create policy "staff: add" on public.session_history for insert to authenticated
+  with check (public.is_admin() or (public.is_coach() and not public.is_self(student_id)));
+create policy "staff: change" on public.session_history for update to authenticated
+  using (public.is_admin() or public.can_coach(student_id)) with check (public.is_admin() or public.can_coach(student_id));
+create policy "staff: delete" on public.session_history for delete to authenticated
+  using (public.is_admin() or public.can_coach(student_id));
 create policy "student: own history" on public.session_history for select to authenticated
   using (student_id = public.my_student_id());
 
@@ -598,18 +662,25 @@ create table public.student_coaches (
 );
 alter table public.student_coaches enable row level security;
 
-create function public.my_staff_id() returns uuid
-language sql stable security definer set search_path = '' as $$
-  select id from public.staff where email = lower(auth.jwt() ->> 'email');
-$$;
-
--- A new student gets the coach who added them. After that only an admin can
--- change the coach (the SQL Editor, with no signed-in user, can too).
+-- A new student gets the coach who added them (unless it's themselves). After that only an admin can
+-- change the coach (the SQL Editor, with no signed-in user, can too). Ending coaching leaves them with
+-- no coach; a coach who resumes it becomes their coach. Nobody can be their own coach.
 create function public.check_student_coach() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if tg_op = 'INSERT' and new.coach_id is null and public.is_coach() then
+  if tg_op = 'INSERT' and new.coach_id is null and public.is_coach()
+     and new.email is distinct from lower(auth.jwt() ->> 'email') then
     new.coach_id := public.my_staff_id();
+  end if;
+  if tg_op = 'UPDATE' and new.training_ended_at is distinct from old.training_ended_at then
+    if new.training_ended_at is not null then
+      new.coach_id := null;
+      return new;
+    end if;
+    if new.coach_id is null and old.coach_id is null and public.is_coach() and not public.is_self(new.id) then
+      new.coach_id := public.my_staff_id();
+      return new;
+    end if;
   end if;
   if new.coach_id is not distinct from (case when tg_op = 'UPDATE' then old.coach_id end) then
     return new;
@@ -623,10 +694,13 @@ begin
   ) then
     raise exception 'Pick an active staff member with the Coach role.';
   end if;
+  if new.coach_id is not null and exists (select 1 from public.staff where id = new.coach_id and email = new.email) then
+    raise exception 'Nobody can be their own coach.';
+  end if;
   return new;
 end;
 $$;
-create trigger check_student_coach before insert or update of coach_id on public.students
+create trigger check_student_coach before insert or update of coach_id, training_ended_at on public.students
   for each row execute function public.check_student_coach();
 
 -- Keeps student_coaches in step: the old coach's row gets an end date, the new
@@ -648,8 +722,15 @@ begin
   return null;
 end;
 $$;
-create trigger log_student_coach after insert or update of coach_id on public.students
+create trigger log_student_coach after insert or update of coach_id, training_ended_at on public.students
   for each row execute function public.log_student_coach();
+
+-- Active coaches' names, for staff (coaches can't read other staff rows).
+create function public.coach_list() returns table (id uuid, name text)
+language sql stable security definer set search_path = '' as $$
+  select s.id, coalesce(nullif(s.name, ''), s.email) from public.staff s
+  where 'coach' = any (s.roles) and s.deactivated_at is null and (public.is_coach() or public.is_admin());
+$$;
 
 -- A student's current coach and past coaches, newest first. For staff, or the
 -- student themselves (students can't read the staff table).
@@ -673,12 +754,15 @@ revoke execute on function public.delete_student(uuid) from public, anon;
 revoke execute on function public.list_users() from public, anon;
 revoke execute on function public.delete_staff(uuid) from public, anon;
 revoke execute on function public.student_ready(uuid) from public, anon;
-revoke execute on function public.coaches_of(uuid), public.my_staff_id() from public, anon;
+revoke execute on function public.coaches_of(uuid), public.my_staff_id(), public.coach_list() from public, anon;
+revoke execute on function public.is_self(uuid), public.can_coach(uuid), public.can_coach_plan(uuid),
+  public.can_coach_session(uuid) from public, anon;
 revoke execute on function public.stamp_sender(text) from public, anon;
 revoke execute on function public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
-  public.coaches_of(uuid), public.my_staff_id(), public.update_my_pronouns(text), public.stamp_sender(text),
-  public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) to authenticated;
+  public.coaches_of(uuid), public.my_staff_id(), public.coach_list(), public.update_my_pronouns(text), public.stamp_sender(text),
+  public.change_student_email(uuid, text), public.prepare_email_change(uuid, text),
+  public.is_self(uuid), public.can_coach(uuid), public.can_coach_plan(uuid), public.can_coach_session(uuid) to authenticated;
 
 -- 8. Make yourself an admin, a coach and the owner. Change this to the email you'll sign in with.
 insert into public.staff (email, roles, owner) values (lower('you@example.com'), '{admin,coach}', true);

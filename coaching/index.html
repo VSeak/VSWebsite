@@ -366,7 +366,7 @@ let navToken = 0;
 
 if (location.hash && !location.hash.startsWith('#/')) {
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Ask your coach to send a new one.';
+  if (h.get('error_code') === 'otp_expired') linkError = 'That link has expired or was already used. Use Forgot Password below to get a new one.';
   else if (h.get('error_description')) linkError = h.get('error_description');
 }
 
@@ -389,7 +389,7 @@ function flash(msg, kind = 'ok') {
 
 function msgOf(e) {
   const m = e?.message || String(e);
-  if (/invalid login credentials/i.test(m)) return "That email and password don't match. Forgot your password? Ask your coach for a new sign-in link.";
+  if (/invalid login credentials/i.test(m)) return "That email and password don't match. Forgot your password? Tap Forgot Password below.";
   if (/failed to fetch/i.test(m)) return "Couldn't reach the server. Check your connection and try again.";
   if (/does not exist|could not find the function/i.test(m)) return m + ' (Has supabase/schema.sql been run?)';
   return m;
@@ -821,9 +821,10 @@ function viewLogin() {
       <label>Password<input type="password" name="password" autocomplete="current-password" required data-need="Enter your password."></label>
       <button class="primary">Sign In</button>
     </form>
-    <p class="hint">Forgot your password? Ask your coach for a new sign-in link.</p>
+    <p class="hint"><button type="button" id="forgotBtn" class="link">Forgot Password?</button></p>
   </section>`);
   if (deactivated) deactivatedNotice();
+  $('#forgotBtn').onclick = e => forgotPassword(e.target);
 
   $('#loginForm').onsubmit = e => {
     e.preventDefault();
@@ -836,6 +837,23 @@ function viewLogin() {
       route();
     });
   };
+}
+
+// Emails a reset link (the Reset Password template) that leads to "Choose a Password".
+// Supabase sends nothing for an email with no login but answers the same way, so the
+// page always says the same thing: it never tells anyone whether an email has an account.
+async function forgotPassword(btn) {
+  const typed = $('#loginForm').elements.email.value.trim();
+  const f = await ask({ title: 'Reset Password', ok: 'Send Link',
+    body: `<p class="muted">Enter the email you sign in with. If it has an account, we'll email you a link to choose a new password.</p>
+      <label>Email<input type="email" name="email" value="${esc(typed)}" autocomplete="email" required data-need="Enter your email."></label>` });
+  if (!f) return;
+  await busy(btn, async () => {
+    const { error } = await sb.auth.resetPasswordForEmail(f.get('email').trim(), { redirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' });
+    if (error) throw error;
+    await ask({ title: 'Check Your Email', cancel: false,
+      body: `<p>If ${esc(f.get('email').trim())} has an account, a link to reset your password is on its way. It can take a few minutes, so check your spam folder too.</p>` });
+  });
 }
 
 function deactivatedNotice() {

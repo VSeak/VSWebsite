@@ -98,23 +98,6 @@ function sessionEditHTML(s, i) {
   </article>`;
 }
 
-// Narrows the Exercise picker to one purpose (draft.purpose). Not part of the plan, so it never
-// marks it unsaved. Purposes stay on the master list: students never see them.
-function purposeFilterHTML() {
-  const counts = new Map();
-  for (const x of draft.library) for (const g of x.purposes ?? []) counts.set(g, (counts.get(g) || 0) + 1);
-  const used = [...counts.keys()].sort((a, b) => exKey(a).localeCompare(exKey(b)));
-  if (!used.includes(draft.purpose)) draft.purpose = '';
-  if (!used.length) return '';
-  return `<section class="card stack" style="gap:.4rem">
-    <label>Find Exercises by Purpose<select id="exPurposeFilter">
-      <option value="">All Purposes</option>
-      ${used.map(g => `<option value="${esc(g)}"${g === draft.purpose ? ' selected' : ''}>${esc(g)} (${counts.get(g)})</option>`).join('')}
-    </select></label>
-    <p class="hint" style="margin:0">Pick a purpose, then tap an Exercise box to choose from exercises with it. You can also type a purpose in the Exercise box. Students don't see purposes.</p>
-  </section>`;
-}
-
 function renderEditor() {
   const p = draft.plan;
   const order = displayOrder();
@@ -149,7 +132,6 @@ function renderEditor() {
       </div>
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
     </section>
-    ${purposeFilterHTML()}
     ${sessionsHTML}
     <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Training Plan</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
   }
@@ -175,7 +157,6 @@ function renderEditor() {
   };
   app.onchange = e => {
     const t = e.target, d = t.dataset;
-    if (t.id === 'exPurposeFilter') { draft.purpose = t.value; return; }
     if (d.p === 'repeats') return setRepeats(t.value === '1');
     if (d.p === 'active') { draft.plan.active = t.checked; markDirty(); }
     if (d.p === 'start_date') renderEditor();          // week date ranges

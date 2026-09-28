@@ -237,7 +237,7 @@ async function addToMasterList(rows) {
 }
 
 // The exercise name picker: one menu under whichever name field has focus, listing master
-// exercises whose name or purpose contains what's typed (names first), narrowed to draft.purpose if set. Picking one sets the
+// exercises whose name or purpose contains what's typed (names first). Picking one sets the
 // field and fires an input event, so the editor's oninput fills in the values as for typing.
 const exMenu = Object.assign(document.createElement('ul'), { id: 'exMenu', className: 'combo-menu', role: 'listbox', hidden: true });
 exMenu.setAttribute('aria-label', 'Exercises');
@@ -245,10 +245,10 @@ document.body.append(exMenu);
 let exMenuFor = null, exMatches = [], exActive = -1;
 
 function exMenuOpen(input) {
-  const q = exKey(input.value), g = draft?.purpose;
+  const q = exKey(input.value);
   // Names containing the text first (starting with it before that), then exercises with a purpose containing it.
   const rank = x => x.name_key.startsWith(q) ? 0 : x.name_key.includes(q) ? 1 : (x.purposes ?? []).some(h => exKey(h).includes(q)) ? 2 : 3;
-  exMatches = (draft?.library ?? []).filter(x => (!g || x.purposes?.includes(g)) && rank(x) < 3)
+  exMatches = (draft?.library ?? []).filter(x => rank(x) < 3)
     .sort((a, b) => (rank(a) - rank(b)) || a.name_key.localeCompare(b.name_key));
   if (!exMatches.length || (exMatches.length === 1 && exMatches[0].name_key === q)) return exMenuClose();
   exMenuFor = input; exActive = -1;

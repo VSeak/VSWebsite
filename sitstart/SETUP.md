@@ -33,7 +33,7 @@ Then, under **Authentication → Emails → Templates**, replace **Confirm signu
 
 **Authentication → URL Configuration:**
 
-- **Site URL:** your site's address, e.g. `https://your-name.github.io/VSWebsite/sitstart/` (use `http://localhost:3000` until it's hosted).
+- **Site URL:** your site's address, e.g. `https://your-name.github.io/vsapps/sitstart/` (use `http://localhost:3000` until it's hosted).
 - **Redirect URLs:** add `http://localhost:3000/**` and, once hosted, `https://your-site-address/**`.
 
 Leave **Authentication → Sign In / Providers → Email** on, and leave "Allow new users to sign up" **on**. The database only lets emails on your student list create an account, so strangers can't sign up.
@@ -68,9 +68,9 @@ GitHub Pages publishes the site straight from the repo, free, and every push to 
 
 1. The repo must be **public** (free GitHub accounts only get Pages on public repos). That's safe: the only key in it is the publishable key.
 2. In the repo on GitHub: **Settings → Pages → Build and deployment**. Source: **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
-3. After a minute or two the page shows the address, like `https://your-name.github.io/VSWebsite/`. The Sit Start app is at `/VSWebsite/sitstart/`. The `.nojekyll` file in the repo root tells Pages to serve the files as they are.
+3. After a minute or two the page shows the address, like `https://your-name.github.io/vsapps/`. The Sit Start app is at `/vsapps/sitstart/`. The `.nojekyll` file in the repo root tells Pages to serve the files as they are.
 
-Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `sitstart/js/core.js`) to it, e.g. `https://your-name.github.io/VSWebsite/sitstart/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
+Then go back to step 5 and add the new address, and set `siteUrl` in `CONFIG` (in `sitstart/js/core.js`) to it, e.g. `https://your-name.github.io/vsapps/sitstart/`. Invite links then go to the live site even when you send them from localhost, so students can open them on a phone.
 
 ## Good to know
 

@@ -78,7 +78,7 @@ function sessionEditHTML(s, i) {
   return `<article class="card session-edit">
     <div class="row">
       ${draft.plan.repeats ? '' : `<label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>`}
-      <label class="grow">Session<input data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Limit bouldering"></label>
+      <label class="grow">Session<input data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Session 1/Mondays/Off the Wall Warm Up"></label>
     </div>
     <label style="margin-top:.6rem">Details<textarea data-s="${i}" data-f="details" rows="2"
       placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
@@ -96,6 +96,23 @@ function sessionEditHTML(s, i) {
     </div>
     ${draft.savedIds.has(s.id) ? notesHTML(s.id) : ''}
   </article>`;
+}
+
+// Narrows the Exercise picker to one purpose (draft.purpose). Not part of the plan, so it never
+// marks it unsaved. Purposes stay on the master list: students never see them.
+function purposeFilterHTML() {
+  const counts = new Map();
+  for (const x of draft.library) for (const g of x.purposes ?? []) counts.set(g, (counts.get(g) || 0) + 1);
+  const used = [...counts.keys()].sort((a, b) => exKey(a).localeCompare(exKey(b)));
+  if (!used.includes(draft.purpose)) draft.purpose = '';
+  if (!used.length) return '';
+  return `<section class="card stack" style="gap:.4rem">
+    <label>Find Exercises by Purpose<select id="exPurposeFilter">
+      <option value="">All Purposes</option>
+      ${used.map(g => `<option value="${esc(g)}"${g === draft.purpose ? ' selected' : ''}>${esc(g)} (${counts.get(g)})</option>`).join('')}
+    </select></label>
+    <p class="hint" style="margin:0">Pick a purpose, then tap an Exercise box to choose from exercises with it. You can also type a purpose in the Exercise box. Students don't see purposes.</p>
+  </section>`;
 }
 
 function renderEditor() {
@@ -125,15 +142,16 @@ function renderEditor() {
         <label><input type="radio" name="layout" data-p="repeats" value="0" ${p.repeats ? '' : 'checked'}>Week by Week</label>
       </div>
       <p class="hint" style="margin:0">${p.repeats ? 'One week of sessions the student repeats every week.' : 'A different set of sessions for each week, with dates from the start date.'}</p></div>
-      <label>Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="Training Plan" required data-need="Give the plan a title."></label>
+      <label>Training Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="e.g. Spring Power Block" required data-need="Give the plan a title."></label>
       <div class="row">
         <div><label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label></div>
         <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan (shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan)</label>
       </div>
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
     </section>
+    ${purposeFilterHTML()}
     ${sessionsHTML}
-    <div class="danger-zone"><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
+    <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Plan</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
   }
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
@@ -157,6 +175,7 @@ function renderEditor() {
   };
   app.onchange = e => {
     const t = e.target, d = t.dataset;
+    if (t.id === 'exPurposeFilter') { draft.purpose = t.value; return; }
     if (d.p === 'repeats') return setRepeats(t.value === '1');
     if (d.p === 'active') { draft.plan.active = t.checked; markDirty(); }
     if (d.p === 'start_date') renderEditor();          // week date ranges
@@ -193,6 +212,7 @@ function renderEditor() {
       }
       case 'preview': draft.preview = !draft.preview; renderEditor(); window.scrollTo(0, 0); return;
       case 'save': return savePlan(b);
+      case 'dup-plan': return duplicatePlan(b);
       case 'del-plan': return deletePlan(b);
       default: return;
     }
@@ -284,6 +304,29 @@ function savePlan(btn) {
     // The plan is saved even if this fails; the next save tries again.
     const added = await addToMasterList(rows).catch(e => { flash(`${msg} Couldn't add new exercises to the master list: ${msgOf(e)}`, 'error'); });
     if (added != null) flash(added ? `${msg} ${added === 1 ? '1 new exercise' : `${added} new exercises`} added to the master list.` : msg);
+  });
+}
+
+// A copy of the saved plan for the same student: sessions and exercises, not notes. It's current
+// only if the student has no current plan (like a new plan), and opens in the editor.
+async function duplicatePlan(btn) {
+  const p = draft.plan;
+  if (dirty || !draft.savedIds.size) {
+    await ask({ title: 'Save the Plan First', cancel: false,
+      body: `<p>${draft.savedIds.size ? 'Save your changes first, so the copy has them.' : 'Save the plan first, then you can make a copy of it.'}</p>` });
+    return;
+  }
+  const title = `${p.title.trim()} (Copy)`;
+  if (!await ask({ title: 'Duplicate This Plan?', ok: 'Duplicate',
+    body: `<p>“${esc(title)}” will be added to ${esc(p.student.name)}'s plans with the same sessions and exercises (not the notes), and opened for you to edit.</p>` })) return;
+  busy(btn, async () => {
+    const current = p.active || (await sb.from('plans').select('id').eq('student_id', p.student.id).eq('active', true).then(must)).length > 0;
+    const copy = must(await sb.from('plans').insert({ student_id: p.student.id, title, overview: p.overview.trim(),
+      start_date: p.start_date || null, repeats: p.repeats, active: !current }).select('id').single());
+    const rows = sessionRows(copy.id).map(r => ({ ...r, id: crypto.randomUUID() }));
+    if (rows.length) must(await sb.from('sessions').insert(rows));
+    flash(`Plan duplicated. You're now editing “${title}”.`);
+    goTo('#/plan/' + copy.id);
   });
 }
 

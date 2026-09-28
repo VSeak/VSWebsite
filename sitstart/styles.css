@@ -283,6 +283,7 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .combo-menu li:hover { background: color-mix(in srgb, var(--soft) 60%, transparent); }
 .combo-menu li[aria-selected="true"] { background: var(--soft); }
 .combo-menu mark { background: none; color: var(--accent); font-weight: 600; }
+.combo-menu .combo-sub { display: block; font-size: .75rem; color: var(--muted); margin-top: .1rem; }
 /* Master Exercise List purposes: pills to tick in the form, tags under each exercise */
 fieldset.picks { border: 0; margin: 0; padding: 0; display: grid; gap: .5rem; }
 fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
@@ -299,7 +300,7 @@ fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
   .ex-row > [data-f="name"], .ex-row > [data-f="notes"] { grid-column: 1 / -1; }
   .ex-row > button { grid-column: 4; grid-row: 2; }
 }
-.danger-zone { margin-top: 2rem; display: flex; justify-content: flex-end; }
+.danger-zone { margin-top: 2rem; display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
 
 #flash { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); max-width: calc(100% - 32px);
   background: var(--ink); color: var(--bg); padding: .6rem 1rem; border-radius: 8px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.2); }

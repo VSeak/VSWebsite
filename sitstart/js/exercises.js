@@ -237,7 +237,7 @@ async function addToMasterList(rows) {
 }
 
 // The exercise name picker: one menu under whichever name field has focus, listing master
-// exercises that contain what's typed (names starting with it first). Picking one sets the
+// exercises whose name or purpose contains what's typed (names first), narrowed to draft.purpose if set. Picking one sets the
 // field and fires an input event, so the editor's oninput fills in the values as for typing.
 const exMenu = Object.assign(document.createElement('ul'), { id: 'exMenu', className: 'combo-menu', role: 'listbox', hidden: true });
 exMenu.setAttribute('aria-label', 'Exercises');
@@ -245,16 +245,19 @@ document.body.append(exMenu);
 let exMenuFor = null, exMatches = [], exActive = -1;
 
 function exMenuOpen(input) {
-  const q = exKey(input.value);
-  exMatches = (draft?.library ?? []).filter(x => x.name_key.includes(q))
-    .sort((a, b) => (b.name_key.startsWith(q) - a.name_key.startsWith(q)) || a.name_key.localeCompare(b.name_key));
+  const q = exKey(input.value), g = draft?.purpose;
+  // Names containing the text first (starting with it before that), then exercises with a purpose containing it.
+  const rank = x => x.name_key.startsWith(q) ? 0 : x.name_key.includes(q) ? 1 : (x.purposes ?? []).some(h => exKey(h).includes(q)) ? 2 : 3;
+  exMatches = (draft?.library ?? []).filter(x => (!g || x.purposes?.includes(g)) && rank(x) < 3)
+    .sort((a, b) => (rank(a) - rank(b)) || a.name_key.localeCompare(b.name_key));
   if (!exMatches.length || (exMatches.length === 1 && exMatches[0].name_key === q)) return exMenuClose();
   exMenuFor = input; exActive = -1;
   const hit = s => { const i = s.toLowerCase().indexOf(q);
     return q && i >= 0 ? `${esc(s.slice(0, i))}<mark>${esc(s.slice(i, i + q.length))}</mark>${esc(s.slice(i + q.length))}` : esc(s); };
   exMenu.innerHTML = exMatches.map((x, k) => {
     const sum = [x.sets && x.reps ? `${x.sets} × ${x.reps}` : x.sets || x.reps, x.rest].filter(Boolean).join(' · ');
-    return `<li id="exOpt${k}" role="option" data-k="${k}"><span>${hit(x.name)}</span>${sum ? `<span class="muted">${esc(sum)}</span>` : ''}</li>`;
+    const purposes = x.purposes?.length ? `<span class="combo-sub">${x.purposes.map(hit).join(' · ')}</span>` : '';
+    return `<li id="exOpt${k}" role="option" data-k="${k}"><span>${hit(x.name)}${purposes}</span>${sum ? `<span class="muted">${esc(sum)}</span>` : ''}</li>`;
   }).join('');
   const r = input.getBoundingClientRect();
   const vw = document.documentElement.clientWidth, w = Math.min(Math.max(r.width, 320), vw - 16);

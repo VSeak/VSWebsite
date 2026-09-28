@@ -43,15 +43,18 @@ async function adminUsers() {
       <ul class="list" id="userList"></ul>
     </section>
     <aside>
-      <section class="card"><h2>Add Staff</h2>
-        <p class="hint">Staff get an email invite to choose a password. Add students on the ${me.isCoach ? '<a href="#/students">Students</a> page' : 'Students page (coaches only)'}.</p>
-        <form id="addStaff" class="stack" data-save>
+      <section class="card"><h2>Add User</h2>
+        <p class="hint" id="addHint"></p>
+        <div class="seg" id="addKind" role="radiogroup" aria-label="Add" style="margin:.2rem 0 .8rem">
+          <label><input type="radio" name="add_kind" value="staff" checked>Staff</label>
+          <label><input type="radio" name="add_kind" value="student">Student</label></div>
+        <form id="addUser" class="stack" data-save>
           <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
           <label>Last Name<input name="last_name" autocomplete="off"></label>
           ${pronounsField()}
-          <label>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
-          ${rolesFieldset(['coach'])}
-          <button class="primary">+ Add and Send Invite</button>
+          <label data-staff>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
+          <div data-staff>${rolesFieldset(['coach'])}</div>
+          <button class="primary" id="addBtn"></button>
         </form>
       </section>
     </aside>
@@ -72,8 +75,27 @@ async function adminUsers() {
   renderList();
   search.oninput = role.onchange = renderList;
 
-  $('#addStaff').onsubmit = e => {
+  // Staff or Student. The switch sits outside the form, so flipping it isn't an unsaved edit.
+  // Student hides (and disables, so they skip validation) the email and roles: a student's invite waits for a plan and a goal.
+  const addForm = $('#addUser');
+  const isStaff = () => $('input[name="add_kind"]:checked').value === 'staff';
+  function setKind() {
+    const staff = isStaff();
+    addForm.querySelectorAll('[data-staff]').forEach(el => {
+      el.hidden = !staff;
+      el.querySelectorAll('input').forEach(i => { i.disabled = !staff; if (!staff) clearFieldError(i); });
+    });
+    $('#addHint').textContent = staff ? 'Staff get an email invite to choose a password.'
+      : me.isCoach ? "You'll be their coach. Build their plan and add a goal first, then add their email and send the invite from their page."
+      : "Pick their coach on their page next. The invite waits until their coach has added a plan and a goal.";
+    $('#addBtn').textContent = staff ? '+ Add and Send Invite' : '+ Add Student';
+  }
+  setKind();
+  $('#addKind').onchange = setKind;
+
+  addForm.onsubmit = e => {
     e.preventDefault();
+    if (!isStaff()) return addStudent(e);
     const roles = checkedRoles(e.target);
     if (!roles) return;
     const f = new FormData(e.target);
@@ -94,6 +116,19 @@ async function adminUsers() {
       else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
     });
   };
+
+  // A student only: name and pronouns, like Add a Student on the Students page. check_student_coach makes an adder
+  // with the Coach role their coach, so a coach goes on to build the plan and an admin-only adder picks the coach.
+  function addStudent(e) {
+    const f = new FormData(e.target);
+    const first_name = f.get('first_name').trim(), last_name = f.get('last_name').trim(), pronouns = readPronouns(f);
+    busy(e.submitter, async () => {
+      const data = await sb.from('students').insert({ first_name, last_name, pronouns }).select('id').single().then(must);
+      goTo((me.isCoach ? '#/student/' : '#/user/') + data.id);
+      flash(me.isCoach ? `${first_name} added. Make ${pro(pronouns).their} plan, then send the invite when it's ready.`
+        : `${first_name} added. Pick ${pro(pronouns).their} coach here.`);
+    });
+  }
 }
 
 // Role checkboxes for a staff form. locked roles stay ticked and can't be changed (your own Admin role).

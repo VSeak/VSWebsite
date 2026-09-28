@@ -664,7 +664,7 @@ alter table public.student_coaches enable row level security;
 
 -- A new student gets the coach who added them (unless it's themselves). After that only an admin can
 -- change the coach (the SQL Editor, with no signed-in user, can too). Ending coaching leaves them with
--- no coach, and resuming it doesn't give them one (an admin picks). Nobody can be their own coach.
+-- no coach; a coach who resumes it becomes their coach. Nobody can be their own coach.
 create function public.check_student_coach() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -675,6 +675,10 @@ begin
   if tg_op = 'UPDATE' and new.training_ended_at is distinct from old.training_ended_at then
     if new.training_ended_at is not null then
       new.coach_id := null;
+      return new;
+    end if;
+    if new.coach_id is null and old.coach_id is null and public.is_coach() and not public.is_self(new.id) then
+      new.coach_id := public.my_staff_id();
       return new;
     end if;
   end if;

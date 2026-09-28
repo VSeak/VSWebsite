@@ -47,8 +47,7 @@ p { margin: 0 0 .75rem; }
   padding: .8rem 16px; border-bottom: 1px solid var(--line); background: var(--card); }
 .brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); text-decoration: none; }
 .brand svg { width: 32px; height: 32px; flex: none; color: var(--accent); }
-.brand-name { font: 600 1.1rem/1.05 Sora, Inter, sans-serif; }
-.brand-name small { display: block; margin-top: .15rem; font-size: .66rem; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+.brand-name { font: 600 1.1rem/1.05 Sora, Inter, sans-serif; white-space: nowrap; }
 .who { display: flex; min-width: 0; margin-left: auto; white-space: nowrap; color: var(--muted); font-size: .9rem; }
 #whoName { overflow: hidden; text-overflow: ellipsis; }
 #whoRoles:not(:empty)::before { content: "·"; margin: 0 .4rem; }
@@ -347,11 +346,8 @@ const must = ({ data, error }) => { if (error) throw error; return data; };
 const loading = '<p class="muted">Loading…</p>';
 
 document.title = CONFIG.siteName;
-{ // "Sit Start" → "Sit" over a small "START"
-  const [first, ...rest] = CONFIG.siteName.split(' ');
-  $('.brand-name').innerHTML = esc(first) + (rest.length ? `<small>${esc(rest.join(' '))}</small>` : '');
-  $('.brand').setAttribute('aria-label', CONFIG.siteName);
-}
+$('.brand-name').textContent = CONFIG.siteName;
+$('.brand').setAttribute('aria-label', CONFIG.siteName);
 
 let sb, mailer;
 let me = null;               // {user, roles, isStaff, isCoach, isAdmin, student}. roles: staff roles, e.g. ['admin', 'coach']; [] for a student

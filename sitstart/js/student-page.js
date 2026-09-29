@@ -288,12 +288,11 @@ async function adminStudent(id, again = false) {
         const body = f?.get('body').trim();
         if (body) saveGoal(b, g, { body });
       } else if (act === 'goal-date') {
-        // Saved as noon on the picked day, so the day stays the same in any nearby time zone.
         const f = await ask({ title: 'Edit Date Achieved', ok: 'Save Date',
-          body: `<label>Date Achieved<input type="date" name="day" value="${new Date(g.done_at).toLocaleDateString('en-CA')}"
+          body: `<label>Date Achieved<input type="date" name="day" value="${g.done_at}"
             max="${localToday()}" required data-need="Pick the day." data-high="Pick today or an earlier day."></label>` });
         const d = f?.get('day');
-        if (d) saveGoal(b, g, { done_at: new Date(d + 'T12:00').toISOString() }, 'Date saved.');
+        if (d) saveGoal(b, g, { done_at: d }, 'Date saved.');
       } else if (act === 'goal-delete') {
         if (await ask({ title: 'Delete This Goal?', body: "<p>This can't be undone. To just hide it, keep it archived.</p>", ok: 'Delete', warn: true }))
           busy(b, async () => {
@@ -303,7 +302,7 @@ async function adminStudent(id, again = false) {
           });
       } else {
         const status = { 'goal-achieved': 'achieved', 'goal-archive': 'archived', 'goal-current': 'current' }[act];
-        saveGoal(b, g, { status, done_at: status === 'current' ? null : new Date().toISOString() },
+        saveGoal(b, g, { status, done_at: status === 'current' ? null : localToday() },
           { achieved: 'Goal marked achieved.', archived: 'Goal archived.', current: 'Goal is current again.' }[status]);
       }
       return;

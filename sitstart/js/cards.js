@@ -310,7 +310,8 @@ function nextSessionAlert(s) {
 
 // ---------- Goals (current → achieved or archived) ----------
 
-const fmtDay = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+// A timestamp, or a plain date (YYYY-MM-DD, read as that local day).
+const fmtDay = t => (t.length === 10 ? day(t) : new Date(t)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 // Current goals oldest first; achieved and archived newest first.
 const sortGoals = goals => goals.sort((a, b) =>
   ((b.status === 'current') - (a.status === 'current')) ||

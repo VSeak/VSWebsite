@@ -104,13 +104,13 @@ create table public.notes (
 );
 create index on public.notes (session_id);
 
--- The coach marks a goal achieved (done_at = when) or archives it.
+-- The coach marks a goal achieved (done_at = the day) or archives it.
 create table public.goals (
   id uuid primary key default gen_random_uuid(),
   student_id uuid not null references public.students (id) on delete cascade,
   body text not null check (length(trim(body)) between 1 and 500),
   status text not null default 'current' check (status in ('current', 'achieved', 'archived')),
-  done_at timestamptz,
+  done_at date,
   created_at timestamptz not null default now()
 );
 create index on public.goals (student_id);

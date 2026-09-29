@@ -4,6 +4,8 @@
      Subject: Sit Start: {{ if .Data.email_changed_to }}Your Email Was Changed{{ else }}Your Sign-In Link{{ end }} 🧗
      (If Supabase won't take the if in the subject, use: Sit Start: Your Account 🧗)
      Styles are inline and the button is a table so it works in Gmail and Outlook. Keep {{ .ConfirmationURL }}.
+     Look: design B from the Claude Design canvas (Emails page), like the student home's "Hey Alex, let's climb.".
+     Most email apps ignore web fonts, so each font falls back to Arial.
      {{ .Data.first_name }} was saved on the student's login with their invite (sendLink in index.html).
      {{ .Data.sent_by }} is the first name of the coach or admin who sent this link (stamp_sender writes it just before).
      {{ .Data.email_changed_to }} is set when an admin is changing the student's email (prepare_email_change): this email
@@ -16,84 +18,89 @@
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <title>Sit Start: Your Sign-In Link</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&family=Sora:wght@600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,700&family=Sora:wght@600&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0; padding:0; background:#F3F0EA;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F0EA;">
   <tr>
-    <td align="center" style="padding:32px 16px;">
+    <td align="center" style="padding:24px 16px 32px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
 
         <!-- Brand: the badge is email-badge.png on the live site (email apps don't show SVG). -->
         <tr>
-          <td align="center" style="padding:0 4px 16px; text-align:center;">
-            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+          <td style="padding:0 4px 20px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
               <tr>
                 <td valign="middle" style="padding-right:10px;">
-                  <img src="https://vseak.github.io/vsapps/sitstart/email-badge.png" width="32" height="32" alt="" style="display:block; border:0;">
+                  <img src="https://vseak.github.io/vsapps/sitstart/email-badge.png" width="30" height="30" alt="" style="display:block; border:0;">
                 </td>
-                <td valign="middle" align="left" style="font-family:Sora, Arial, sans-serif; color:#2C2620; text-align:left;">
-                  <div style="font-size:18px; line-height:20px; font-weight:600;">Sit Start</div>
-                </td>
+                <td valign="middle" style="font-family:Sora, Arial, sans-serif; font-size:17px; line-height:20px; font-weight:600; color:#2C2620;">Sit Start</td>
               </tr>
             </table>
           </td>
         </tr>
 
+        <!-- Greeting -->
+        <tr>
+          <td style="padding:0 4px 20px;">
+            <h1 style="margin:0; font-family:'Bricolage Grotesque', Arial, sans-serif; font-size:40px; line-height:1.05; font-weight:800; letter-spacing:-0.02em; color:#2C2620;">
+              Hey {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},<br>
+              <span style="color:#4F6441;">{{ if .Data.email_changed_to }}your email was changed.{{ else }}here's your link.{{ end }}</span>
+            </h1>
+          </td>
+        </tr>
+
         <!-- Card -->
         <tr>
-          <td style="background:#FFFDF9; border:1px solid #E1DAD0; border-radius:10px; padding:32px 28px; font-family:Inter, Arial, sans-serif; color:#2C2620;">
+          <td style="background:#FFFDF9; border:1px solid #E1DAD0; border-radius:22px; padding:22px 20px; font-family:'DM Sans', Arial, sans-serif; font-size:16px; line-height:1.6; color:#4A4138;">
 
-            <h1 style="margin:0 0 16px; font-family:'Space Grotesk', Arial, sans-serif; font-size:24px; line-height:1.25; font-weight:700; color:#2C2620;">
-              {{ if .Data.email_changed_to }}Your Email Was Changed{{ else }}Your Sign-In Link{{ end }}
-            </h1>
-
-            <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
-              Hi {{ if .Data.first_name }}{{ .Data.first_name }}{{ else }}there{{ end }},
-            </p>
             {{ if .Data.email_changed_to }}
-            <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
+            <p style="margin:0 0 16px;">
               The email you sign in to your training plan with has been changed from {{ .Email }} to {{ .Data.email_changed_to }}. Your password stays the same, so use it with the new email from now on.
             </p>
-            <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
+            <p style="margin:0;">
               If this was a mistake, please contact your coach or an admin.
             </p>
             {{ else }}
-            <p style="margin:0 0 24px; font-size:16px; line-height:1.6;">
+            <p style="margin:0 0 20px;">
               Here's a new link to get back into {{ if .Data.staff }}the coaching site{{ else }}your training plan{{ end }}. Tap the button below to sign in, then set a new password.
               You'll use it to sign in from then on.
             </p>
 
             <!-- Button -->
-            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td align="center" bgcolor="#4F6441" style="border-radius:8px;">
+                <td align="center" bgcolor="#4F6441" style="border-radius:14px;">
                   <a href="{{ .ConfirmationURL }}" target="_blank"
-                     style="display:inline-block; padding:14px 28px; font-family:Inter, Arial, sans-serif; font-size:16px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:8px;">
+                     style="display:block; padding:15px 20px; font-family:'DM Sans', Arial, sans-serif; font-size:16px; font-weight:700; color:#F5FAF0; text-decoration:none; text-align:center; border-radius:14px;">
                     Sign In
                   </a>
                 </td>
               </tr>
             </table>
 
-            <p style="margin:0 0 24px; font-size:14px; line-height:1.6; color:#766B60; text-align:center;">
+            <p style="margin:12px 0 0; font-size:14px; line-height:1.6; color:#766B60; text-align:center;">
               The button works once. If it has expired, just let me know and I'll send a new one.
             </p>
             {{ end }}
 
-            <!-- Signature -->
-            <p style="margin:0; font-size:16px; line-height:1.6;">
-              {{ if .Data.staff }}Thanks for being on the team!{{ else }}Happy training!{{ end }}<br>
-              <strong style="font-family:'Space Grotesk', Arial, sans-serif;">{{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }}</strong>
-            </p>
+          </td>
+        </tr>
 
+        <!-- Signature -->
+        <tr>
+          <td style="padding:20px 4px 0; font-family:'DM Sans', Arial, sans-serif; font-size:16px; line-height:1.5; color:#2C2620;">
+            {{ if .Data.staff }}Thanks for being on the team!{{ else }}Happy training!{{ end }}<br>
+            <strong style="font-family:'Bricolage Grotesque', Arial, sans-serif; font-size:20px; font-weight:800; color:#4F6441;">{{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }}</strong>
           </td>
         </tr>
 
         <!-- Footer -->
         <tr>
-          <td style="padding:16px 4px 0; font-family:Inter, Arial, sans-serif; font-size:12px; line-height:1.6; color:#766B60;">
-            {{ if .Data.email_changed_to }}This email was sent to {{ .Email }} because it was the sign-in email for your Sit Start account.{{ else }}This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.{{ end }}
+          <td style="padding:20px 4px 0;">
+            <p style="margin:0; padding-top:14px; border-top:1px solid #E1DAD0; font-family:'DM Sans', Arial, sans-serif; font-size:12px; line-height:1.6; color:#766B60;">
+              {{ if .Data.email_changed_to }}This email was sent to {{ .Email }} because it was the sign-in email for your Sit Start account.{{ else }}This email was sent to {{ .Email }} because {{ if .Data.sent_by }}{{ .Data.sent_by }}{{ else }}Sit Start{{ end }} sent you a sign-in link. If you didn't ask for one, you can ignore it. Your password stays the same.{{ end }}
+            </p>
           </td>
         </tr>
 

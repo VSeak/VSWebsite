@@ -388,11 +388,12 @@ a.card.group-link:hover h2 { color: var(--accent); }
 .goals-card .hint, .goals-card .item-sub, .goals-card .muted, .goals-card .pager .muted { color: color-mix(in srgb, var(--goal-ink) 72%, transparent); }
 .goals-card .list li { border-color: color-mix(in srgb, var(--goal-ink) 18%, transparent); }
 .goals-card .goal-text p { font: 800 1.1rem/1.2 "Bricolage Grotesque", sans-serif; }
-.goals-card button { background: color-mix(in srgb, var(--goal-ink) 12%, transparent); border-color: transparent; color: var(--goal-ink); }
+.goals-card button:not(.fold) { background: color-mix(in srgb, var(--goal-ink) 12%, transparent); border-color: transparent; color: var(--goal-ink); }
 .goals-card button.primary, .goals-card form button { background: var(--goal-ink); color: var(--goal); }
 .goals-card button.danger { color: #7A1A12; }
 .goals-card input { background: var(--card); border-color: transparent; }
 .goals-card details summary { color: var(--goal-ink); }
+.goals-card button.fold::before { border-color: color-mix(in srgb, var(--goal-ink) 72%, transparent); }
 /* The rarely used cards, joined into one list; each folds to its heading and a short summary */
 .card-group { border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
 .card-group > .card { border: 0; border-radius: 0; box-shadow: none; margin: 0 !important; }

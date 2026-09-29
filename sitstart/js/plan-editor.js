@@ -83,7 +83,7 @@ function sessionEditHTML(s, i) {
     <label style="margin-top:.6rem">Details<textarea data-s="${i}" data-f="details" rows="2"
       placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
     ${s.exercises.length ? '<div class="ex-head"><span>Exercise</span><span>Sets</span><span>Reps / Time</span><span>Rest</span><span>Notes</span><span></span></div>' : ''}
-    ${s.exercises.map((_, e) => `<div class="ex-row">${f('name', 'Exercise', e, 'Type an exercise or a purpose to find one')}${f('sets', 'Sets', e)}${f('reps', 'Reps / Time', e)}${f('rest', 'Rest', e)}${f('notes', 'Notes', e)}
+    ${s.exercises.map((_, e) => `<div class="ex-row">${f('name', 'Exercise', e, 'Exercise/Purpose')}${f('sets', 'Sets', e)}${f('reps', 'Reps / Time', e)}${f('rest', 'Rest', e)}${f('notes', 'Notes', e)}
       <button class="icon ghost" data-act="del-ex" data-s="${i}" data-e="${e}" title="Remove exercise" aria-label="Remove exercise">×</button></div>`).join('')}
     <div class="row between" style="margin-top:.7rem">
       <button class="ghost small" data-act="add-ex" data-s="${i}">+ Add Exercise</button>

@@ -273,10 +273,10 @@ function trainingCardHTML(s, coaches, edit = true) {
   return `<section class="card" id="trainingCard" data-fold-start>
     <div class="row between"><h2>Coaching Status</h2><span class="tag ${done ? 'danger' : 'ok'}">${done ? 'Inactive' : 'Active'}</span></div>
     ${!edit ? `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}.` : 'Being coached.'} Only ${p.their} coach can change this.</p>`
-    : `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals and notes are kept, and ${p.they} can still sign in.
+    : `<p class="hint">${done ? `Coaching ended ${fmtDay(done)}. ${p.Their} plans, goals, and notes are kept, and ${p.they} can still sign in.
         ${back ? `Resuming makes you ${p.their} coach again.` : me.isAdmin ? `After resuming, pick ${p.their} coach.` : `After resuming, an admin picks ${p.their} coach.`}
         Delete ${p.them} only if ${p.they} ${p.v('were', 'was')} added by mistake.`
-      : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list, ${p.their} current plan becomes a past plan and ${p.they} ${p.v('have', 'has')} no coach.`}</p>
+      : `When ${p.they} ${p.v('stop', 'stops')} being coached, end coaching here. ${p.They} ${p.v('move', 'moves')} to Inactive on the Students list, ${p.their} current plan becomes a past plan, and ${p.they} ${p.v('have', 'has')} no coach.`}</p>
     <div class="row"><button type="button" class="${done ? 'primary' : 'ghost'}" data-act="training">${done ? 'Resume Coaching' : 'End Coaching'}</button>
       ${done ? '<button type="button" class="ghost danger" data-act="del-student">Delete Student</button>' : ''}</div>`}
   </section>`;
@@ -289,7 +289,7 @@ function bindTraining(id, s, redraw) {
     e.stopPropagation();   // not the page's own data-act handler
     const done = !s.training_ended_at, btn = e.currentTarget, p = pro(s.pronouns);
     if (done && !await ask({ title: `End Coaching for ${s.first_name}?`, ok: 'End Coaching',
-      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive, ${p.their} current plan becomes a past plan, ${p.their} next session is cleared and ${p.they} no longer ${p.v('have', 'has')} a coach. Plans, goals, notes and past sessions stay, and ${p.they} can still sign in.</p>` })) return;
+      body: `<p>${p.They} ${p.v('move', 'moves')} to Inactive, ${p.their} current plan becomes a past plan, ${p.their} next session is cleared, and ${p.they} no longer ${p.v('have', 'has')} a coach. Plans, goals, notes, and past sessions stay, and ${p.they} can still sign in.</p>` })) return;
     busy(btn, async () => {
       if (done) await logEnded(id, s);
       must(await sb.from('students').update(done

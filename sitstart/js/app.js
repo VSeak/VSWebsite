@@ -337,14 +337,14 @@ function viewNoAccess() {
 // roles says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page, and
 // staff who are also students (role 'student', from me.student) their own training.
 const ADMIN_PAGES = [
-  { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Plans, goals, sessions and invites.',
+  { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Plans, goals, sessions, and invites.',
     stat: async () => {
       const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true })
         .is('training_ended_at', null).eq('coach_id', me.staffId);
       if (error) throw error;
       return count;
     } },
-  { href: '#/exercises', title: 'Exercises & Drills', roles: ['coach', 'admin'], blurb: 'What plans pick from, with their usual sets, reps and rest.',
+  { href: '#/exercises', title: 'Exercises & Drills', roles: ['coach', 'admin'], blurb: 'What plans pick from, with their usual sets, reps, and rest.',
     stat: async () => {
       const { count, error } = await sb.from('exercises').select('id', { count: 'exact', head: true });
       if (error) throw error;
@@ -365,7 +365,7 @@ const COMING_UP = 5;   // upcoming sessions listed on Home
 // The date block on a Coming Up row: WED over 1.
 const dayBlock = d => `<span class="day-block"><small>${day(d).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</small><strong>${day(d).getDate()}</strong></span>`;
 
-// What needs this person, for the Needs You card: coaches get their own active students who haven't been invited
+// What needs this person, for the Needs Attention card: coaches get their own active students who haven't been invited
 // (Send Invite), whose next session has ended (Update Next Session) or isn't set (Set Next Session), or whose past
 // sessions have no Coach Note (Needs Note); admins get active students with no coach (Pick a Coach). Student notes
 // never show here: replying is up to the coach. Also returns the coach's upcoming sessions.
@@ -407,14 +407,14 @@ async function adminHome() {
   const up = s => `<a class="todo" href="#/student/${s.id}">${dayBlock(s.next_date)}<span><b>${esc(s.name)}</b>
     <span>${fmtTime(s.next_start)} – ${fmtTime(s.next_end)} · ${esc(s.next_location)}</span></span></a>`;
   // Nothing to do: a calm card that still shows what's coming up (or, coaching nobody, how to start).
-  const clear = me.isCoach ? `<div class="needs-clear"><span class="check">${ICON_CHECK}</span><div><b>Nothing needs you right now</b>
+  const clear = me.isCoach ? `<div class="needs-clear"><span class="check">${ICON_CHECK}</span><div><b>Nothing needs attention right now</b>
       <span>${coaching ? 'Every student is invited and has a next session, and every session has a note.' : "You're not coaching anyone at the moment."}</span></div></div>` : '';
   const coming = !me.isCoach ? '' : `<span class="eyebrow">Coming Up</span>${upcoming.length ? upcoming.map(up).join('')
     : `<div class="none-up">${ICON_CAL}<div><b>No sessions coming up</b><span>${coaching ? 'Set a next session on a student’s page.'
       : 'Add a student, or pick up a No Coach student, to get started.'}</span></div>${coaching ? '' : '<a class="fill" href="#/students">+ Add Student</a>'}</div>`}`;
-  view(`<h1 class="hey">Welcome${name},<span> ${n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you.` : "you're all caught up."}</span></h1>
+  view(`<h1 class="hey">Welcome${name},<span> ${n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} your attention.` : "you're all caught up."}</span></h1>
     <div class="home-grid">
-      ${n || me.isCoach ? `<section class="needs">${n ? `<div class="row between"><span class="eyebrow">Needs You</span><span class="pill">${n}</span></div>
+      ${n || me.isCoach ? `<section class="needs">${n ? `<div class="row between"><span class="eyebrow">Needs Attention</span><span class="pill">${n}</span></div>
         ${items.map(todo).join('')}` : clear + coming}</section>` : ''}
       <div class="tiles">${pages.map((p, i) => `<a class="card tile${p.stat ? '' : ' tile-soft'}" href="${p.href}">
         <div><h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p></div>

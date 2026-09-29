@@ -192,7 +192,7 @@ button.fold::before { content: ""; flex: none; width: .32em; height: .32em; bord
 .card.folded button.fold::before { transform: rotate(-45deg); }
 [data-folds] .card.folded > :not(:first-child) { display: none; }
 
-/* Staff home: the Needs You card (dark) beside the page tiles; one column on a phone */
+/* Staff home: the Needs Attention card (dark) beside the page tiles; one column on a phone */
 .home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 @media (max-width: 760px) { .home-grid { grid-template-columns: 1fr; gap: 12px; } }
 .needs { background: var(--deep); color: var(--deep-ink); border: 1px solid var(--deep-line); border-radius: 22px; padding: 18px 20px; }
@@ -518,12 +518,16 @@ fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
 /* Exercises & Drills: each one a card like the student's, with Edit and Delete beside the name */
 .ex-card.lib { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
 .ex-card.lib .stat { background: var(--bg); }
+/* Two cards a row squeeze the boxes: a box grows to fit its longest word rather than split it ("boulders") */
+.ex-card.lib .stats { grid-template-columns: repeat(3, minmax(min-content, 1fr)); }
 .ex-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
-.ex-top .ex-name { margin: 0; font: 800 1.2rem/1.15 "Bricolage Grotesque", sans-serif; }
+.ex-top .ex-name { margin: 0; min-width: 0; overflow-wrap: break-word; font: 800 1.2rem/1.15 "Bricolage Grotesque", sans-serif; }
+/* Edit and Delete stay side by side however long the name is; the name wraps instead */
+.ex-btns { flex: none; flex-wrap: nowrap; }
 @media (min-width: 1000px) { #exList { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tabs .more-tabs { border-style: dashed; color: var(--accent); }
 @media (min-width: 761px) { .only-phone { display: none !important; } }
-/* On a phone, Add Exercise opens from the button at the top */
+/* On a phone, Add Exercises & Drills opens from the button at the top */
 @media (max-width: 760px) { #exAddCard:not(.open) { display: none; } #exAddCard.open { margin-bottom: 12px; } }
 .danger-zone { margin-top: 2rem; display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
 

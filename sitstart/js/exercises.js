@@ -5,6 +5,8 @@ const EX_PAGE = 10;   // exercises per page on the Master Exercise List
 const PUR_PAGE = 5;   // purposes per page in the Purposes card
 const EX_TABS = 4;    // purpose tabs shown before "+n More"
 const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps/Time'], ['rest', 'Rest'], ['notes', 'Notes']];
+const EX_EXAMPLES = { name: 'E.g. Campus Board', sets: 'E.g. 3 sets', reps: 'E.g. 10 reps', rest: 'E.g. 5 min',
+  notes: 'E.g. Keep your hips close to the wall' };
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
 // Purposes say what an exercise is for, so coaches can search by them. They stay on the master list:
@@ -15,10 +17,10 @@ const exPurposeTags = list => list?.length ? `<span class="ex-purposes">${list.m
 const exPicksHTML = (choices, picked = []) => choices.map(g =>
   `<label><input type="checkbox" name="purposes" value="${esc(g)}"${picked.includes(g) ? ' checked' : ''}>${esc(g)}</label>`).join('');
 const exFieldsHTML = (x = {}, choices = []) => `<label>Name<input name="name" value="${esc(x.name)}" maxlength="200" required
-    data-need="Name the exercise." autocomplete="off"></label>
+    data-need="Name the exercise." placeholder="${EX_EXAMPLES.name}" autocomplete="off"></label>
   <div class="row">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
-    `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" autocomplete="off"></label>`).join('')}</div>
-  <label>Notes<textarea name="notes" rows="2">${esc(x.notes)}</textarea></label>
+    `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" placeholder="${EX_EXAMPLES[f]}" autocomplete="off"></label>`).join('')}</div>
+  <label>Notes<textarea name="notes" rows="2" placeholder="${EX_EXAMPLES.notes}">${esc(x.notes)}</textarea></label>
   <fieldset class="picks"><legend>Purpose</legend>
     <span class="hint field-hint">What the exercise is for. This also helps coaches search and filter through exercises. Students don't see these on their training plans. Add more in the Purposes card.</span>
     <div class="pick-row">${exPicksHTML(choices, x.purposes)}</div>
@@ -43,7 +45,7 @@ async function adminExercises() {
   const usedBy = name => list.filter(x => x.purposes.includes(name)).length;
 
   view(`${crumbs([['Home', '#/'], ['Exercises & Drills']])}
-  <div class="page-head" id="exTop"><h1>Exercises & Drills</h1><button type="button" class="fill only-phone" id="exAddBtn" aria-expanded="false">+ Add Exercise</button></div>
+  <div class="page-head" id="exTop"><h1>Exercises & Drills</h1><button type="button" class="fill only-phone" id="exAddBtn" aria-expanded="false">+ Add Exercises & Drills</button></div>
   <div class="grid2">
     <div class="stack">
       <p class="muted" style="margin:0">Every exercise and drill you can pick in a plan, with the values it fills in. Changing a plan never changes this list.</p>
@@ -53,10 +55,10 @@ async function adminExercises() {
       <div id="exPager"></div>
     </div>
     <aside>
-      <section class="card" id="exAddCard"><h2>Add Exercise</h2>
+      <section class="card" id="exAddCard"><h2>Add Exercises & Drills</h2>
         <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
           New exercises typed into a plan are added here when the plan is saved.</p>
-        <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, purNames())}<button class="primary">+ Add Exercise</button></form>
+        <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, purNames())}<button class="primary">+ Add Exercises & Drills</button></form>
       </section>
       <div data-folds="exercises"><section class="card" data-fold="purposes" data-fold-start><h2>Purposes (<span id="purCount"></span>)</h2>
         <p class="hint">The purposes to pick from for an exercise. Renaming or deleting a purpose changes every exercise that has it.</p>
@@ -74,7 +76,7 @@ async function adminExercises() {
     return list.filter(x => (!g || x.purposes.includes(g)) && (!q || x.name_key.includes(q) || x.purposes.some(h => exKey(h).includes(q))));
   };
   // The purpose tabs: All, then purposes in use with counts (a purpose no exercise has any more drops off). Past the
-  // first few, "+n More" shows the rest.
+  // first few, "+n More" shows the rest and Show Fewer folds them back.
   function renderPurposeFilter() {
     const used = purNames().filter(usedBy);
     if (!used.includes(purpose)) purpose = '';
@@ -82,22 +84,24 @@ async function adminExercises() {
     if (purpose && !shown.includes(purpose)) shown.push(purpose);
     const tab = (g, label, n) => `<button type="button" role="tab" data-purpose="${esc(g)}" aria-selected="${g === purpose}">${esc(label)}<span class="count">${n}</span></button>`;
     purposeBox.innerHTML = tab('', 'All', list.length) + shown.map(g => tab(g, g, usedBy(g))).join('')
-      + (shown.length < used.length ? `<button type="button" class="more-tabs" data-more>+${used.length - shown.length} More</button>` : '');
+      + (shown.length < used.length ? `<button type="button" class="more-tabs" data-more>+${used.length - shown.length} More</button>`
+        : allPurposes && used.length > EX_TABS + 1 ? '<button type="button" class="more-tabs" data-fewer>Show Fewer</button>' : '');
     purposeBox.hidden = !used.length;
   }
   purposeBox.onclick = e => {
     const b = e.target.closest('button');
     if (!b) return;
     if ('more' in b.dataset) allPurposes = true;
+    else if ('fewer' in b.dataset) allPurposes = false;
     else { purpose = b.dataset.purpose; page = 1; }
     renderList();
   };
-  // On a phone the Add Exercise card waits behind the button at the top, and opens there.
+  // On a phone the Add Exercises & Drills card waits behind the button at the top, and opens there.
   $('#exAddBtn').onclick = e => {
     const card = $('#exAddCard'), open = !card.classList.contains('open');
     card.classList.toggle('open', open);
     e.target.setAttribute('aria-expanded', open);
-    e.target.textContent = open ? 'Close' : '+ Add Exercise';
+    e.target.textContent = open ? 'Close' : '+ Add Exercises & Drills';
     if (open) { $('#exTop').after(card); card.querySelector('[name="name"]').focus(); }
   };
   let purPage = 1;
@@ -135,7 +139,7 @@ async function adminExercises() {
     bindPager($('#exPager'), n => { page = n; renderList(); });
     // Each one as a card, like the exercise cards students see: the name, three boxes, notes, then its purposes.
     $('#exList').innerHTML = items.map(x => `<article class="ex-card lib"><div class="ex-top"><p class="ex-name">${esc(x.name)}</p>
-        <span class="row"><button type="button" class="small" data-act="ex-edit" data-ex="${x.id}">Edit</button>
+        <span class="row ex-btns"><button type="button" class="small" data-act="ex-edit" data-ex="${x.id}">Edit</button>
         <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></span></div>
         <div class="stats">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
           `<div class="stat"><span class="stat-l">${l}</span><span class="stat-v${x[f] ? '' : ' none'}">${x[f] ? esc(x[f]) : '—'}</span></div>`).join('')}</div>

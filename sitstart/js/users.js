@@ -4,7 +4,7 @@
 // To add a role: allow it in the staff.roles check, then add it to ROLE_LABEL, ROLE_PLURAL, ROLE_HINT and STAFF_ROLES.
 const ROLE_LABEL = { admin: 'Admin', coach: 'Coach', student: 'Student' };
 const ROLE_PLURAL = { admin: 'Admins', coach: 'Coaches', student: 'Students' };
-const ROLE_HINT = { admin: 'Sees and edits every user.', coach: 'Manages students, plans and goals.' };
+const ROLE_HINT = { admin: 'Sees and edits every user.', coach: 'Manages students, plans, and goals.' };
 const STAFF_ROLES = ['admin', 'coach'];
 // Roles in STAFF_ROLES order (Admin before Coach), anything else after.
 const roleRank = r => (i => i < 0 ? STAFF_ROLES.length : i)(STAFF_ROLES.indexOf(r));
@@ -152,7 +152,7 @@ function rolesFieldset(current, locked = [], student = null) {
     <label class="check"><input type="checkbox" name="student"${student ? ' checked disabled' : ''}>
       <span><strong>Student</strong> <span class="muted">${student
         ? `Also coached, with their own plans. <a href="#/user/${student}">Open the student record</a>.`
-        : 'Also coached, with their own plans (View My Training).'}</span></span></label>
+        : 'Also coached, with their own plans.'}</span></span></label>
   </fieldset>`;
 }
 // Makes a staff member a student too: a student row with the same name, pronouns and email. They claim it the next
@@ -403,7 +403,7 @@ async function adminUser(id, again = false) {
             body: `<p>This deletes ${p.their} staff account and login. Notes ${p.they} wrote stay, with ${p.their} name on them. This can't be undone.</p>
               <p>If ${p.they} might come back, leave ${p.them} deactivated instead.</p>` }
         : { title: `Delete ${title}?`, warn: true, ok: 'Delete Student',
-            body: `<p>This deletes the student, all ${p.their} plans, goals and notes, and ${p.their} login. This can't be undone.</p>` });
+            body: `<p>This deletes the student, all ${p.their} plans, goals, and notes, and ${p.their} login. This can't be undone.</p>` });
       if (ok) busy(b, async () => {
         must(await sb.rpc(staff ? 'delete_staff' : 'delete_student', { p_id: id }));
         flash(`${title} deleted.`);

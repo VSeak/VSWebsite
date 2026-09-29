@@ -47,11 +47,11 @@ async function adminStudents() {
   // Each tab: [label, its students, what it means, what it says when empty]. No Coach only shows when there are some.
   const tabs = {
     mine: ['Mine', active.filter(s => s.coach_id && s.coach_id === me.staffId),
-      'Students you coach now. Only you change their plans, goals and sessions.', 'No students yet. Add your first one.'],
+      'Students you coach now. Only you change their plans, goals, and sessions.', 'No students yet. Add your first one.'],
     none: ['No Coach', active.filter(s => !s.coach_id),
       'Active students with no coach. Any coach can change them until an admin picks their coach.', ''],
     others: ['Others', active.filter(s => s.coach_id && s.coach_id !== me.staffId),
-      'Other coaches’ students. You can read their plans and goals, add Coach Notes and add past sessions you ran.', 'None right now.'],
+      'Other coaches’ students. You can read their plans and goals, add Coach Notes, and add past sessions you ran.', 'None right now.'],
     inactive: ['Inactive', students.filter(s => s.training_ended_at),
       'No longer being coached. Resume Coaching on their page brings them back. You stay their coach only if you were when coaching ended; otherwise an admin picks one.',
       'No inactive students.'],

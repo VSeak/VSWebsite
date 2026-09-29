@@ -136,16 +136,14 @@ const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.
 async function studentPlan(id, allPlans, goals, coaches, next, history) {
   const t = ++navToken;
   view(loading);
-  const [plan, sessions] = await Promise.all([
+  const [plan, sessions, notes] = await Promise.all([
     sb.from('plans').select('*').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
+    planNotes(id),
   ]);
   if (t !== navToken) return;
   const home = me.isStaff ? '#/me' : '#/';
   if (!plan) { authPage('Sorry,', 'plan not found.', `<p>It may have been deleted, or the link is wrong.</p><p><a href="${home}">Back to your plans</a></p>`); return; }
-  const notes = sessions.length
-    ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
-  if (t !== navToken) return;
   notesCtx = { notes, studentName: me.student.name, coach: false, canPost: true };
   if (!allPlans) {
     view(`${crumbs([['Home', '#/'], ...(me.isStaff ? [['My Training', '#/me']] : []), [plan.title || 'Untitled Plan']])}

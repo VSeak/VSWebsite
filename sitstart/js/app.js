@@ -29,20 +29,24 @@ async function boot() {
 }
 
 async function loadMe(user) {
-  const roles = await sb.rpc('my_roles').then(must);
-  // Staff can be students too (View My Training), so everyone claims their student row.
-  await sb.rpc('claim_student').then(must);
-  const student = await sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must);
-  // Staff read their own row for the greeting (admins can read every row, so match the email).
+  // All at once, so sign-in waits for two round trips, not five.
+  // Staff can be students too (View My Training), so everyone claims their student row, then reads it.
+  // The staff row is for the greeting (admins can read every row, so match the email) and the deactivated check.
+  const [roles, student, ownStaff] = await Promise.all([
+    sb.rpc('my_roles').then(must),
+    sb.rpc('claim_student').then(must)
+      .then(() => sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must)),
+    sb.from('staff').select('id, first_name, name, deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()
+      .then(r => r.data),
+  ]);
   // Falls back to the first name from their invite.
-  const staffRow = roles && (await sb.from('staff').select('id, first_name, name').eq('email', user.email.toLowerCase()).maybeSingle()).data;
+  const staffRow = roles && ownStaff;
   const firstName = roles ? (staffRow?.first_name || user.user_metadata?.first_name || '') : (student?.first_name || '');
   const fullName = (roles ? staffRow?.name : student?.name) || firstName;
   // A deactivated staff member (staff_deactivated in schema.sql) can still sign in with their password, but gets no
   // roles and can read only their own row. Sign them straight back out (every device) and show "Account Deactivated".
   // Only after a real sign-in, so guessing an email never reveals that the account exists.
-  if (!roles && !student
-      && (await sb.from('staff').select('deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()).data?.deactivated_at) {
+  if (!roles && !student && ownStaff?.deactivated_at) {
     const { error } = await sb.auth.signOut();
     if (error) await sb.auth.signOut({ scope: 'local' });
     me = null;
@@ -375,15 +379,15 @@ const dayBlock = d => `<span class="day-block"><small>${day(d).toLocaleDateStrin
 // sessions have no Coach Note (Needs Note); admins get active students with no coach (Pick a Coach). Student notes
 // never show here: replying is up to the coach. Also returns the coach's upcoming sessions.
 async function homeNeeds() {
-  const [mine, noCoach] = await Promise.all([
+  // All at once: notes and history filter on the student's coach through the join, so they don't wait for the ids.
+  const mineOnly = q => q.eq('student.coach_id', me.staffId).is('student.training_ended_at', null).then(must);
+  const [mine, noCoach, notes, log] = await Promise.all([
     me.isCoach ? sb.from('students').select(`id,first_name,name,email,invited_at,user_id,coach_id,training_ended_at,${NEXT_COLS}`)
       .is('training_ended_at', null).eq('coach_id', me.staffId).then(must) : [],
     me.isAdmin ? sb.from('students').select('id,name').is('training_ended_at', null).is('coach_id', null).then(must) : [],
+    me.isCoach ? mineOnly(sb.from('coach_notes').select('student_id,session_date,student:students!inner(coach_id,training_ended_at)')) : [],
+    me.isCoach ? mineOnly(sb.from('session_history').select('student_id,session_date,start_time,student:students!inner(coach_id,training_ended_at)')) : [],
   ]);
-  const ids = mine.map(s => s.id);
-  const [notes, log] = ids.length ? await Promise.all([
-    sb.from('coach_notes').select('student_id,session_date').in('student_id', ids).then(must),
-    sb.from('session_history').select('student_id,session_date,start_time').in('student_id', ids).then(must)]) : [[], []];
   const items = [];
   for (const s of mine) {
     if (accountStatus(s) === 'Not Invited') items.push({ name: s.name, href: '#/student/' + s.id, sub: 'No invite sent yet', tag: 'Send Invite' });

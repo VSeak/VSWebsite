@@ -7,18 +7,16 @@ const blankSession = week => ({ id: crypto.randomUUID(), week, title: '', detail
 async function adminPlan(id, sid) {
   const t = ++navToken;
   view(loading);
-  const [plan, sessions, library] = await Promise.all([
+  const [plan, sessions, library, notes] = await Promise.all([
     sb.from('plans').select('*, student:students(id,name,pronouns,email,coach_id)').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
     sb.from('exercises').select('*').then(must),
+    planNotes(id),
   ]);
   if (t !== navToken) return;
   if (!plan) { location.hash = '#/'; return; }
   // Your own plan: as your students see theirs.
   if (isSelf(plan.student)) return studentPlan(id);
-  const notes = sessions.length
-    ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
-  if (t !== navToken) return;
   const edit = canCoach(plan.student);
   notesCtx = { notes, studentName: plan.student.name, coach: edit, canPost: edit };
   dirty = false;

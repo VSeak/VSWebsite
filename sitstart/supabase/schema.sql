@@ -394,31 +394,33 @@ grant select, insert, update, delete
      public.exercises, public.exercise_purposes
   to authenticated;
 
+-- Helpers that don't depend on the row are wrapped in (select ...), so Postgres runs them once per query instead of
+-- once per row. Calls that take a column, like can_coach(student_id), have to run per row.
 create policy "admin: everything" on public.staff for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 create policy "staff: own row" on public.staff for select to authenticated
-  using (email = lower(auth.jwt() ->> 'email'));
+  using (email = (select lower(auth.jwt() ->> 'email')));
 
-create policy "coach: read" on public.students for select to authenticated using (public.is_coach());
-create policy "coach: add" on public.students for insert to authenticated with check (public.is_coach());
+create policy "coach: read" on public.students for select to authenticated using ((select public.is_coach()));
+create policy "coach: add" on public.students for insert to authenticated with check ((select public.is_coach()));
 create policy "coach: change own" on public.students for update to authenticated
   using (public.can_coach(id))
-  with check (public.is_coach() and (coach_id is null or coach_id = public.my_staff_id()));
+  with check ((select public.is_coach()) and (coach_id is null or coach_id = (select public.my_staff_id())));
 create policy "coach: delete own" on public.students for delete to authenticated using (public.can_coach(id));
 create policy "admin: students" on public.students for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 create policy "student: own row" on public.students for select to authenticated
-  using (user_id = auth.uid());
+  using (user_id = (select auth.uid()));
 
-create policy "coach: read" on public.plans for select to authenticated using (public.is_coach());
+create policy "coach: read" on public.plans for select to authenticated using ((select public.is_coach()));
 create policy "coach: add" on public.plans for insert to authenticated with check (public.can_coach(student_id));
 create policy "coach: change" on public.plans for update to authenticated
   using (public.can_coach(student_id)) with check (public.can_coach(student_id));
 create policy "coach: delete" on public.plans for delete to authenticated using (public.can_coach(student_id));
 create policy "student: own plans" on public.plans for select to authenticated
-  using (student_id = public.my_student_id());
+  using (student_id = (select public.my_student_id()));
 
-create policy "coach: read" on public.sessions for select to authenticated using (public.is_coach());
+create policy "coach: read" on public.sessions for select to authenticated using ((select public.is_coach()));
 create policy "coach: add" on public.sessions for insert to authenticated with check (public.can_coach_plan(plan_id));
 create policy "coach: change" on public.sessions for update to authenticated
   using (public.can_coach_plan(plan_id)) with check (public.can_coach_plan(plan_id));
@@ -426,49 +428,49 @@ create policy "coach: delete" on public.sessions for delete to authenticated usi
 create policy "student: own sessions" on public.sessions for select to authenticated
   using (public.owns_plan(plan_id));
 
-create policy "coach: read" on public.notes for select to authenticated using (public.is_coach());
+create policy "coach: read" on public.notes for select to authenticated using ((select public.is_coach()));
 create policy "coach: reply" on public.notes for insert to authenticated
-  with check (from_coach and author_id = auth.uid() and public.can_coach_session(session_id));
+  with check (from_coach and author_id = (select auth.uid()) and public.can_coach_session(session_id));
 create policy "coach: delete" on public.notes for delete to authenticated using (public.can_coach_session(session_id));
 create policy "student: read notes" on public.notes for select to authenticated
   using (public.owns_session(session_id));
 create policy "student: add notes" on public.notes for insert to authenticated
-  with check (author_id = auth.uid() and not from_coach and public.owns_session(session_id));
+  with check (author_id = (select auth.uid()) and not from_coach and public.owns_session(session_id));
 create policy "student: delete own notes" on public.notes for delete to authenticated
-  using (author_id = auth.uid() and not from_coach);
+  using (author_id = (select auth.uid()) and not from_coach);
 
-create policy "coach: read" on public.goals for select to authenticated using (public.is_coach());
+create policy "coach: read" on public.goals for select to authenticated using ((select public.is_coach()));
 create policy "coach: add" on public.goals for insert to authenticated with check (public.can_coach(student_id));
 create policy "coach: change" on public.goals for update to authenticated
   using (public.can_coach(student_id)) with check (public.can_coach(student_id));
 create policy "coach: delete" on public.goals for delete to authenticated using (public.can_coach(student_id));
 create policy "student: own goals" on public.goals for select to authenticated
-  using (student_id = public.my_student_id() and status <> 'archived');
+  using (student_id = (select public.my_student_id()) and status <> 'archived');
 
 create policy "coach: read" on public.coach_notes for select to authenticated
-  using (public.is_coach() and not public.is_self(student_id));
+  using ((select public.is_coach()) and not public.is_self(student_id));
 create policy "coach: add" on public.coach_notes for insert to authenticated
-  with check (public.is_coach() and not public.is_self(student_id));
+  with check ((select public.is_coach()) and not public.is_self(student_id));
 create policy "coach: change" on public.coach_notes for update to authenticated
-  using (public.is_coach() and not public.is_self(student_id) and (author_id = auth.uid() or public.can_coach(student_id)))
-  with check (public.is_coach() and not public.is_self(student_id));
+  using ((select public.is_coach()) and not public.is_self(student_id) and (author_id = (select auth.uid()) or public.can_coach(student_id)))
+  with check ((select public.is_coach()) and not public.is_self(student_id));
 create policy "coach: delete" on public.coach_notes for delete to authenticated
-  using (public.is_coach() and not public.is_self(student_id) and (author_id = auth.uid() or public.can_coach(student_id)));
+  using ((select public.is_coach()) and not public.is_self(student_id) and (author_id = (select auth.uid()) or public.can_coach(student_id)));
 
-create policy "staff: read" on public.session_history for select to authenticated using (public.is_coach() or public.is_admin());
+create policy "staff: read" on public.session_history for select to authenticated using ((select public.is_coach()) or (select public.is_admin()));
 create policy "staff: add" on public.session_history for insert to authenticated
-  with check (public.is_admin() or (public.is_coach() and not public.is_self(student_id)));
+  with check ((select public.is_admin()) or ((select public.is_coach()) and not public.is_self(student_id)));
 create policy "staff: change" on public.session_history for update to authenticated
-  using (public.is_admin() or public.can_coach(student_id)) with check (public.is_admin() or public.can_coach(student_id));
+  using ((select public.is_admin()) or public.can_coach(student_id)) with check ((select public.is_admin()) or public.can_coach(student_id));
 create policy "staff: delete" on public.session_history for delete to authenticated
-  using (public.is_admin() or public.can_coach(student_id));
+  using ((select public.is_admin()) or public.can_coach(student_id));
 create policy "student: own history" on public.session_history for select to authenticated
-  using (student_id = public.my_student_id());
+  using (student_id = (select public.my_student_id()));
 
 create policy "staff: everything" on public.exercises for all to authenticated
-  using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
+  using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
 create policy "staff: everything" on public.exercise_purposes for all to authenticated
-  using (public.is_coach() or public.is_admin()) with check (public.is_coach() or public.is_admin());
+  using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
 
 -- 4. Sign-up gate ---------------------------------------------------------------
 -- Only emails on the student list (or the active staff list) can create an account.

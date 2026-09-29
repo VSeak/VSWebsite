@@ -1,5 +1,9 @@
 // ---------- Notes (shared by the student's view and the coach's editor) ----------
 
+// A plan's notes, oldest first. Filtered through the session join so they load alongside the plan, not after it.
+const planNotes = id => sb.from('notes').select('*, session:sessions!inner(plan_id)').eq('session.plan_id', id)
+  .order('created_at').then(must);
+
 // notesCtx.coach: posting as the student's coach (their plan editor); otherwise as the student.
 // notesCtx.canPost: false for a coach reading another coach's student's plan.
 function notesHTML(sid) {

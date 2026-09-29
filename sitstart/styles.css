@@ -247,13 +247,14 @@ a.note-link:hover .note-plan { text-decoration: underline; }
 .tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
 .tabs button { min-height: 40px; border-radius: 12px; font-weight: 700; font-size: .87rem; }
 .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* One card a row, so the order to do them in is plain and the boxes are wide enough for words like "boulders" */
 .ex-cards { display: grid; gap: 10px; margin-top: .9rem; }
-@media (min-width: 860px) { .ex-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ex-card { background: var(--bg); border-radius: 16px; padding: 12px; }
 .ex-name { margin: 0 0 8px 2px; font-weight: 700; }
 /* Three equal boxes, so they line up however long the text is; long text wraps inside its box */
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.stat { background: var(--card); border-radius: 10px; padding: 8px 10px; min-width: 0; text-align: center; overflow-wrap: anywhere; }
+/* break-word only splits a word too long for the box on its own, never a word that would fit on the next line */
+.stat { background: var(--card); border-radius: 10px; padding: 8px 10px; min-width: 0; text-align: center; overflow-wrap: break-word; }
 .stat-l { display: block; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .stat-v { display: block; margin-top: 3px; font: 800 1.07rem/1.15 "Bricolage Grotesque", sans-serif; }
 .stat-v.none { color: var(--blank); }
@@ -276,7 +277,7 @@ a.note-link:hover .note-plan { text-decoration: underline; }
 @media (max-width: 860px) {
   .hey { font-size: 2.75rem; margin-bottom: 1.1rem; }
   .hey span { display: block; }
-  .stu-grid { display: flex; flex-direction: column; gap: 12px; }
+  .stu-grid { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
   .stu-main, .stu-side { display: contents; }
   .stu-main .plan-read { margin: 16px 0 4px; }
   .stu-grid .next-card { order: 1; } .stu-grid .goal-card { order: 2; } .stu-grid .plan-read { order: 3; }

@@ -21,8 +21,8 @@ function sessionReadHTML(s, withNotes) {
   return `<article class="card session">
     <h3>${esc(s.title || 'Session')}</h3>
     ${s.details ? `<p class="prose">${para(s.details)}</p>` : ''}
-    ${ex.length ? `<table class="ex"><thead><tr><th>Exercise</th><th>Sets</th><th>Reps / Time</th><th>Rest</th><th>Notes</th></tr></thead>
-      <tbody>${ex.map(x => `<tr><td>${esc(x.name)}</td><td data-l="Sets">${esc(x.sets)}</td><td data-l="Reps / Time">${esc(x.reps)}</td>
+    ${ex.length ? `<table class="ex"><thead><tr><th>Exercise</th><th>Sets</th><th>Reps/Time</th><th>Rest</th><th>Notes</th></tr></thead>
+      <tbody>${ex.map(x => `<tr><td>${esc(x.name)}</td><td data-l="Sets">${esc(x.sets)}</td><td data-l="Reps/Time">${esc(x.reps)}</td>
       <td data-l="Rest">${esc(x.rest)}</td><td data-l="Notes">${esc(x.notes)}</td></tr>`).join('')}</tbody></table>` : ''}
     ${withNotes ? notesHTML(s.id) : ''}
   </article>`;

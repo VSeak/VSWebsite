@@ -3,7 +3,7 @@
 // Plans copy an exercise's values when it's picked, so editing either one never changes the other.
 const EX_PAGE = 10;   // exercises per page on the Master Exercise List
 const PUR_PAGE = 5;   // purposes per page in the Purposes card
-const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps / Time'], ['rest', 'Rest'], ['notes', 'Notes']];
+const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps/Time'], ['rest', 'Rest'], ['notes', 'Notes']];
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
 // Purposes say what an exercise is for, so coaches can search by them. They stay on the master list:

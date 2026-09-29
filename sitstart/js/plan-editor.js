@@ -43,6 +43,7 @@ async function adminPlan(id, sid) {
 
 // Straight to one session's notes, opened and scrolled to, with the reply box focused (if they can reply).
 function openNotes(sid) {
+  showSession(sid);   // its tab, if the week has several sessions
   const box = sid && app.querySelector(`[data-notes="${CSS.escape(sid)}"]`);
   if (!box) return;
   box.open = true;

@@ -234,11 +234,14 @@ function studentHistory(log, next) {
   let page = 1;
   const draw = () => {
     const [shown, p] = pageOf(list, page, HISTORY_PAGE);
-    return `${historyCount(list)}<ul class="list">${shown.map(h => historyItem(h)).join('')}</ul>${pagerHTML(p, list.length, HISTORY_PAGE)}`;
+    return `<ul class="list">${shown.map(h => historyItem(h)).join('')}</ul>${pagerHTML(p, list.length, HISTORY_PAGE)}`;
   };
+  // Headed by the count, big, and when they started: "Your Sessions · Since Aug 2026 · 8". The list is newest first.
+  const since = list.length && day(list.at(-1).session_date).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   return {
-    html: list.length ? `<section class="card" style="margin-top:2rem"><h2>Your Sessions</h2>
-      <p class="hint">Every session you've had with your coach, newest first.</p><div id="myHistory">${draw()}</div></section>` : '',
+    html: list.length ? `<section class="card" id="historyCard"><div class="count-head">
+      <div><h2>Your Sessions</h2><p class="muted">Since ${since}</p></div><span class="big-num">${list.length}</span></div>
+      <div id="myHistory">${draw()}</div></section>` : '',
     bind() {
       const box = $('#myHistory');
       const go = n => { page = n; box.innerHTML = draw(); bindPager(box, go); };
@@ -288,9 +291,22 @@ function bindTraining(id, s, redraw) {
   });
 }
 
-// What the student sees: nothing once the day has passed.
-const nextSessionAlert = s => s && !nextPassed(s) ? `<div class="alert next-session"><strong>Next session:</strong>
-  ${esc(nextWhen(s))}<br><span class="muted">${esc(s.next_location)}</span></div>` : '';
+// What the student sees: a dark card with how soon it is (Today, Tomorrow, In 3 days), gone once it has ended.
+const ICON_CLOCK = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+  aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+const ICON_PIN = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+  stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>`;
+function nextSessionAlert(s) {
+  if (!s || nextPassed(s)) return '';
+  const d = day(s.next_date), n = Math.round((d - day(localToday())) / 864e5);
+  const date = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric',
+    ...(d.getFullYear() !== new Date().getFullYear() && { year: 'numeric' }) });
+  return `<section class="next-card">
+    <div class="row between"><span class="eyebrow">Next Session</span><span class="pill">${n <= 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`}</span></div>
+    <p class="next-day">${esc(date)}</p>
+    <div class="next-meta"><span>${ICON_CLOCK}${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}</span><span>${ICON_PIN}${esc(s.next_location)}</span></div>
+  </section>`;
+}
 
 // ---------- Goals (current → achieved or archived) ----------
 

@@ -1,32 +1,55 @@
 // ---------- Plans as the student sees them ----------
 
+// Also the coach's Student View preview and read-only plan. A week with more than one session shows tabs, one session at a time.
 function planReadHTML(plan, sessions, { notes = true } = {}) {
   const weeks = byWeek(sessions);
-  return `<header class="plan-head">
-      <div class="row"><h1>${esc(plan.title || 'Untitled Plan')}</h1>${plan.active ? '' : `<span class="tag">${planStatus(plan)} Plan</span>`}</div>
-      ${plan.start_date ? `<p class="muted">${fmtStart(plan.start_date)}</p>` : ''}
-      ${plan.overview ? `<div class="card prose">${para(plan.overview)}</div>` : ''}
+  return `<div class="plan-read"><header class="plan-head">
+      <p class="eyebrow">${planStatus(plan)} Plan · ${plan.repeats ? 'Repeats Weekly' : 'Week by Week'}</p>
+      <h1>${esc(plan.title || 'Untitled Plan')}</h1>
+      ${plan.start_date ? `<p class="muted plan-start">${fmtStart(plan.start_date)}</p>` : ''}
+      ${plan.overview ? `<div class="prose">${para(plan.overview)}</div>` : ''}
     </header>
     ${!weeks.length ? '<p class="muted">No sessions in this plan yet.</p>'
-    : plan.repeats ? `<section class="week">
-      <h2>Every Week <span class="muted">Repeat these sessions each week</span></h2>
-      ${sessions.map(s => sessionReadHTML(s, notes)).join('')}</section>`
-    : weeks.map(([w, list]) => `<section class="week">
-      <h2>Week ${w} <span class="muted">${weekRange(plan.start_date, w)}</span></h2>
-      ${list.map(s => sessionReadHTML(s, notes)).join('')}</section>`).join('')}`;
+    : plan.repeats ? weekHTML('', sessions, notes)
+    : weeks.map(([w, list]) => weekHTML(`<h2>Week ${w} <span class="muted">${weekRange(plan.start_date, w)}</span></h2>`, list, notes)).join('')}
+  </div>`;
 }
 
-function sessionReadHTML(s, withNotes) {
+const weekHTML = (head, list, notes) => `<section class="week">${head}
+  ${list.length > 1 ? `<div class="tabs" role="tablist">${list.map((s, i) => `<button type="button" role="tab" data-tab="${s.id}"
+    aria-selected="${i === 0}">${esc(s.title || `Session ${i + 1}`)}</button>`).join('')}</div>` : ''}
+  ${list.map((s, i) => sessionReadHTML(s, notes, i > 0)).join('')}</section>`;
+
+function sessionReadHTML(s, withNotes, hide) {
   const ex = (s.exercises || []).filter(x => Object.values(x).some(v => String(v).trim()));
-  return `<article class="card session">
+  return `<article class="card session" data-session="${s.id}"${hide ? ' hidden' : ''}>
     <h3>${esc(s.title || 'Session')}</h3>
     ${s.details ? `<p class="prose">${para(s.details)}</p>` : ''}
-    ${ex.length ? `<table class="ex"><thead><tr><th>Exercise</th><th>Sets</th><th>Reps/Time</th><th>Rest</th><th>Notes</th></tr></thead>
-      <tbody>${ex.map(x => `<tr><td>${esc(x.name)}</td><td data-l="Sets">${esc(x.sets)}</td><td data-l="Reps/Time">${esc(x.reps)}</td>
-      <td data-l="Rest">${esc(x.rest)}</td><td data-l="Notes">${esc(x.notes)}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${ex.length ? `<div class="ex-cards">${ex.map(exCardHTML).join('')}</div>` : ''}
     ${withNotes ? notesHTML(s.id) : ''}
   </article>`;
 }
+
+// One exercise: its name, then Sets, Reps/Time and Rest in three equal boxes ("—" when empty), then its notes.
+const statHTML = (label, v) => {
+  v = String(v ?? '').trim();
+  return `<div class="stat"><span class="stat-l">${label}</span><span class="stat-v${v ? '' : ' none'}">${v ? esc(v) : '—'}</span></div>`;
+};
+const exCardHTML = x => `<div class="ex-card"><p class="ex-name">${esc(x.name || 'Exercise')}</p>
+  <div class="stats">${statHTML('Sets', x.sets)}${statHTML('Reps/Time', x.reps)}${statHTML('Rest', x.rest)}</div>
+  ${String(x.notes ?? '').trim() ? `<p class="ex-note">${esc(x.notes)}</p>` : ''}</div>`;
+
+// Session tabs: show that session and hide the rest of its week. openNotes uses it to reach a hidden session.
+function showSession(sid) {
+  const art = sid && app.querySelector(`[data-session="${CSS.escape(sid)}"]`), week = art?.closest('.week');
+  if (!week) return;
+  week.querySelectorAll('[data-session]').forEach(a => { a.hidden = a !== art; });
+  week.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === sid));
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]');
+  if (b) showSession(b.dataset.tab);
+});
 
 async function studentHome() {
   const t = ++navToken;
@@ -46,22 +69,28 @@ async function studentHome() {
   if (current) return studentPlan(current.id, plans, goals, coaches, next, history);
 
   // No current plan, so any plans here are past ones.
-  view(`${myTop()}${nextSessionAlert(next)}${goalHTML(goals)}
-    ${plans.length ? `<section class="card"><h2>Past Plans</h2>
-      <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(plans)}</ul></section>`
-      : "<section class=\"card\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>"}
-    ${achievedHTML(goals)}${history.html}${yourCoachHTML(coaches)}${myDetailsHTML()}`);
+  view(`${myTop()}${stuGrid(plans.length ? pastPlansHTML(plans)
+    : "<section class=\"card past-plans\"><p>Your coach hasn't shared a plan with you yet. Check back soon.</p></section>",
+    { next, goals, history, coaches })}`);
   history.bind();
   bindMyDetails();
 }
 
 // The top of a student's home page: the greeting, or for staff who are also students, My Training under Home.
-const myTop = () => me.isStaff ? `${crumbs([['Home', '#/'], ['My Training']])}<h1>My Training</h1>` : `<h1>${welcome()}</h1>`;
+const myTop = () => me.isStaff ? `${crumbs([['Home', '#/'], ['My Training']])}<h1>My Training</h1>`
+  : `<h1 class="hey">Hey ${me.firstName ? esc(me.firstName) : 'there'},<span> let's climb.</span></h1>`;
+
+// The student home: the plan beside the next session, goals and the rest. On a phone it is one column,
+// in the order set in styles.css (next session, goals, plan, past plans, then the rest).
+const stuGrid = (main, { next, goals, history, coaches }) => `<div class="stu-grid"><div class="stu-main">${main}</div>
+  <aside class="stu-side">${nextSessionAlert(next)}${goalHTML(goals)}${achievedHTML(goals)}${history.html}${yourCoachHTML(coaches)}${myDetailsHTML()}</aside></div>`;
+const pastPlansHTML = plans => plans.length ? `<section class="card past-plans"><h2>Past Plans</h2>
+  <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(plans)}</ul></section>` : '';
 
 // Students change only their own pronouns (update_my_pronouns() in schema.sql), at the bottom of their home page.
 // Their name stays the coach's to change, so the coach always knows who they are.
 // Staff who are also students don't get it: their pronouns are on their staff details.
-const myDetailsHTML = () => me.isStaff ? '' : `<section class="card" id="myDetails" style="margin-top:2rem"><h2>Your Pronouns</h2>
+const myDetailsHTML = () => me.isStaff ? '' : `<section class="card" id="myDetails"><h2>Your Pronouns</h2>
   <p class="hint">Your coach sees these next to your name. To change your name, ask your coach.</p>
   <form id="myForm" class="stack" data-save>
     ${pronounsField(me.student.pronouns, 'Your')}
@@ -81,25 +110,29 @@ function bindMyDetails() {
   };
 }
 
+const GOAL_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+  <circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>`;
 function goalHTML(goals) {
   const cur = goals.filter(g => g.status === 'current');
   if (!cur.length) return '';
-  if (cur.length === 1) return `<p class="alert"><strong>Your goal:</strong> ${esc(cur[0].body)}</p>`;
-  return `<div class="alert"><strong>Your goals:</strong><ul>${cur.map(g => `<li>${esc(g.body)}</li>`).join('')}</ul></div>`;
+  if (cur.length === 1) return `<section class="goal-card"><span class="eyebrow">Your Goal</span><p class="goal-one">${esc(cur[0].body)}</p></section>`;
+  return `<section class="goal-card many"><div class="row between"><span class="eyebrow">Your Goals</span><span class="goal-count">${cur.length}</span></div>
+    <ul class="goal-list">${cur.map(g => `<li>${GOAL_ICON}<span>${esc(g.body)}</span></li>`).join('')}</ul></section>`;
 }
 function achievedHTML(goals) {
   const won = goals.filter(g => g.status === 'achieved');
-  return won.length ? `<section class="card" style="margin-top:2rem"><h2>Goals Achieved</h2>
-    <p class="hint">Every goal you've sent so far! This is what all the training is for, so be proud of yourself and climb on!</p><ul class="list">${won.map(g =>
-    goalItem(g, fmtDay(g.done_at), '<span class="tag ok">Achieved</span>')).join('')}</ul></section>` : '';
+  return won.length ? `<section class="card achieved"><h2>Goals Achieved</h2>
+    <p class="hint">Every goal you've sent so far! This is what all the training is for, so be proud of yourself and climb on!</p>
+    ${won.map(g => `<div class="won"><strong>${esc(g.body)}</strong><span class="muted">${fmtDay(g.done_at)}</span></div>`).join('')}</section>` : '';
 }
 // Hidden until they have had a coach.
-const yourCoachHTML = coaches => coaches.length ? `<section class="card" style="margin-top:2rem"><h2>Your Coach</h2>
+const yourCoachHTML = coaches => coaches.length ? `<section class="card your-coach"><h2>Your Coach</h2>
   <p class="hint">Your current coach, and any past coaches.</p>
   ${coachesHTML(coaches, "You don't have a coach right now.")}</section>` : '';
 const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title || 'Untitled Plan')}</strong>
   ${planTag(p)}</a></li>`).join('');
 
+// allPlans (and the rest) when it is the student's current plan on their home page; without them, one plan on its own page.
 async function studentPlan(id, allPlans, goals, coaches, next, history) {
   const t = ++navToken;
   view(loading);
@@ -114,18 +147,13 @@ async function studentPlan(id, allPlans, goals, coaches, next, history) {
     ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
   if (t !== navToken) return;
   notesCtx = { notes, studentName: me.student.name, coach: false, canPost: true };
-  const others = allPlans?.filter(p => p.id !== id) || [];
-  view(`${allPlans ? myTop() : crumbs([['Home', '#/'], ...(me.isStaff ? [['My Training', '#/me']] : []), [plan.title || 'Untitled Plan']])}
-    ${nextSessionAlert(next)}
-    ${goals ? goalHTML(goals) : ''}
-    ${allPlans && plan.active ? '<h2 class="section-label">Current Plan</h2>' : ''}
-    ${planReadHTML(plan, sessions)}
-    ${others.length ? `<section class="card" style="margin-top:2rem"><h2>Past Plans</h2>
-      <p class="hint">Your past plans, kept so you can look back.</p><ul class="list">${planLinks(others)}</ul></section>` : ''}
-    ${goals ? achievedHTML(goals) : ''}
-    ${history ? history.html : ''}
-    ${coaches ? yourCoachHTML(coaches) : ''}
-    ${allPlans ? myDetailsHTML() : ''}`);
-  history?.bind();
-  if (allPlans) bindMyDetails();
+  if (!allPlans) {
+    view(`${crumbs([['Home', '#/'], ...(me.isStaff ? [['My Training', '#/me']] : []), [plan.title || 'Untitled Plan']])}
+      ${planReadHTML(plan, sessions)}`);
+    return;
+  }
+  view(`${myTop()}${stuGrid(planReadHTML(plan, sessions) + pastPlansHTML(allPlans.filter(p => p.id !== id)),
+    { next, goals, history, coaches })}`);
+  history.bind();
+  bindMyDetails();
 }

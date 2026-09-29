@@ -12,6 +12,6 @@ A personal website that holds several small apps. Each app is its own folder wit
 - Adding an app: create a folder with an `index.html`, then add a card for it on the root `index.html`.
 - Apps link with relative paths (`sitstart/`, not `/sitstart/`), so the site works under the GitHub Pages subfolder (`/vsapps/`) or a custom domain.
 - Apps that need a backend can share one Supabase project. Give each app's tables a name that won't clash (the coaching tables are `staff`, `students`, `plans`, `sessions`, `notes`, `goals`, `coach_notes`, `exercises`), and keep row-level security on every table.
-- Shared look: tokens on `:root` with a dark theme, muted earthy colors (moss green accent on warm sand/bark neutrals), Space Grotesk headings, Inter body text, and a layout that works at about 400px wide.
+- Shared basics: tokens on `:root` with a dark theme, and a layout that works at about 400px wide. Each app picks its own colors and fonts (Sit Start: moss green on warm sand/bark, Bricolage Grotesque + DM Sans; see its `CLAUDE.md`). The root home page keeps its own look.
 - Buttons, headings and labels use title case. Hints and messages use sentence case.
 - Never commit secret keys. A Supabase publishable (anon) key is fine to commit.

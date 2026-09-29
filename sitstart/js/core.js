@@ -198,6 +198,9 @@ document.addEventListener('change', e => {
 
 const day = d => new Date(d + 'T00:00');
 const fmtDate = d => day(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+// A plan's tag: Current, Past, or Inactive for a plan that isn't current and has no start date.
+const planStatus = p => p.active ? 'Current' : p.start_date ? 'Past' : 'Inactive';
+const planTag = p => `<span class="tag${p.active ? ' ok' : ''}">${planStatus(p)}</span>`;
 // "Started Sep 1, 2026" once the day has come (today included), "Starts on Oct 3, 2026" before.
 const fmtStart = d => (day(d) <= new Date() ? 'Started ' : 'Starts on ') + fmtDate(d);
 const fmtWhen = t => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });

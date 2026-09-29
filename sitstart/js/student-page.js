@@ -29,7 +29,7 @@ async function adminStudent(id, again = false) {
     const [shown, at] = pageOf(s.plans, page, PLANS_PAGE);
     return `<ul class="list">${shown.map(p => `<li><a class="item" href="#/plan/${p.id}">
     <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? fmtStart(p.start_date) : 'No start date'}</span></span>
-    ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('')}</ul>${pagerHTML(at, s.plans.length, PLANS_PAGE)}`;
+    ${planTag(p)}</a></li>`).join('')}</ul>${pagerHTML(at, s.plans.length, PLANS_PAGE)}`;
   };
   const snotesHTML = page => {
     const [shown, at] = pageOf(notes, page, SNOTES_PAGE);

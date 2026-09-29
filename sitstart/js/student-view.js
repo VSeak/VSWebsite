@@ -3,7 +3,7 @@
 function planReadHTML(plan, sessions, { notes = true } = {}) {
   const weeks = byWeek(sessions);
   return `<header class="plan-head">
-      <div class="row"><h1>${esc(plan.title || 'Untitled Plan')}</h1>${plan.active ? '' : '<span class="tag">Past Plan</span>'}</div>
+      <div class="row"><h1>${esc(plan.title || 'Untitled Plan')}</h1>${plan.active ? '' : `<span class="tag">${planStatus(plan)} Plan</span>`}</div>
       ${plan.start_date ? `<p class="muted">${fmtStart(plan.start_date)}</p>` : ''}
       ${plan.overview ? `<div class="card prose">${para(plan.overview)}</div>` : ''}
     </header>
@@ -98,7 +98,7 @@ const yourCoachHTML = coaches => coaches.length ? `<section class="card" style="
   <p class="hint">Your current coach, and any past coaches.</p>
   ${coachesHTML(coaches, "You don't have a coach right now.")}</section>` : '';
 const planLinks = plans => plans.map(p => `<li><a class="item" href="#/plan/${p.id}"><strong>${esc(p.title || 'Untitled Plan')}</strong>
-  ${p.active ? '<span class="tag ok">Current</span>' : '<span class="tag">Past</span>'}</a></li>`).join('');
+  ${planTag(p)}</a></li>`).join('');
 
 async function studentPlan(id, allPlans, goals, coaches, next, history) {
   const t = ++navToken;

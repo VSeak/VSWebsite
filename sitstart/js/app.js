@@ -365,12 +365,13 @@ const COMING_UP = 5;   // upcoming sessions listed on Home
 // The date block on a Coming Up row: WED over 1.
 const dayBlock = d => `<span class="day-block"><small>${day(d).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</small><strong>${day(d).getDate()}</strong></span>`;
 
-// What needs this person, for the Needs You card: coaches get their own active students whose next session has ended
-// (Update Next Session) or whose past sessions have no Coach Note (Needs Note); admins get active students with no coach
-// (Pick a Coach). Student notes never show here: replying is up to the coach. Also returns the coach's upcoming sessions.
+// What needs this person, for the Needs You card: coaches get their own active students who haven't been invited
+// (Send Invite), whose next session has ended (Update Next Session) or isn't set (Set Next Session), or whose past
+// sessions have no Coach Note (Needs Note); admins get active students with no coach (Pick a Coach). Student notes
+// never show here: replying is up to the coach. Also returns the coach's upcoming sessions.
 async function homeNeeds() {
   const [mine, noCoach] = await Promise.all([
-    me.isCoach ? sb.from('students').select(`id,first_name,name,email,coach_id,training_ended_at,${NEXT_COLS}`)
+    me.isCoach ? sb.from('students').select(`id,first_name,name,email,invited_at,user_id,coach_id,training_ended_at,${NEXT_COLS}`)
       .is('training_ended_at', null).eq('coach_id', me.staffId).then(must) : [],
     me.isAdmin ? sb.from('students').select('id,name').is('training_ended_at', null).is('coach_id', null).then(must) : [],
   ]);
@@ -380,7 +381,9 @@ async function homeNeeds() {
     sb.from('session_history').select('student_id,session_date,start_time').in('student_id', ids).then(must)]) : [[], []];
   const items = [];
   for (const s of mine) {
-    if (nextOverdue(s)) items.push({ name: s.name, href: '#/student/' + s.id, sub: `Next session ended ${fmtSessionDay(s.next_date)}`, tag: 'Update Next Session' });
+    if (accountStatus(s) === 'Not Invited') items.push({ name: s.name, href: '#/student/' + s.id, sub: 'No invite sent yet', tag: 'Send Invite' });
+    if (!s.next_date) items.push({ name: s.name, href: '#/student/' + s.id, sub: 'No next session set', tag: 'Set Next Session' });
+    else if (nextOverdue(s)) items.push({ name: s.name, href: '#/student/' + s.id, sub: `Next session ended ${fmtSessionDay(s.next_date)}`, tag: 'Update Next Session' });
     const missing = cnoteMissing(notes.filter(n => n.student_id === s.id), s, log.filter(h => h.student_id === s.id));
     if (missing.length) items.push({ name: s.name, href: '#/student/' + s.id, tag: 'Needs Note',
       sub: missing.length === 1 ? `Session on ${fmtSessionDay(missing[0])}` : `${missing.length} sessions have no notes` });
@@ -405,7 +408,7 @@ async function adminHome() {
     <span>${fmtTime(s.next_start)} – ${fmtTime(s.next_end)} · ${esc(s.next_location)}</span></span></a>`;
   // Nothing to do: a calm card that still shows what's coming up (or, coaching nobody, how to start).
   const clear = me.isCoach ? `<div class="needs-clear"><span class="check">${ICON_CHECK}</span><div><b>Nothing needs you right now</b>
-      <span>${coaching ? 'Every student has a next session, and every session has a note.' : "You're not coaching anyone at the moment."}</span></div></div>` : '';
+      <span>${coaching ? 'Every student is invited and has a next session, and every session has a note.' : "You're not coaching anyone at the moment."}</span></div></div>` : '';
   const coming = !me.isCoach ? '' : `<span class="eyebrow">Coming Up</span>${upcoming.length ? upcoming.map(up).join('')
     : `<div class="none-up">${ICON_CAL}<div><b>No sessions coming up</b><span>${coaching ? 'Set a next session on a student’s page.'
       : 'Add a student, or pick up a No Coach student, to get started.'}</span></div>${coaching ? '' : '<a class="fill" href="#/students">+ Add Student</a>'}</div>`}`;

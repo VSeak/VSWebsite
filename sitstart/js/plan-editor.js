@@ -72,7 +72,7 @@ function markDirty() {
 }
 
 function sessionEditHTML(s, i) {
-  const f = (field, ph, e) => `<input data-s="${i}"${e != null ? ` data-e="${e}"` : ''} data-f="${field}" placeholder="${ph}" aria-label="${ph}"
+  const f = (field, label, e, ph = label) => `<input data-s="${i}"${e != null ? ` data-e="${e}"` : ''} data-f="${field}" placeholder="${ph}" aria-label="${label}"
     ${field === 'name' && e != null ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
     value="${esc(e != null ? s.exercises[e][field] : s[field])}">`;
   return `<article class="card session-edit">
@@ -83,7 +83,7 @@ function sessionEditHTML(s, i) {
     <label style="margin-top:.6rem">Details<textarea data-s="${i}" data-f="details" rows="2"
       placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
     ${s.exercises.length ? '<div class="ex-head"><span>Exercise</span><span>Sets</span><span>Reps / Time</span><span>Rest</span><span>Notes</span><span></span></div>' : ''}
-    ${s.exercises.map((_, e) => `<div class="ex-row">${f('name', 'Exercise', e)}${f('sets', 'Sets', e)}${f('reps', 'Reps / Time', e)}${f('rest', 'Rest', e)}${f('notes', 'Notes', e)}
+    ${s.exercises.map((_, e) => `<div class="ex-row">${f('name', 'Exercise', e, 'Type an exercise or a purpose to find one')}${f('sets', 'Sets', e)}${f('reps', 'Reps / Time', e)}${f('rest', 'Rest', e)}${f('notes', 'Notes', e)}
       <button class="icon ghost" data-act="del-ex" data-s="${i}" data-e="${e}" title="Remove exercise" aria-label="Remove exercise">×</button></div>`).join('')}
     <div class="row between" style="margin-top:.7rem">
       <button class="ghost small" data-act="add-ex" data-s="${i}">+ Add Exercise</button>

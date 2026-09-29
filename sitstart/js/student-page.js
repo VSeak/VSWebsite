@@ -287,6 +287,13 @@ async function adminStudent(id, again = false) {
           body: `<label>Goal<textarea name="body" rows="3" maxlength="500" required data-need="Write the goal.">${esc(g.body)}</textarea></label>` });
         const body = f?.get('body').trim();
         if (body) saveGoal(b, g, { body });
+      } else if (act === 'goal-date') {
+        // Saved as noon on the picked day, so the day stays the same in any nearby time zone.
+        const f = await ask({ title: 'Edit Date Achieved', ok: 'Save Date',
+          body: `<label>Date Achieved<input type="date" name="day" value="${new Date(g.done_at).toLocaleDateString('en-CA')}"
+            max="${localToday()}" required data-need="Pick the day." data-high="Pick today or an earlier day."></label>` });
+        const d = f?.get('day');
+        if (d) saveGoal(b, g, { done_at: new Date(d + 'T12:00').toISOString() }, 'Date saved.');
       } else if (act === 'goal-delete') {
         if (await ask({ title: 'Delete This Goal?', body: "<p>This can't be undone. To just hide it, keep it archived.</p>", ok: 'Delete', warn: true }))
           busy(b, async () => {

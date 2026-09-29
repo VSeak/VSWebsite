@@ -326,7 +326,7 @@ const goalBtns = (g, ...list) => `<div class="row">${list.map(([act, label, cls]
 const GOAL_GROUPS = {
   current: [() => '', g => goalBtns(g, ['goal-achieved', 'Achieved', 'primary'], ['goal-edit', 'Edit'], ['goal-archive', 'Archive']),
     ['Previous', 'Next']],
-  achieved: [g => 'Achieved ' + fmtDay(g.done_at), g => goalBtns(g, ['goal-current', 'Undo'], ['goal-archive', 'Archive'])],
+  achieved: [g => 'Achieved ' + fmtDay(g.done_at), g => goalBtns(g, ['goal-current', 'Undo'], ['goal-date', 'Edit Date'], ['goal-archive', 'Archive'])],
   archived: [g => 'Archived ' + fmtDay(g.done_at), g => goalBtns(g, ['goal-current', 'Restore'], ['goal-delete', 'Delete', 'ghost danger'])],
 };
 // One group's page (at[st].page, kept in range here), with its pager. at.readOnly: no buttons (another coach's student).

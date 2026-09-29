@@ -37,8 +37,8 @@ async function adminUsers() {
     ...[['inactive', 'Inactive'], ['deactivated', 'Deactivated']].filter(([r]) => count(r))];
   if (!tabs.some(([r]) => r === usersTab)) usersTab = '';
   view(`${crumbs([['Home', '#/'], ['Users']])}
-  <div class="page-head"><h1>Users</h1><button type="button" class="fill" id="addUser">+ Add User</button></div>
-  <div class="grid2 users-grid">
+  <div class="list-page users-grid${waiting.length ? '' : ' solo'}">
+    <div class="page-head"><h1>Users</h1><button type="button" class="fill" id="addUser">+ Add User</button></div>
     <div class="stack">
       <input id="userSearch" class="search" type="search" placeholder="Search by name or email" aria-label="Search by name or email" autocomplete="off">
       <div class="tabs" id="userTabs" role="tablist" aria-label="Show">${tabs.map(([r, label]) =>

@@ -69,8 +69,8 @@ async function adminStudents() {
   };
 
   view(`${crumbs([['Home', '#/'], ['Students']])}
-  <div class="page-head"><h1>Students</h1><button type="button" class="fill" id="addStudent">+ Add Student</button></div>
-  <div class="grid2">
+  <div class="list-page">
+    <div class="page-head"><h1>Students</h1><button type="button" class="fill" id="addStudent">+ Add Student</button></div>
     <div class="stack">
       <div class="tabs" id="stuTabs" role="tablist" aria-label="Show">${Object.entries(tabs).map(([k, [label, list]]) =>
         `<button type="button" role="tab" data-tab="${k}">${label}<span class="count">${list.length}</span></button>`).join('')}</div>

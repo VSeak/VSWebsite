@@ -253,9 +253,20 @@ a.note-link:hover .note-plan { text-decoration: underline; }
 
 /* Filter tabs with a count (Students, Users, Exercises & Drills) */
 .tabs button .count { margin-left: .35rem; opacity: .7; }
-/* People as cards: the Students and Users lists. Two a row beside the side column on desktop. */
-.people { display: grid; gap: 12px; }
-@media (min-width: 1000px) { .people { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Students and Users: the heading and its Add button sit over the list, and the side card runs up beside the heading.
+   With no side card (.solo) the list takes the whole width. On a phone it's one column. */
+.list-page { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 0 1.5rem; align-items: start; }
+.list-page > .page-head { grid-column: 1; }
+.list-page > aside { grid-column: 2; grid-row: 1 / span 2; }
+.list-page.solo { grid-template-columns: minmax(0, 1fr); }
+.list-page.solo input.search { max-width: 560px; }
+@media (max-width: 760px) {
+  .list-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 1rem; }
+  .list-page > .page-head { margin-bottom: 0; order: -2; }
+  .list-page > aside { grid-column: auto; grid-row: auto; }
+}
+/* People as cards: as many a row as fit (one on a phone, two beside a side card, three across the whole width) */
+.people { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); }
 a.person { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 18px;
   padding: 14px; color: var(--ink); text-decoration: none; }
 a.person:hover { border-color: var(--accent); }

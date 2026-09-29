@@ -7,7 +7,7 @@ async function adminStudent(id, again = false) {
   const restore = again && keepEdits(again);
   if (!again) view(loading);
   const [s, coaches, notes, cnotes, log] = await Promise.all([
-    sb.from('students').select('*, plans(id,title,active,start_date,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
+    sb.from('students').select('*, plans(id,title,active,start_date,repeats,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
     sb.from('notes').select('id,session_id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
@@ -24,39 +24,50 @@ async function adminStudent(id, again = false) {
   sortCoachNotes(cnotes);
   const p = pro(s.pronouns), edit = canCoach(s), coach = coaches.find(c => c.is_current);
 
-  // Training Plans and Student Notes, a page at a time.
+  // The current plan up top; every other plan (past, or inactive) a page at a time under Other Plans.
+  const current = s.plans.find(p => p.active), others = s.plans.filter(p => !p.active);
   const plansHTML = page => {
-    const [shown, at] = pageOf(s.plans, page, PLANS_PAGE);
+    const [shown, at] = pageOf(others, page, PLANS_PAGE);
     return `<ul class="list">${shown.map(p => `<li><a class="item" href="#/plan/${p.id}">
     <span><strong>${esc(p.title || 'Untitled Plan')}</strong><span class="item-sub">${p.start_date ? fmtStart(p.start_date) : 'No start date'}</span></span>
-    ${planTag(p)}</a></li>`).join('')}</ul>${pagerHTML(at, s.plans.length, PLANS_PAGE)}`;
+    ${planTag(p)}</a></li>`).join('')}</ul>${pagerHTML(at, others.length, PLANS_PAGE)}`;
   };
   const snotesHTML = page => {
     const [shown, at] = pageOf(notes, page, SNOTES_PAGE);
     return shown.map(n => noteFeedItem(n)).join('') + pagerHTML(at, notes.length, SNOTES_PAGE);
   };
+  const status = s.training_ended_at ? 'Inactive' : edit ? (coach ? 'My Student · Active' : 'No Coach · Active') : `Coached by ${esc(coach?.name || 'another coach')}`;
+  const stat = (label, n, id = '') => `<div class="stat"><span class="stat-l">${label}</span><span class="stat-v"${id ? ` id="${id}"` : ''}>${n}</span></div>`;
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [s.name]])}
-  <div class="row"><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1>${s.training_ended_at ? '<span class="tag danger">Inactive</span>' : ''}</div>
+  <div class="page-head"><div><span class="eyebrow">${status}</span><h1>${esc(s.name)}${pronounsTag(s.pronouns)}</h1></div>
+    <div class="stats head-stats">${stat('Sessions', historyOf(log, s).length)}${stat('Goals', s.goals.filter(g => g.status === 'current').length, 'statGoals')}${stat('Notes', notes.length)}</div></div>
   ${edit ? '' : `<p class="alert">${esc(s.first_name)} is coached by ${esc(coach?.name || 'another coach')}. You can read everything here,
     add Coach Notes and add past sessions you ran. Only ${p.their} coach can change the rest.</p>`}
   <div class="grid2 phone-order" data-folds="student">
     <div>
-      <section class="card">
-        <div class="row between"><h2>Training Plans</h2>${edit ? '<button class="primary" data-act="new-plan">+ New Plan</button>' : ''}</div>
-        <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current plan first, and past plans below it. Open a plan to ${edit ? 'edit' : 'read'} it.</p>
-        ${s.plans.length ? `<div id="plansBox">${plansHTML(1)}</div>` : '<p class="muted">No plans yet.</p>'}
+      <section class="card" id="planCard">
+        ${current ? `<span class="eyebrow">Current Plan · ${current.repeats ? 'Repeats Weekly' : 'Week by Week'}</span>
+        <h2 class="plan-title">${esc(current.title || 'Untitled Plan')}</h2>
+        <p class="muted">${current.start_date ? fmtStart(current.start_date) : 'No start date'}</p>
+        <div class="row"><a class="fill grow" href="#/plan/${current.id}">Open Plan</a>${edit ? '<button type="button" data-act="new-plan">+ New Plan</button>' : ''}</div>`
+        : `<div class="row between"><h2>Training Plans</h2>${edit ? '<button type="button" class="fill" data-act="new-plan">+ New Plan</button>' : ''}</div>
+        <p class="muted">No current plan.${others.length ? ` Open one below to make it current, or start a new one.` : ''}</p>`}
+        ${others.length ? `<details class="other-plans"${current ? '' : ' open'}><summary>${current ? 'Other Plans' : 'Plans'} (${others.length})</summary>
+          <div id="plansBox">${plansHTML(1)}</div></details>` : ''}
       </section>
-      <section class="card" id="goalsCard"></section>
-      <section class="card feed"><h2>Student Notes</h2>
-        <p class="hint">${p.Their} notes on ${p.their} sessions, newest first. Open one to reply in the plan.</p>
+      <section class="card feed" id="snotesCard"><h2>Student Notes${notes.length ? ` <span class="count">(${notes.length})</span>` : ''}</h2>
+        <p class="hint">Newest first. Tap a note to open it in the plan and reply.</p>
         ${notes.length ? `<div id="snotesBox">${snotesHTML(1)}</div>` : `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
       <section class="card" id="coachNotesCard"></section>
-      ${trainingCardHTML(s, coaches, edit)}
     </div>
     <aside>
-      ${sessionsCardHTML(s, edit)}
-      ${edit ? `<section class="card" data-fold-start><h2>Details</h2>
+      ${nextCardHTML(s, edit)}
+      <section class="card goals-card" id="goalsCard"></section>
+      <div class="card-group">
+      ${historyCardHTML(s)}
+      ${trainingCardHTML(s, coaches, edit)}
+      ${edit ? `<section class="card" data-fold-start><div class="row between"><h2>Details</h2><span class="fold-sum">Name, pronouns</span></div>
         <p class="hint">Emails and ${p.their} page greet ${p.them} by first name. ${p.They} can change ${p.their} own pronouns too.</p>
         <form id="stuForm" class="stack" data-save>
           <label>First Name<input name="first_name" value="${esc(s.first_name)}" required data-need="Enter ${p.their} first name."></label>
@@ -65,10 +76,11 @@ async function adminStudent(id, again = false) {
           <button class="primary">Save Details</button>
         </form>
       </section>` : ''}
-      <section class="card" data-fold-start><h2>Coach</h2>
+      <section class="card" data-fold-start><div class="row between"><h2>Coach</h2><span class="fold-sum">${
+        !coach ? 'None' : coach.staff_id === me.staffId ? 'You' : esc(coach.name)}</span></div>
         <p class="hint">${me.isAdmin ? `Change it on <a href="#/user/${id}">${p.their} user page</a>.` : `An admin can change ${p.their} coach.`}</p>
         ${coachesHTML(coaches, 'No coach yet.')}</section>
-      ${accountCardStart(!!s.user_id || !edit, s.invited_at, s.first_name, p)}
+      ${accountCardStart(!!s.user_id || !edit, s.invited_at, s.first_name, p, s.user_id ? 'Signed in' : s.invited_at ? 'Invited' : 'Not invited')}
         ${!edit && !s.user_id ? `<p class="muted">${s.invited_at ? `Invited ${fmtWhen(s.invited_at)}, but hasn't signed in yet.` : 'Not invited yet.'}
           ${p.Their} coach sends the invite.</p>`
         : s.user_id ? `
@@ -84,10 +96,11 @@ async function adminStudent(id, again = false) {
           <p class="hint need" id="inviteNeed" hidden></p>
         </form>`}
       </section>
+      </div>
     </aside>
   </div>`, { keepScroll: again });
   bindTraining(id, s, () => adminStudent(id, true));
-  if (s.plans.length) pagedBox($('#plansBox'), { page: 1 }, plansHTML);
+  if (others.length) pagedBox($('#plansBox'), { page: 1 }, plansHTML);
   if (notes.length) pagedBox($('#snotesBox'), { page: 1 }, snotesHTML);
   // Session History links to Coach Notes from the same day.
   // Coach Notes redraw when the sessions change, for their prompt about the newest past session.
@@ -123,6 +136,7 @@ async function adminStudent(id, again = false) {
     goalAt.archivedOpen = !!$('#goalsCard details')?.open;
     if (added) goalAt.current.page = Math.floor(s.goals.filter(g => g.status === 'current').indexOf(added) / GOALS_PAGE) + 1;
     $('#goalsCard').innerHTML = coachGoalsHTML(s.goals, p, goalAt);
+    $('#statGoals').textContent = s.goals.filter(g => g.status === 'current').length;
     $('#goalsCard').querySelectorAll('[data-goals]').forEach(box =>
       pagedBox(box, goalAt[box.dataset.goals], () => goalGroupHTML(s.goals, box.dataset.goals, goalAt)));
     const form = $('#goalForm');

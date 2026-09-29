@@ -10,9 +10,7 @@ const STAFF_ROLES = ['admin', 'coach'];
 const roleRank = r => (i => i < 0 ? STAFF_ROLES.length : i)(STAFF_ROLES.indexOf(r));
 const sortRoles = roles => [...roles].sort((a, b) => roleRank(a) - roleRank(b));
 const rolesText = roles => sortRoles(roles).map(r => ROLE_LABEL[r] || r).join(' · ');
-const roleTags = roles => sortRoles(roles).map(r => `<span class="tag${r === 'student' ? '' : ' accent'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('');
 const userStatus = u => u.deactivated_at ? 'Deactivated' : u.ended_at ? 'Inactive' : u.last_sign_in_at ? 'Active' : u.invited_at ? 'Invited' : 'Not Invited';
-const statusTag = u => `<span class="tag${u.deactivated_at || u.ended_at ? ' danger' : u.last_sign_in_at ? ' ok' : ''}">${userStatus(u)}</span>`;
 // Deactivated staff and inactive students (coaching ended) sort after everyone else.
 const gone = u => !!(u.deactivated_at || u.ended_at);
 const roleOrder = u => gone(u) ? Object.keys(ROLE_LABEL).length + !!u.deactivated_at : Math.min(...u.roles.map(r => Object.keys(ROLE_LABEL).indexOf(r)));
@@ -21,121 +19,126 @@ const isMine = u => u.kind === 'staff' && u.email === me.user.email?.toLowerCase
 async function adminUsers() {
   const t = ++navToken;
   view(loading);
-  // list_users() doesn't say whose coaching has ended, so read that from students (admins can).
-  const [users, ended] = await Promise.all([sb.rpc('list_users').then(must),
-    sb.from('students').select('id,training_ended_at').not('training_ended_at', 'is', null).then(must)]);
+  // list_users() doesn't say whose coaching has ended or who has no coach, so read that from students (admins can).
+  const [users, stus] = await Promise.all([sb.rpc('list_users').then(must),
+    sb.from('students').select('id,name,coach_id,training_ended_at').then(must)]);
   if (t !== navToken) return;
-  const endedAt = new Map(ended.map(s => [s.id, s.training_ended_at]));
+  const endedAt = new Map(stus.filter(s => s.training_ended_at).map(s => [s.id, s.training_ended_at]));
   users.forEach(u => { if (u.kind === 'student') u.ended_at = endedAt.get(u.id) || null; });
   users.sort((a, b) => (roleOrder(a) - roleOrder(b)) || (a.name || a.email || '').localeCompare(b.name || b.email || ''));
+  // Waiting on an Admin: active students with no coach (never had one, or their coach was deactivated or removed).
+  const waiting = stus.filter(s => !s.coach_id && !s.training_ended_at).sort((a, b) => a.name.localeCompare(b.name));
 
-  // The role filters leave out deactivated staff and inactive students, who have their own filters.
+  // The role tabs leave out deactivated staff and inactive students, who have their own tabs (shown when there are some).
   const inFilter = (u, r) => !r ? true : r === 'deactivated' ? !!u.deactivated_at : r === 'inactive' ? !!u.ended_at
     : !gone(u) && u.roles.includes(r);
   const count = r => users.filter(u => inFilter(u, r)).length;
+  const tabs = [['', 'Everyone'], ...Object.keys(ROLE_LABEL).map(r => [r, ROLE_PLURAL[r]]),
+    ...[['inactive', 'Inactive'], ['deactivated', 'Deactivated']].filter(([r]) => count(r))];
+  if (!tabs.some(([r]) => r === usersTab)) usersTab = '';
   view(`${crumbs([['Home', '#/'], ['Users']])}
-  <h1>Users</h1>
-  <div class="grid2">
-    <section class="card">
-      <div class="row">
-        <input id="userSearch" class="grow" type="search" placeholder="Search by name or email" aria-label="Search by name or email" autocomplete="off">
-        <select id="userRole" aria-label="Role" style="width:auto">
-          <option value="">Everyone (${users.length})</option>
-          ${Object.keys(ROLE_LABEL).map(r => `<option value="${r}">${ROLE_PLURAL[r]} (${count(r)})</option>`).join('')}
-          ${count('inactive') ? `<option value="inactive">Inactive Students (${count('inactive')})</option>` : ''}
-          ${count('deactivated') ?`<option value="deactivated">Deactivated Staff (${count('deactivated')})</option>` : ''}
-        </select>
-      </div>
-      <div class="list-head" id="userHead"><span>User</span><span>Roles / Status</span></div>
-      <ul class="list" id="userList"></ul>
-    </section>
-    <aside>
-      <section class="card"><h2>Add User</h2>
-        <p class="hint" id="addHint"></p>
-        <div class="seg" id="addKind" role="radiogroup" aria-label="Add" style="margin:.2rem 0 .8rem">
-          <label><input type="radio" name="add_kind" value="staff" checked>Staff</label>
-          <label><input type="radio" name="add_kind" value="student">Student</label></div>
-        <form id="addUser" class="stack" data-save>
-          <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
-          <label>Last Name<input name="last_name" autocomplete="off"></label>
-          ${pronounsField()}
-          <label data-staff>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
-          <div data-staff>${rolesFieldset(['coach'])}</div>
-          <button class="primary" id="addBtn"></button>
-        </form>
-      </section>
-    </aside>
+  <div class="page-head"><h1>Users</h1><button type="button" class="fill" id="addUser">+ Add User</button></div>
+  <div class="grid2 users-grid">
+    <div class="stack">
+      <input id="userSearch" class="search" type="search" placeholder="Search by name or email" aria-label="Search by name or email" autocomplete="off">
+      <div class="tabs" id="userTabs" role="tablist" aria-label="Show">${tabs.map(([r, label]) =>
+        `<button type="button" role="tab" data-tab="${r}">${label}<span class="count">${count(r)}</span></button>`).join('')}</div>
+      <div class="people" id="userList"></div>
+    </div>
+    ${waiting.length ? `<aside><section class="card overdue waiting"><div class="row between"><span class="eyebrow">Waiting on an Admin</span>
+      <span class="chip warn-fill">${waiting.length}</span></div>
+      ${waiting.map(s => `<div class="wait-row"><span><b>${esc(s.name)}</b><span>Student with no coach</span></span>
+        <a class="pick-btn" href="#/user/${s.id}">Pick Coach</a></div>`).join('')}</section></aside>` : ''}
   </div>`);
 
-  const search = $('#userSearch'), role = $('#userRole');
+  const search = $('#userSearch');
   function renderList() {
-    const q = search.value.trim().toLowerCase(), r = role.value;
-    const shown = users.filter(u => inFilter(u, r) &&
+    const q = search.value.trim().toLowerCase();
+    const shown = users.filter(u => inFilter(u, usersTab) &&
       (!q || (u.name || '').toLowerCase().includes(q) || (u.email || '').includes(q)));
-    $('#userHead').hidden = !shown.length;
-    $('#userList').innerHTML = shown.map(u => `<li><a class="item" href="#/user/${u.id}">
-      <span><strong>${esc(u.name || u.email)}</strong>${pronounsTag(u.pronouns)}${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
-        <span class="item-sub">${u.email ? esc(u.email) : 'No email yet'}</span></span>
-      <span class="row">${roleTags(u.roles)}${statusTag(u)}</span></a></li>`).join('')
-      || `<li><p class="muted" style="margin:.6rem 0">${users.length ? 'Nobody matches that search.' : 'No users yet.'}</p></li>`;
+    app.querySelectorAll('#userTabs [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === usersTab));
+    $('#userList').innerHTML = shown.map(userCard).join('')
+      || `<p class="muted">${users.length ? 'Nobody matches that search.' : 'No users yet.'}</p>`;
   }
   renderList();
-  search.oninput = role.onchange = renderList;
+  search.oninput = renderList;
+  $('#userTabs').onclick = e => {
+    const b = e.target.closest('[data-tab]');
+    if (b) { usersTab = b.dataset.tab; renderList(); }
+  };
+  $('#addUser').onclick = e => addUserDialog(e.target);
+}
 
-  // Staff or Student. The switch sits outside the form, so flipping it isn't an unsaved edit.
-  // Student hides (and disables, so they skip validation) the email and roles: a student's invite waits for a plan and a goal.
-  const addForm = $('#addUser');
-  const isStaff = () => $('input[name="add_kind"]:checked').value === 'staff';
+let usersTab = '';   // the Users list's tab, kept while you move around the site
+// A user as a card: staff get a green badge and their role chips; students a plain badge; deactivated staff are grayed out.
+const userCard = u => {
+  const staffRoles = sortRoles(u.roles).filter(r => r !== 'student'), status = userStatus(u);
+  const chips = [...staffRoles.map(r => `<span class="chip role">${esc(ROLE_LABEL[r] || r)}</span>`),
+    u.roles.includes('student') && '<span class="chip">Student</span>',
+    status !== 'Active' && `<span class="chip${status === 'Not Invited' ? ' warn' : gone(u) ? ' bad' : ''}">${status}</span>`].filter(Boolean).join('');
+  return `<a class="person${u.deactivated_at ? ' off' : ''}" href="#/user/${u.id}"><span class="ini${u.kind === 'staff' ? '' : ' plain'}">${initials(u.name || u.email)}</span>
+    <span class="person-body"><b>${esc(u.name || u.email)}</b>${pronounsTag(u.pronouns)}${isMine(u) ? ' <span class="muted">(you)</span>' : ''}
+      <span class="person-sub">${u.email ? esc(u.email) : 'No email yet'}</span><span class="chips">${chips}</span></span></a>`;
+};
+
+// Add User, in a dialog: Staff or Student. Student hides (and disables, so they skip validation) the email and roles:
+// a student's invite waits for a plan and a goal. Staff need a role: the first box says so until one is ticked.
+async function addUserDialog(btn) {
+  const asked = ask({ title: 'Add a User', ok: '+ Add and Send Invite', body: `<div class="stack">
+    <div class="seg" id="addKind" role="radiogroup" aria-label="Add">
+      <label><input type="radio" name="add_kind" value="staff" checked>Staff</label>
+      <label><input type="radio" name="add_kind" value="student">Student</label></div>
+    <p class="hint" id="addHint" style="margin:0"></p>
+    <label>First Name<input name="first_name" required data-need="Enter their first name." autocomplete="off"></label>
+    <label>Last Name<input name="last_name" autocomplete="off"></label>
+    ${pronounsField()}
+    <label data-staff>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
+    <div data-staff>${rolesFieldset(['coach'])}</div></div>` });
+  const dlg = $('#dlg'), ok = dlg.querySelector('button[value="ok"]'), boxes = [...dlg.querySelectorAll('input[name="roles"]')];
+  const isStaff = () => dlg.querySelector('input[name="add_kind"]:checked').value === 'staff';
+  const needRole = () => boxes[0].setCustomValidity(isStaff() && !boxes.some(b => b.checked) ? 'none' : '');
+  boxes[0].dataset.need = 'Pick at least one role.';
   function setKind() {
     const staff = isStaff();
-    addForm.querySelectorAll('[data-staff]').forEach(el => {
+    dlg.querySelectorAll('[data-staff]').forEach(el => {
       el.hidden = !staff;
       el.querySelectorAll('input').forEach(i => { i.disabled = !staff; if (!staff) clearFieldError(i); });
     });
     $('#addHint').textContent = staff ? 'Staff get an email invite to choose a password.'
       : me.isCoach ? "You'll be their coach. Build their plan and add a goal first, then add their email and send the invite from their page."
       : "Pick their coach on their page next. The invite waits until their coach has added a plan and a goal.";
-    $('#addBtn').textContent = staff ? '+ Add and Send Invite' : '+ Add Student';
+    ok.textContent = staff ? '+ Add and Send Invite' : '+ Add Student';
+    needRole();
   }
   setKind();
   $('#addKind').onchange = setKind;
-
-  addForm.onsubmit = e => {
-    e.preventDefault();
-    if (!isStaff()) return addStudent(e);
-    const roles = checkedRoles(e.target);
-    if (!roles) return;
-    const f = new FormData(e.target);
-    const row = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f),
-      email: f.get('email').trim().toLowerCase(), roles };
-    busy(e.submitter, async () => {
-      const { data, error } = await sb.from('staff').insert(row).select('id').single();
-      if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
-      // Send the invite before opening their page, so it draws once (with Invited) instead of twice.
-      const { error: mailError } = await sendLink(row.email, row.first_name, true);
-      const invitedAt = !mailError && new Date().toISOString();
-      if (invitedAt) must(await sb.from('staff').update({ invited_at: invitedAt }).eq('id', data.id));
-      // Student too: signs in with the same login, so the staff invite covers it.
-      const stuError = e.target.elements.student.checked && await addStudentRow(row, invitedAt).then(() => null, err => err);
-      goTo('#/user/' + data.id);
-      if (mailError) flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error');
-      else if (stuError) flash(`${row.first_name} added and invited, but couldn't be made a student: ${msgOf(stuError)}`, 'error');
-      else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
-    });
-  };
-
-  // A student only: name and pronouns, like Add a Student on the Students page. check_student_coach makes an adder
-  // with the Coach role their coach, so a coach goes on to build the plan and an admin-only adder picks the coach.
-  function addStudent(e) {
-    const f = new FormData(e.target);
-    const first_name = f.get('first_name').trim(), last_name = f.get('last_name').trim(), pronouns = readPronouns(f);
-    busy(e.submitter, async () => {
-      const data = await sb.from('students').insert({ first_name, last_name, pronouns }).select('id').single().then(must);
-      goTo((me.isCoach ? '#/student/' : '#/user/') + data.id);
-      flash(me.isCoach ? `${first_name} added. Make ${pro(pronouns).their} plan, then send the invite when it's ready.`
-        : `${first_name} added. Pick ${pro(pronouns).their} coach here.`);
-    });
-  }
+  boxes.forEach(b => b.addEventListener('change', () => { needRole(); if (boxes.some(x => x.checked)) clearFieldError(boxes[0]); }));
+  const f = await asked;
+  if (!f) return;
+  const first_name = f.get('first_name').trim(), last_name = f.get('last_name').trim(), pronouns = readPronouns(f);
+  if (f.get('add_kind') === 'student') return busy(btn, async () => {
+    // check_student_coach makes an adder with the Coach role their coach, so a coach goes on to build the plan and an
+    // admin-only adder picks the coach.
+    const data = await sb.from('students').insert({ first_name, last_name, pronouns }).select('id').single().then(must);
+    goTo((me.isCoach ? '#/student/' : '#/user/') + data.id);
+    flash(me.isCoach ? `${first_name} added. Make ${pro(pronouns).their} plan, then send the invite when it's ready.`
+      : `${first_name} added. Pick ${pro(pronouns).their} coach here.`);
+  });
+  const row = { first_name, last_name, pronouns, email: f.get('email').trim().toLowerCase(), roles: f.getAll('roles') };
+  busy(btn, async () => {
+    const { data, error } = await sb.from('staff').insert(row).select('id').single();
+    if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
+    // Send the invite before opening their page, so it draws once (with Invited) instead of twice.
+    const { error: mailError } = await sendLink(row.email, row.first_name, true);
+    const invitedAt = !mailError && new Date().toISOString();
+    if (invitedAt) must(await sb.from('staff').update({ invited_at: invitedAt }).eq('id', data.id));
+    // Student too: signs in with the same login, so the staff invite covers it.
+    const stuError = f.get('student') && await addStudentRow(row, invitedAt).then(() => null, err => err);
+    goTo('#/user/' + data.id);
+    if (mailError) flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error');
+    else if (stuError) flash(`${row.first_name} added and invited, but couldn't be made a student: ${msgOf(stuError)}`, 'error');
+    else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
+  });
 }
 
 // Role checkboxes for a staff form. locked roles stay ticked and can't be changed (your own Admin role).
@@ -202,50 +205,61 @@ async function adminUser(id, again = false) {
   const rolesHint = u.owner ? (mine ? "You're the owner, so you always keep the Admin role." : `${esc(u.first_name || 'The owner')} is the owner. Only ${p.they} can change ${p.their} roles.`)
     : mine ? "You can't remove your own Admin role. Ask another admin." : '';
 
-  view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
-  <div class="row"><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>${roleTags(u.roles)}${stu?.training_ended_at ? '<span class="tag danger">Inactive</span>' : ''}${off ? '<span class="tag danger">Deactivated</span>' : ''}</div>
-  <div class="grid2" data-folds="user">
-    <div>
-    <section class="card" data-fold-start><h2>Details</h2>
-      ${staff ? `<p class="hint">Emails greet ${mine ? 'you' : p.them} by first name. Roles decide what ${mine ? 'you' : p.they} can see and do.</p>` : `<p class="hint">A student. ${me.isCoach ? `${p.Their} plans and goals are on <a href="#/student/${u.id}">${p.their} student page</a>.`
-        : `Coaches manage ${p.their} plans and goals.`} ${twin ? `${p.They} ${p.v('are', 'is')} on the staff too: <a href="#/user/${twin.id}">open the staff record</a>.`
-        : `${p.They} can change ${p.their} own pronouns too.`}</p>`}
+  const ended = !!stu?.training_ended_at, pickCoach = !staff && !coachId && !ended;
+  const lastIn = u.last_sign_in_at && `Signed in ${fmtDay(u.last_sign_in_at).replace(/, \d{4}$/, '')}`;
+  const status = off ? 'Deactivated' : staff ? `Staff${lastIn ? ' · ' + lastIn : ''}` : ended ? 'Student · Inactive' : 'Student · Active';
+  const details = `<section class="card" data-fold-start><div class="row between"><h2>Details</h2><span class="fold-sum">Name, pronouns</span></div>
+      <p class="hint">Emails greet ${mine ? 'you' : p.them} by first name.${staff ? '' : ` ${twin ? `${p.They} ${p.v('are', 'is')} on the staff too: <a href="#/user/${twin.id}">open the staff record</a>.`
+        : `${p.They} can change ${p.their} own pronouns too.`}`}</p>
       <form id="userForm" class="stack" data-save>
         <label>First Name<input name="first_name" value="${esc(u.first_name)}" required data-need="Enter ${mine ? 'your' : p.their} first name."></label>
         <label>Last Name<input name="last_name" value="${esc(u.last_name)}"></label>
         ${pronounsField(u.pronouns, mine ? 'Your' : 'Their')}
-        ${staff ? rolesFieldset(u.roles, lockedRoles, twin?.id) + (rolesHint ? `<p class="hint">${rolesHint}</p>` : '') : ''}
         <button class="primary">Save Details</button>
       </form>
-    </section>
-    ${staff ? (u.roles.includes('coach') || pupils.length ? `<section class="card" data-fold="Students"><h2>${mine ? 'Your' : p.Their} Students</h2>
-      <p class="hint">To give a student a new coach, open them and pick one.</p>
-      ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong></a></li>`).join('')}</ul>`
-        : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : '')
-      + (mine || u.owner ? '' : `<section class="card" data-fold-start>
-      <div class="row between"><h2>Staff Access</h2><span class="tag ${off ? 'danger' : 'ok'}">${off ? 'Deactivated' : 'On'}</span></div>
-      <p class="hint">${off ? `Deactivated ${fmtDay(u.deactivated_at)}. ${p.They} can't sign in. ${p.Their} details and history are kept, so you can reactivate ${p.them}. Delete ${p.them} only if ${p.they} won't be back.`
-        : `When ${p.they} ${p.v('leave', 'leaves')}, deactivate ${p.them}. ${p.Their} details and history are kept, so ${p.they} can come back later.`}</p>
-      <div class="row">${off ? `<button type="button" class="primary" data-act="reactivate">Reactivate</button>
-        <button type="button" class="ghost danger" data-act="del-staff">Delete Staff</button>`
-        : '<button type="button" class="ghost" data-act="deactivate">Deactivate</button>'}</div>
-    </section>`)
-    : `<section class="card" data-fold-start><h2>Coach</h2>
-      <p class="hint">${p.They} ${p.v('see', 'sees')} ${p.their} current coach and past coaches on ${p.their} page.</p>
+    </section>`;
+  const coachCard = `<section class="card${pickCoach ? ' overdue' : ''}" id="coachCard"${pickCoach ? '' : ' data-fold-start'}>
+      <div class="row between"><h2>${pickCoach ? 'Pick a Coach' : 'Coach'}</h2>${pickCoach ? '<span class="tag warn">Waiting on You</span>'
+        : `<span class="fold-sum">${esc(coaches.find(c => c.is_current)?.name || 'None')}</span>`}</div>
+      <p class="hint">${pickCoach ? `${esc(u.first_name || title)} has no coach. Until you pick one, any coach can change ${p.their} plans and goals.`
+        : `${p.They} ${p.v('see', 'sees')} ${p.their} current coach and past coaches on ${p.their} page.`}</p>
       <form id="coachForm" class="stack" data-save>
         <label>Current Coach<select name="coach_id">
-          <option value="">No Coach</option>
+          <option value="">${pickCoach ? 'Pick a coach' : 'No Coach'}</option>
           ${coachOpts.map(c => `<option value="${c.id}"${c.id === coachId ? ' selected' : ''}>${esc(c.name || c.email)}</option>`).join('')}
         </select></label>
         <button class="primary">Save Coach</button>
       </form>
       ${coachesHTML(coaches.filter(c => !c.is_current))}
+    </section>`;
+
+  view(`${crumbs([['Home', '#/'], ['Users', '#/users'], [title]])}
+  <div class="page-head"><div><span class="eyebrow">${esc(status)}</span><h1>${esc(title)}${pronounsTag(u.pronouns)}</h1>
+    <span class="chips">${sortRoles(u.roles).map(r => `<span class="chip${r === 'student' ? '' : ' role'}">${esc(ROLE_LABEL[r] || r)}</span>`).join('')}
+      ${pickCoach ? '<span class="chip warn">No Coach</span>' : ''}</span></div></div>
+  <div class="grid2 phone-order" data-folds="user">
+    <div>
+    ${staff ? `<section class="card" id="rolesCard"><h2>Roles</h2>
+      <p class="hint">Roles decide what ${mine ? 'you' : p.they} can see and do.</p>
+      <form id="rolesForm" class="stack" data-save>
+        ${rolesFieldset(u.roles, lockedRoles, twin?.id)}${rolesHint ? `<p class="hint">${rolesHint}</p>` : ''}
+        <button class="primary">Save Roles</button>
+      </form>
     </section>
-    ${trainingCardHTML(stu, coaches)}`}
+    ${u.roles.includes('coach') || pupils.length ? `<section class="card" id="pupilsCard"><div class="row between"><h2>${mine ? 'Your' : p.Their} Students</h2>
+      <span class="big-num">${pupils.length}</span></div>
+      <p class="hint">To give a student a new coach, open them and pick one.</p>
+      ${pupils.length ? `<ul class="list">${pupils.map(p => `<li><a class="item" href="#/user/${p.id}"><strong>${esc(p.name)}</strong><span class="muted">›</span></a></li>`).join('')}</ul>`
+        : '<p class="muted">Not coaching anyone right now.</p>'}</section>` : ''}`
+    : `${pickCoach ? coachCard : ''}${nextCardHTML(stu)}`}
     </div>
     <aside>
-      ${staff ? '' : sessionsCardHTML(stu)}
-      ${accountCardStart(active || off, u.invited_at, u.first_name || title, p)}
+    <div class="card-group">
+      ${staff ? '' : `${me.isCoach ? `<a class="card group-link" href="#/student/${u.id}"><span class="row between"><h2>Student Page</h2>
+        <span class="muted">Plans, goals, notes ›</span></span></a>` : ''}
+        ${historyCardHTML(stu)}${pickCoach ? '' : coachCard}${trainingCardHTML(stu, coaches)}`}
+      ${details}
+      ${accountCardStart(active || off, u.invited_at, u.first_name || title, p, lastIn || (u.invited_at ? 'Invited' : ''))}
         ${off ? `
         <p class="hint">Reactivate ${p.them} to send ${p.them} a sign-in link.</p>
         <p>${active ? `Signs in as ${esc(u.email)}. Last signed in ${fmtWhen(u.last_sign_in_at)}.` : `${esc(u.email)}, never signed in.`}</p>`
@@ -262,6 +276,15 @@ async function adminUser(id, again = false) {
           <p class="hint need" id="inviteNeed" hidden></p>
         </form>`}
       </section>
+      ${staff && !mine && !u.owner ? `<section class="card" data-fold-start>
+      <div class="row between"><h2>Staff Access</h2><span class="tag ${off ? 'danger' : 'ok'}">${off ? 'Deactivated' : 'On'}</span></div>
+      <p class="hint">${off ? `Deactivated ${fmtDay(u.deactivated_at)}. ${p.They} can't sign in. ${p.Their} details and history are kept, so you can reactivate ${p.them}. Delete ${p.them} only if ${p.they} won't be back.`
+        : `When ${p.they} ${p.v('leave', 'leaves')}, deactivate ${p.them}. ${p.Their} details and history are kept, so ${p.they} can come back later.`}</p>
+      <div class="row">${off ? `<button type="button" class="primary" data-act="reactivate">Reactivate</button>
+        <button type="button" class="ghost danger" data-act="del-staff">Delete Staff</button>`
+        : '<button type="button" class="ghost" data-act="deactivate">Deactivate</button>'}</div>
+    </section>` : ''}
+    </div>
     </aside>
   </div>`, { keepScroll: again });
   if (restore) restore();
@@ -275,13 +298,25 @@ async function adminUser(id, again = false) {
     e.preventDefault();
     const f = new FormData(e.target);
     const patch = { first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f) };
-    if (staff && !(patch.roles = checkedRoles(e.target))) return;
-    const newStudent = staff && !twin && e.target.elements.student.checked;
     busy(e.submitter, async () => {
       must(await sb.from(table).update(patch).eq('id', id));
-      if (newStudent) await addStudentRow({ ...patch, email: u.email }, u.invited_at);
       if (mine) { await loadMe(me.user); setWho(); }
-      flash(newStudent ? `Details saved. ${mine ? "You're" : `${u.first_name || title} is`} a student too now.` : 'Details saved.');
+      flash('Details saved.');
+      adminUser(id, e.target);
+    });
+  };
+  // Roles (staff only). Ticking Student makes them a student too, with the same name and email.
+  const rolesForm = $('#rolesForm');
+  if (rolesForm) rolesForm.onsubmit = e => {
+    e.preventDefault();
+    const roles = checkedRoles(e.target);
+    if (!roles) return;
+    const newStudent = !twin && e.target.elements.student.checked;
+    busy(e.submitter, async () => {
+      must(await sb.from('staff').update({ roles }).eq('id', id));
+      if (newStudent) await addStudentRow({ first_name: u.first_name, last_name: u.last_name, pronouns: u.pronouns, email: u.email }, u.invited_at);
+      if (mine) { await loadMe(me.user); setWho(); }
+      flash(newStudent ? `Roles saved. ${mine ? "You're" : `${u.first_name || title} is`} a student too now.` : 'Roles saved.');
       adminUser(id, e.target);
     });
   };

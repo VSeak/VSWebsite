@@ -128,7 +128,7 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true }) {
 // Both change the hash, so unsaved edits still get the leave check in onHashChange.
 function crumbs(items) {
   const up = items.filter(([, href]) => href).at(-1)?.[1];
-  return `<div class="crumb-bar">${up ? `<a class="back" href="${up}">← Back</a>` : ''}
+  return `<div class="crumb-bar">${up ? `<a class="back" href="${up}">‹ Back</a>` : ''}
     <nav class="crumbs" aria-label="Breadcrumb">${items.map(([label, href]) =>
     href ? `<a href="${href}">${esc(label)}</a>` : `<span>${esc(label)}</span>`).join('<span>/</span>')}</nav></div>`;
 }
@@ -146,10 +146,11 @@ function gateInvite(need) {
 
 // The Account card's opening (heading and, before the invite has gone, the warn color and box). The caller closes it.
 // It starts folded once they have signed in; until then it holds the invite.
-function accountCardStart(signedIn, invitedAt, name, p) {
+// sum: the short line beside the heading, e.g. "Signed in Sep 28", shown while the card is folded.
+function accountCardStart(signedIn, invitedAt, name, p, sum = '') {
   const warn = !signedIn && !invitedAt;
   return `<section class="card${warn ? ' overdue' : ''}"${signedIn ? ' data-fold-start' : ''}>
-    <div class="row between"><h2>Account</h2>${warn ? '<span class="tag warn">Not Invited</span>' : ''}</div>
+    <div class="row between"><h2>Account</h2>${warn ? '<span class="tag warn">Not Invited</span>' : `<span class="fold-sum">${esc(sum)}</span>`}</div>
     ${warn ? `<p class="warn-box" role="status"><strong>${esc(name)} hasn't been invited yet.</strong>
       ${p.They} can't sign in until you send the invite.</p>` : ''}`;
 }

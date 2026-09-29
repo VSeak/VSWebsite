@@ -59,7 +59,6 @@ async function loadMe(user) {
 const isSelf = s => !!me.student && s.id === me.student.id || !!s.email && s.email === me.user.email?.toLowerCase();
 const canCoach = s => me.isCoach && (!s.coach_id || s.coach_id === me.staffId) && !isSelf(s);
 
-const welcome = () => `Welcome${me.firstName ? ' ' + esc(me.firstName) : ''}!`;
 
 // Unsaved edits: the plan editor's draft (dirty), or a form field changed from how the page drew it.
 // Pages redraw their forms after a save, so a changed field is one that hasn't been saved (or added) yet.
@@ -334,41 +333,92 @@ function viewNoAccess() {
 
 // ---------- Staff: home ----------
 
-// One tile per staff page. Add new pages here. stat() is optional and returns a short line for the tile.
+// One tile per staff page. Add new pages here. stat() is optional and returns the tile's big number.
 // roles says who sees the tile (route() checks it too): coaches get the coaching pages, admins the Users page, and
 // staff who are also students (role 'student', from me.student) their own training.
 const ADMIN_PAGES = [
-  { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Add students, build their plans and goals, and send invites.',
+  { href: '#/students', title: 'Students', roles: ['coach'], blurb: 'Plans, goals, sessions and invites.',
     stat: async () => {
       const { count, error } = await sb.from('students').select('id', { count: 'exact', head: true })
         .is('training_ended_at', null).eq('coach_id', me.staffId);
       if (error) throw error;
-      return count === 1 ? 'Coaching 1 student' : `Coaching ${count} students`;
+      return count;
     } },
-  { href: '#/exercises', title: 'Master Exercise List', roles: ['coach', 'admin'], blurb: 'The exercises plans pick from, with their usual sets, reps, rest and notes.',
+  { href: '#/exercises', title: 'Exercises & Drills', roles: ['coach', 'admin'], blurb: 'What plans pick from, with their usual sets, reps and rest.',
     stat: async () => {
       const { count, error } = await sb.from('exercises').select('id', { count: 'exact', head: true });
       if (error) throw error;
-      return count === 1 ? '1 exercise' : `${count} exercises`;
+      return count;
     } },
-  { href: '#/users', title: 'Users', roles: ['admin'], blurb: 'See and edit everyone who can sign in: admins, coaches and students.',
-    stat: async () => {
-      const users = await sb.rpc('list_users').select('id').then(must);
-      return users.length === 1 ? '1 user' : `${users.length} users`;
-    } },
-  { href: '#/me', title: 'View My Training', roles: ['student'], blurb: 'Your own plans, goals and sessions, as your coach shares them with you.' },
+  { href: '#/users', title: 'Users', roles: ['admin'], blurb: 'Everyone who can sign in.',
+    stat: async () => (await sb.rpc('list_users').select('id').then(must)).length },
+  { href: '#/me', title: 'View My Training', roles: ['student'], blurb: 'Your own plans and goals.' },
 ];
+
+const ICON_ARROW = `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+  stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+const ICON_CHECK = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
+  stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+const ICON_CAL = `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+  stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>`;
+const COMING_UP = 5;   // upcoming sessions listed on Home
+// The date block on a Coming Up row: WED over 1.
+const dayBlock = d => `<span class="day-block"><small>${day(d).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</small><strong>${day(d).getDate()}</strong></span>`;
+
+// What needs this person, for the Needs You card: coaches get their own active students whose next session has ended
+// (Update Next Session) or whose past sessions have no Coach Note (Needs Note); admins get active students with no coach
+// (Pick a Coach). Student notes never show here: replying is up to the coach. Also returns the coach's upcoming sessions.
+async function homeNeeds() {
+  const [mine, noCoach] = await Promise.all([
+    me.isCoach ? sb.from('students').select(`id,first_name,name,email,coach_id,training_ended_at,${NEXT_COLS}`)
+      .is('training_ended_at', null).eq('coach_id', me.staffId).then(must) : [],
+    me.isAdmin ? sb.from('students').select('id,name').is('training_ended_at', null).is('coach_id', null).then(must) : [],
+  ]);
+  const ids = mine.map(s => s.id);
+  const [notes, log] = ids.length ? await Promise.all([
+    sb.from('coach_notes').select('student_id,session_date').in('student_id', ids).then(must),
+    sb.from('session_history').select('student_id,session_date,start_time').in('student_id', ids).then(must)]) : [[], []];
+  const items = [];
+  for (const s of mine) {
+    if (nextOverdue(s)) items.push({ name: s.name, href: '#/student/' + s.id, sub: `Next session ended ${fmtSessionDay(s.next_date)}`, tag: 'Update Next Session' });
+    const missing = cnoteMissing(notes.filter(n => n.student_id === s.id), s, log.filter(h => h.student_id === s.id));
+    if (missing.length) items.push({ name: s.name, href: '#/student/' + s.id, tag: 'Needs Note',
+      sub: missing.length === 1 ? `Session on ${fmtSessionDay(missing[0])}` : `${missing.length} sessions have no notes` });
+  }
+  for (const s of noCoach) items.push({ name: s.name, href: '#/user/' + s.id, sub: 'Student with no coach', tag: 'Pick a Coach' });
+  const upcoming = mine.filter(s => !nextPassed(s))
+    .sort((a, b) => (a.next_date + a.next_start).localeCompare(b.next_date + b.next_start)).slice(0, COMING_UP);
+  return { items, upcoming, coaching: mine.length };
+}
 
 async function adminHome() {
   const t = ++navToken;
   const mine = me.student ? [...me.roles, 'student'] : me.roles;
   const pages = ADMIN_PAGES.filter(p => p.roles.some(r => mine.includes(r)));
-  view(`<h1>${welcome()}</h1>
-    <div class="tiles">${pages.map((p, i) => `<a class="card tile" href="${p.href}">
-      <h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p>
-      ${p.stat ? `<p class="tile-stat" data-stat="${i}">&nbsp;</p>` : ''}</a>`).join('')}</div>`);
-  pages.forEach((p, i) => p.stat?.().then(text => {
+  view(loading);
+  const { items, upcoming, coaching } = await homeNeeds();
+  if (t !== navToken) return;
+  const name = me.firstName ? ' ' + esc(me.firstName) : '';
+  const n = items.length;
+  const todo = i => `<a class="todo" href="${i.href}"><span><b>${esc(i.name)}</b><span>${esc(i.sub)}</span></span><span class="pill warn">${i.tag}</span></a>`;
+  const up = s => `<a class="todo" href="#/student/${s.id}">${dayBlock(s.next_date)}<span><b>${esc(s.name)}</b>
+    <span>${fmtTime(s.next_start)} – ${fmtTime(s.next_end)} · ${esc(s.next_location)}</span></span></a>`;
+  // Nothing to do: a calm card that still shows what's coming up (or, coaching nobody, how to start).
+  const clear = me.isCoach ? `<div class="needs-clear"><span class="check">${ICON_CHECK}</span><div><b>Nothing needs you right now</b>
+      <span>${coaching ? 'Every student has a next session, and every session has a note.' : "You're not coaching anyone at the moment."}</span></div></div>` : '';
+  const coming = !me.isCoach ? '' : `<span class="eyebrow">Coming Up</span>${upcoming.length ? upcoming.map(up).join('')
+    : `<div class="none-up">${ICON_CAL}<div><b>No sessions coming up</b><span>${coaching ? 'Set a next session on a student’s page.'
+      : 'Add a student, or pick up a No Coach student, to get started.'}</span></div>${coaching ? '' : '<a class="fill" href="#/students">+ Add Student</a>'}</div>`}`;
+  view(`<h1 class="hey">Welcome${name},<span> ${n ? `${n} ${n === 1 ? 'thing needs' : 'things need'} you.` : "you're all caught up."}</span></h1>
+    <div class="home-grid">
+      ${n || me.isCoach ? `<section class="needs">${n ? `<div class="row between"><span class="eyebrow">Needs You</span><span class="pill">${n}</span></div>
+        ${items.map(todo).join('')}` : clear + coming}</section>` : ''}
+      <div class="tiles">${pages.map((p, i) => `<a class="card tile${p.stat ? '' : ' tile-soft'}" href="${p.href}">
+        <div><h2>${esc(p.title)}</h2><p class="muted">${esc(p.blurb)}</p></div>
+        ${p.stat ? `<span class="big-num" data-stat="${i}"></span>` : ICON_ARROW}</a>`).join('')}</div>
+    </div>`);
+  pages.forEach((p, i) => p.stat?.().then(num => {
     const el = t === navToken && app.querySelector(`[data-stat="${i}"]`);
-    if (el) el.textContent = text;
+    if (el) { el.textContent = num; el.classList.toggle('zero', !num); }
   }).catch(() => {}));
 }

@@ -55,8 +55,6 @@ const localToday = () => new Date().toLocaleDateString('en-CA');   // YYYY-MM-DD
 // Once it has ended it isn't "next" any more: the student stops seeing it and the coach is asked to set a new one.
 const nextPassed = s => !s.next_date || new Date(`${s.next_date}T${s.next_end}`) <= new Date();
 const nextOverdue = s => !!s.next_date && nextPassed(s);
-const nextDay = s => day(s.next_date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
-const nextWhen = s => `${nextDay(s)} · ${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}`;
 const hm = t => t ? t.slice(0, 5) : '';
 const HISTORY_PAGE = 3;   // past sessions per page
 
@@ -100,37 +98,41 @@ function historyHTML(s, hist) {
     <button type="button" class="small" data-hist-add style="margin-top:.6rem">+ Add Past Session</button>`;
 }
 
-// edit: false for a coach who isn't theirs: they see the next session, and can only add past sessions.
-function sessionsCardHTML(s, edit = true) {
-  const p = pro(s.pronouns), ended = !!s.training_ended_at, overdue = edit && !ended && nextOverdue(s);
-  if (!edit) return `<section class="card" id="nextCard"><h2>Sessions</h2>
-    <p class="hint">Only ${p.their} coach can change the next session. You can add a past session you ran.</p>
-    ${ended ? '' : `<h3 class="sub-head">Next Session</h3>
-    <p${s.next_date ? '' : ' class="muted"'}>${s.next_date ? `${esc(nextWhen(s))}<br><span class="muted">${esc(s.next_location)}</span>` : 'No next session set.'}</p>`}
-    <h3 class="sub-head">Session History</h3>
-    <div id="historyBox"></div>
+// The Next Session card: dark, like the one the student sees. Coming up, it says how soon; ended, it's struck through
+// with Set Next Session; not set, it says so. The date and time are set in a dialog (nextSessionFields).
+// edit: false for a coach who isn't theirs: they see it, without buttons. Coaching ended: no card.
+function nextCardHTML(s, edit = true) {
+  if (s.training_ended_at) return '';
+  const p = pro(s.pronouns), overdue = nextOverdue(s), set = !!s.next_date && !overdue;
+  const n = set && Math.round((day(s.next_date) - day(localToday())) / 864e5);
+  const date = s.next_date && day(s.next_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return `<section class="next-card" id="nextCard">
+    <div class="row between"><span class="eyebrow">Next Session</span>${overdue ? '<span class="pill warn">Ended</span>'
+      : set ? `<span class="pill">${n <= 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`}</span>` : ''}</div>
+    <p class="next-day${overdue ? ' gone' : set ? '' : ' unset'}">${s.next_date ? esc(date) : 'Not set'}</p>
+    ${set ? `<div class="next-meta"><span>${ICON_CLOCK}${fmtTime(s.next_start)} – ${fmtTime(s.next_end)}</span><span>${ICON_PIN}${esc(s.next_location)}</span></div>`
+      : `<p class="next-say">${!edit ? `Only ${p.their} coach sets the next session.` : overdue ? `It's in Session History now. Set the next one so ${esc(s.first_name)} knows when to come in.`
+        : `Set one so ${esc(s.first_name)} knows when to come in.`}</p>`}
+    ${!edit ? '' : set ? `<div class="row next-btns"><button type="button" class="ghost" data-next="set">Change</button>
+      <button type="button" class="ghost" data-next="clear">Clear</button></div>`
+      : '<button type="button" class="next-go" data-next="set">Set Next Session</button>'}
   </section>`;
-  return `<section class="card${overdue ? ' overdue' : ''}" id="nextCard">
-    <div class="row between"><h2>Sessions</h2>${overdue ? '<span class="tag warn">Needs Update</span>' : ''}</div>
-    <p class="hint">${ended ? `Coaching has ended, so there's no next session. ${p.They} can still see ${p.their} past sessions.`
-      : `${p.They} ${p.v('see', 'sees')} the next session at the top of ${p.their} page until it ends. Then it moves to Session History, which ${p.they} ${p.v('see', 'sees')} too.`}</p>
-    ${ended ? '' : `<h3 class="sub-head">Next Session</h3>
-    ${overdue ? `<p class="warn-box" role="status"><strong>This session is over.</strong>
-      It ended on ${esc(nextDay(s))} and is now in Session History. Pick the new date and time below.</p>`
-      : s.next_date ? '' : '<p class="muted">No next session set yet.</p>'}
-    <form id="nextForm" class="stack" data-save>
-      <label>Date<input type="date" name="next_date" value="${esc(s.next_date || '')}" min="${localToday()}"
-        required data-need="Pick the day." data-low="Pick today or a later day."></label>
-      <div class="row">
-        <label class="grow" style="min-width:120px">Start Time<input type="time" name="next_start" value="${hm(s.next_start)}" required data-need="Pick a start time."></label>
-        <label class="grow" style="min-width:120px">End Time<input type="time" name="next_end" value="${hm(s.next_end)}" required data-need="Pick an end time."></label>
-      </div>
-      <label>Location<input name="next_location" value="${esc(s.next_location || '')}" maxlength="200" required
-        data-need="Say where it is." autocomplete="off" placeholder="e.g. Gym/Wall"></label>
-      <div class="row"><button class="primary">Save Session</button>
-        ${s.next_date ? '<button type="button" class="ghost danger" data-act="next-clear">Clear</button>' : ''}</div>
-    </form>`}
-    <h3 class="sub-head">Session History</h3>
+}
+// The next session's fields, for the dialog. End Time's min follows Start Time (bindSessions).
+const nextSessionFields = s => `<div class="stack">
+  <label>Date<input type="date" name="next_date" value="${nextOverdue(s) ? '' : esc(s.next_date || '')}" min="${localToday()}"
+    required data-need="Pick the day." data-low="Pick today or a later day."></label>
+  <div class="row">
+    <label class="grow" style="min-width:120px">Start Time<input type="time" name="start_time" value="${hm(s.next_start)}" required data-need="Pick a start time."></label>
+    <label class="grow" style="min-width:120px">End Time<input type="time" name="end_time" value="${hm(s.next_end)}" required data-need="Pick an end time." data-low="End after the start time."></label>
+  </div>
+  <label>Location<input name="location" value="${esc(s.next_location || '')}" maxlength="200" required
+    data-need="Say where it is." autocomplete="off" placeholder="e.g. Gym/Wall"></label></div>`;
+// Session History: one of the cards you rarely open, folded to its heading and a count until you tap it.
+function historyCardHTML(s) {
+  return `<section class="card" id="histCard" data-fold="history" data-fold-start>
+    <div class="row between"><h2>Session History</h2><span class="fold-sum" id="histSum"></span></div>
+    <p class="hint">${pro(s.pronouns).They} ${pro(s.pronouns).v('see', 'sees')} these too. Add a past session you ran, or notes from one.</p>
     <div id="historyBox"></div>
   </section>`;
 }
@@ -158,15 +160,17 @@ function bindSessions(id, s, hist) {
   const drawHistory = () => {
     box.innerHTML = historyHTML(s, hist);
     bindPager(box, page => { hist.page = page; drawHistory(); });
+    const n = historyOf(hist.log, s).length, sum = $('#histSum');
+    if (sum) sum.textContent = n ? `${n} since ${day(historyOf(hist.log, s).at(-1).session_date).toLocaleDateString(undefined, { month: 'short' })}` : 'None yet';
   };
   hist.redraw = drawHistory;   // e.g. after a Coach Note changes its Notes count
   drawHistory();
-  // Changes the next session and redraws the card. keep: log an ended one in the history first.
+  // Changes the next session and redraws its card. keep: log an ended one in the history first.
   const save = (btn, patch, msg, keep = true) => busy(btn, async () => {
     if (keep) await logEnded(id, s, hist.log);
     Object.assign(s, await sb.from('students').update(patch).eq('id', id).select(NEXT_COLS).single().then(must));
     hist.page = 1;
-    $('#nextCard').outerHTML = sessionsCardHTML(s, !hist.readOnly);
+    $('#nextCard').outerHTML = nextCardHTML(s, !hist.readOnly);
     bindSessions(id, s, hist);
     hist.changed?.();
     flash(msg);
@@ -211,21 +215,27 @@ function bindSessions(id, s, hist) {
     }
   };
 
-  const form = $('#nextForm');
-  if (!form) return;
-  form.onsubmit = e => {
-    e.preventDefault();
-    const f = new FormData(form), start = f.get('next_start'), end = f.get('next_end');
-    if (end <= start) return fieldError(form.elements.next_end, 'End after the start time.');
-    save(e.submitter, { next_date: f.get('next_date'), next_start: start, next_end: end,
-      next_location: f.get('next_location').trim() }, 'Next session saved.');
+  // Set Next Session / Change opens the dialog; Clear asks first.
+  const card = $('#nextCard');
+  if (card) card.onclick = async e => {
+    const b = e.target.closest('[data-next]');
+    if (!b) return;
+    if (b.dataset.next === 'clear') {
+      if (await ask({ title: 'Clear the Next Session?', ok: 'Clear', warn: true,
+        body: `<p>${pro(s.pronouns).They} won't see a next session until you set one.</p>` }))
+        save(b, noNext, 'Next session cleared.');
+      return;
+    }
+    const asked = ask({ title: nextOverdue(s) || !s.next_date ? 'Set the Next Session' : 'Change the Next Session', ok: 'Save Session',
+      body: `<p class="hint">${pro(s.pronouns).They} ${pro(s.pronouns).v('see', 'sees')} it at the top of ${pro(s.pronouns).their} page until it ends. Then it moves to Session History.</p>${nextSessionFields(s)}` });
+    const dlg = $('#dlg'), start = dlg.querySelector('[name="start_time"]'), end = dlg.querySelector('[name="end_time"]');
+    const follow = () => { end.min = start.value ? addMinute(start.value) : ''; };
+    start.addEventListener('input', follow);
+    follow();
+    const f = await asked;
+    if (f) save(b, { next_date: f.get('next_date'), next_start: f.get('start_time'), next_end: f.get('end_time'),
+      next_location: f.get('location').trim() }, 'Next session saved.');
   };
-  form.querySelector('[data-act="next-clear"]')?.addEventListener('click', async e => {
-    e.stopPropagation();   // not the page's own data-act handler
-    if (await ask({ title: 'Clear the Next Session?', ok: 'Clear', warn: true,
-      body: `<p>${pro(s.pronouns).They} won't see a next session until you set one.${nextOverdue(s) ? ' It stays in Session History.' : ''}</p>` }))
-      save(e.target, noNext, 'Next session cleared.');
-  });
 }
 
 // The student's own past sessions, near the bottom of their page, a page at a time. Hidden until they have one.

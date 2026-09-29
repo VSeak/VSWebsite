@@ -3,6 +3,7 @@
 // Plans copy an exercise's values when it's picked, so editing either one never changes the other.
 const EX_PAGE = 10;   // exercises per page on the Master Exercise List
 const PUR_PAGE = 5;   // purposes per page in the Purposes card
+const EX_TABS = 4;    // purpose tabs shown before "+n More"
 const EX_FIELDS = [['sets', 'Sets'], ['reps', 'Reps/Time'], ['rest', 'Rest'], ['notes', 'Notes']];
 const exKey = name => String(name ?? '').trim().toLowerCase();   // matches exercises.name_key
 const exDupError = e => e.code === '23505' ? new Error('That exercise is already on the list.') : e;
@@ -41,21 +42,18 @@ async function adminExercises() {
   const purNames = () => purposes.map(p => p.name);
   const usedBy = name => list.filter(x => x.purposes.includes(name)).length;
 
-  view(`${crumbs([['Home', '#/'], ['Master Exercise List']])}
-  <h1>Master Exercise List</h1>
+  view(`${crumbs([['Home', '#/'], ['Exercises & Drills']])}
+  <div class="page-head" id="exTop"><h1>Exercises & Drills</h1><button type="button" class="fill only-phone" id="exAddBtn" aria-expanded="false">+ Add Exercise</button></div>
   <div class="grid2">
-    <section class="card"><h2>All Exercises (<span id="exCount"></span>)</h2>
-      <p class="hint">Every exercise you can pick in a training plan, with the values it fills in. Search by name or purpose, or filter by purpose. Edit or delete them here.</p>
-      <div class="row">
-        <input id="exSearch" class="grow" type="search" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off">
-        <select id="exPurpose" aria-label="Purpose" style="width:auto"></select>
-      </div>
-      <div class="list-head" id="exHead"><span>Exercise</span><span class="ex-actions">Action</span></div>
-      <ul class="list" id="exList"></ul>
+    <div class="stack">
+      <p class="muted" style="margin:0">Every exercise and drill you can pick in a plan, with the values it fills in. Changing a plan never changes this list.</p>
+      <input id="exSearch" class="search" type="search" placeholder="Search by name or purpose" aria-label="Search exercises" autocomplete="off">
+      <div class="tabs" id="exPurpose" role="tablist" aria-label="Purpose"></div>
+      <div class="ex-cards" id="exList"></div>
       <div id="exPager"></div>
-    </section>
+    </div>
     <aside>
-      <section class="card"><h2>Add Exercise</h2>
+      <section class="card" id="exAddCard"><h2>Add Exercise</h2>
         <p class="hint">Picking an exercise in a training plan fills in these values. Changing them in a plan doesn't change this list.
           New exercises typed into a plan are added here when the plan is saved.</p>
         <form id="exAdd" class="stack" data-save>${exFieldsHTML({}, purNames())}<button class="primary">+ Add Exercise</button></form>
@@ -69,22 +67,39 @@ async function adminExercises() {
     </aside>
   </div>`);
 
-  const search = $('#exSearch'), purposeSel = $('#exPurpose');
-  let page = 1;
+  const search = $('#exSearch'), purposeBox = $('#exPurpose');
+  let page = 1, purpose = '', allPurposes = false;
   const matches = () => {
-    const q = exKey(search.value), g = purposeSel.value;
+    const q = exKey(search.value), g = purpose;
     return list.filter(x => (!g || x.purposes.includes(g)) && (!q || x.name_key.includes(q) || x.purposes.some(h => exKey(h).includes(q))));
   };
-  // The purpose filter lists purposes in use, with counts. A purpose no exercise has any more drops off.
+  // The purpose tabs: All, then purposes in use with counts (a purpose no exercise has any more drops off). Past the
+  // first few, "+n More" shows the rest.
   function renderPurposeFilter() {
     const used = purNames().filter(usedBy);
-    if (!used.includes(purposeSel.value)) purposeSel.value = '';
-    const was = purposeSel.value;
-    purposeSel.innerHTML = `<option value="">All Purposes</option>` + used.map(g =>
-      `<option value="${esc(g)}">${esc(g)} (${usedBy(g)})</option>`).join('');
-    purposeSel.value = was;
-    purposeSel.hidden = !used.length;
+    if (!used.includes(purpose)) purpose = '';
+    const shown = allPurposes || used.length <= EX_TABS + 1 ? used : used.slice(0, EX_TABS);
+    if (purpose && !shown.includes(purpose)) shown.push(purpose);
+    const tab = (g, label, n) => `<button type="button" role="tab" data-purpose="${esc(g)}" aria-selected="${g === purpose}">${esc(label)}<span class="count">${n}</span></button>`;
+    purposeBox.innerHTML = tab('', 'All', list.length) + shown.map(g => tab(g, g, usedBy(g))).join('')
+      + (shown.length < used.length ? `<button type="button" class="more-tabs" data-more>+${used.length - shown.length} More</button>` : '');
+    purposeBox.hidden = !used.length;
   }
+  purposeBox.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if ('more' in b.dataset) allPurposes = true;
+    else { purpose = b.dataset.purpose; page = 1; }
+    renderList();
+  };
+  // On a phone the Add Exercise card waits behind the button at the top, and opens there.
+  $('#exAddBtn').onclick = e => {
+    const card = $('#exAddCard'), open = !card.classList.contains('open');
+    card.classList.toggle('open', open);
+    e.target.setAttribute('aria-expanded', open);
+    e.target.textContent = open ? 'Close' : '+ Add Exercise';
+    if (open) { $('#exTop').after(card); card.querySelector('[name="name"]').focus(); }
+  };
   let purPage = 1;
   const purPageWith = p => { const i = purposes.indexOf(p); if (i >= 0) purPage = Math.floor(i / PUR_PAGE) + 1; };
   function renderPurposes() {
@@ -116,22 +131,21 @@ async function adminExercises() {
     const shown = matches();
     const [items, p] = pageOf(shown, page, EX_PAGE);
     page = p;
-    $('#exCount').textContent = list.length;
-    $('#exHead').hidden = !shown.length;
     $('#exPager').innerHTML = pagerHTML(page, shown.length, EX_PAGE, ['Previous', 'Next']);
     bindPager($('#exPager'), n => { page = n; renderList(); });
-    $('#exList').innerHTML = items.map(x => {
-      const sub = EX_FIELDS.slice(0, 3).filter(([f]) => x[f]).map(([f, l]) => `${l}: ${esc(x[f])}`).join(' · ');
-      return `<li class="goal"><div class="goal-text"><strong>${esc(x.name)}</strong>
-        ${sub ? `<span class="item-sub">${sub}</span>` : ''}${x.notes ? `<span class="item-sub">Notes: ${para(x.notes)}</span>` : ''}${exPurposeTags(x.purposes)}</div>
-        <div class="row ex-actions"><button type="button" class="small ghost" data-act="ex-edit" data-ex="${x.id}">Edit</button>
-        <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></div></li>`;
-    }).join('') || `<li><p class="muted" style="margin:.6rem 0">${list.length ? 'No exercise matches that search or purpose.' : 'No exercises yet. Add your first one.'}</p></li>`;
+    // Each one as a card, like the exercise cards students see: the name, three boxes, notes, then its purposes.
+    $('#exList').innerHTML = items.map(x => `<article class="ex-card lib"><div class="ex-top"><p class="ex-name">${esc(x.name)}</p>
+        <span class="row"><button type="button" class="small" data-act="ex-edit" data-ex="${x.id}">Edit</button>
+        <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></span></div>
+        <div class="stats">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
+          `<div class="stat"><span class="stat-l">${l}</span><span class="stat-v${x[f] ? '' : ' none'}">${x[f] ? esc(x[f]) : '—'}</span></div>`).join('')}</div>
+        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${exPurposeTags(x.purposes)}</article>`).join('')
+      || `<p class="muted">${list.length ? 'No exercise matches that search or purpose.' : 'No exercises yet. Add your first one.'}</p>`;
   }
   const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));
   renderList();
   renderPurposes();
-  search.oninput = purposeSel.onchange = () => { page = 1; renderList(); };
+  search.oninput = () => { page = 1; renderList(); };
 
   $('#exAdd').onsubmit = e => {
     e.preventDefault();
@@ -142,7 +156,7 @@ async function adminExercises() {
       list.push(data); sortList();
       e.target.reset();
       renderPurposes();
-      search.value = ''; purposeSel.value = '';
+      search.value = ''; purpose = '';
       pageWith(data);
       renderList();
       e.target.elements.name.focus();

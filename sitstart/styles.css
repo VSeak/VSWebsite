@@ -30,7 +30,11 @@
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "DM Sans", system-ui, sans-serif; }
 h1, h2, h3 { font-family: "Bricolage Grotesque", "DM Sans", sans-serif; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; margin: 0 0 .5rem; }
-h1 { font-size: 1.8rem; } h2 { font-size: 1.2rem; } h3 { font-size: 1.05rem; }
+/* Page headings are big and heavy, like the student pages; a sign-in card's heading stays smaller */
+h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; } h2 { font-size: 1.2rem; } h3 { font-size: 1.05rem; }
+@media (min-width: 761px) { h1 { font-size: 3.25rem; } }
+.narrow h1 { font-size: 1.8rem; }
+.card > h2, .card > .row > h2 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.02em; }
 a { color: var(--accent); }
 p { margin: 0 0 .75rem; }
 
@@ -51,17 +55,20 @@ p { margin: 0 0 .75rem; }
 }
 main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 
-.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem; box-shadow: var(--shadow); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 18px; box-shadow: var(--shadow); }
 .card + .card, .card + [data-folds], .stack > * + * { margin-top: .9rem; }
 .narrow { max-width: 420px; margin: 2rem auto; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
-/* Student page on a phone: both columns become one list, with Next Session straight after Notes. */
+/* Student page: plan and notes on the left; next session, goals and the rarely used cards on the right.
+   On a phone it's one list: next session, goals, plan, student notes, coach notes, then the rest. */
+.phone-order > div, .phone-order > aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.phone-order .card + .card { margin-top: 0; }
 @media (max-width: 760px) {
-  .grid2.phone-order { display: flex; flex-direction: column; align-items: stretch; gap: .9rem; }
-  .phone-order > * { display: contents; }
-  .phone-order .card { margin-top: 0; }
-  .phone-order #trainingCard, .phone-order aside > :not(#nextCard) { order: 1; }
+  .grid2.phone-order { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+  .phone-order > div, .phone-order > aside { display: contents; }
+  #nextCard { order: 1; } #goalsCard { order: 2; } #planCard { order: 3; } #snotesCard { order: 4; } #coachNotesCard { order: 5; }
+  .phone-order .card-group { order: 6; }
 }
 .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
 .between { justify-content: space-between; }
@@ -93,7 +100,7 @@ fieldset.roles legend { font-weight: 500; font-size: .9rem; padding: 0; margin-b
 fieldset.roles label.check { align-items: flex-start; }
 fieldset.roles label.check input { margin-top: .3rem; }
 
-button { font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px; padding: .5rem .9rem;
+button { font: inherit; font-weight: 700; font-size: .87rem; cursor: pointer; border-radius: 12px; min-height: 40px; padding: .4rem .9rem;
   border: 1px solid var(--line); background: var(--card); color: var(--ink); }
 button:hover { border-color: var(--muted); }
 button:disabled { opacity: .55; cursor: progress; }
@@ -106,16 +113,25 @@ button.primary { border-color: var(--accent); }
 button.primary.danger { border-color: var(--danger); }
 button.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.primary.danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #fff; }
-button.small { padding: .3rem .65rem; font-size: .85rem; }
+button.small { min-height: 34px; padding: .25rem .65rem; font-size: .8rem; border-radius: 10px; }
 button.icon { padding: .25rem .55rem; line-height: 1; }
-button.link { border: 0; background: none; padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline; }
+button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--accent); font-size: inherit; text-decoration: underline; }
+/* Always filled: the page's main action (+ Add Student, Open Plan). Primary buttons fill only when their form is unsaved. */
+.fill, button.fill, a.fill { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-ink); border-radius: 14px;
+  min-height: 44px; padding: 0 1rem; font-weight: 700; font-size: .9rem; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.fill:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, var(--ink)); }
+/* A page heading with its main button beside it */
+.page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: .6rem 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.page-head h1 { margin: 0; }
+.page-head .eyebrow { margin-bottom: .4rem; }
 
 .crumb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; margin-bottom: .8rem; }
 .crumbs { display: flex; flex-wrap: wrap; gap: .4rem; font-size: .9rem; color: var(--muted); }
 .crumbs a { text-decoration: none; }
-a.back { font-weight: 500; font-size: .85rem; padding: .3rem .65rem; border: 1px solid var(--line); border-radius: 8px;
-  color: var(--ink); text-decoration: none; white-space: nowrap; }
-a.back:hover { border-color: var(--muted); }
+.crumbs a { font-weight: 700; }
+a.back { font-weight: 700; font-size: .82rem; min-height: 36px; padding: 0 .75rem; border-radius: 10px; background: var(--chip);
+  color: var(--ink); text-decoration: none; white-space: nowrap; display: inline-flex; align-items: center; }
+a.back:hover { background: color-mix(in srgb, var(--chip) 80%, var(--ink)); }
 
 .list { list-style: none; margin: 0; padding: 0; }
 .list li { border-top: 1px solid var(--line); }
@@ -142,7 +158,7 @@ h1 .pronouns { font-size: 1rem; margin-left: .3rem; vertical-align: .15em; }
 .tag.danger { border-color: color-mix(in srgb, var(--danger) 45%, transparent);
   background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 /* A next session that has ended: the card and a banner in the warn color, so the coach sets a new one. */
-.card.overdue { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
+.card.overdue { border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 9%, var(--card)); }
 .warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); border-left: 4px solid var(--warn);
   border-radius: 8px; padding: .6rem .8rem; }
 .warn-box strong { color: var(--warn); }
@@ -176,15 +192,42 @@ button.fold::before { content: ""; flex: none; width: .32em; height: .32em; bord
 .card.folded button.fold::before { transform: rotate(-45deg); }
 [data-folds] .card.folded > :not(:first-child) { display: none; }
 
-/* Coach home */
-/* Every tile the same size: rows share the tallest tile's height, and the stat sits at the bottom */
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 1fr; gap: 1rem; margin-top: 1rem; }
+/* Staff home: the Needs You card (dark) beside the page tiles; one column on a phone */
+.home-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .home-grid { grid-template-columns: 1fr; gap: 12px; } }
+.needs { background: var(--deep); color: var(--deep-ink); border: 1px solid var(--deep-line); border-radius: 22px; padding: 18px 20px; }
+.needs .eyebrow { color: var(--deep-accent); }
+.needs .pill { font-size: .75rem; font-weight: 700; padding: .15rem .65rem; border-radius: 99px; background: var(--deep-accent); color: var(--goal-ink); white-space: nowrap; }
+.needs .pill.warn { background: #E3AE5A; color: #2C1A00; }
+a.todo { display: flex; align-items: center; gap: 12px; padding: 12px 0; color: var(--deep-ink); text-decoration: none;
+  border-top: 1px solid color-mix(in srgb, var(--deep-ink) 14%, transparent); }
+.needs .row + a.todo, .needs .eyebrow + a.todo { border-top: 0; }
+a.todo > span:not(.day-block):not(.pill) { flex: 1; min-width: 0; }
+a.todo b { display: block; font: 800 1.1rem/1.2 "Bricolage Grotesque", sans-serif; }
+a.todo b + span { font-size: .85rem; color: var(--deep-muted); }
+a.todo:hover b { text-decoration: underline; }
+.day-block { flex: none; width: 52px; border-radius: 12px; background: color-mix(in srgb, var(--deep-accent) 16%, transparent); color: var(--deep-accent);
+  text-align: center; padding: 5px 0; line-height: 1.05; }
+.day-block small { display: block; font-size: .7rem; font-weight: 700; letter-spacing: .06em; }
+.day-block strong { font: 800 1.35rem "Bricolage Grotesque", sans-serif; }
+.needs-clear { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.needs-clear .check { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--deep-accent); color: var(--goal-ink); display: grid; place-items: center; }
+.needs-clear b, .none-up b { display: block; font: 800 1.45rem/1.1 "Bricolage Grotesque", sans-serif; }
+.none-up b { font: 700 1rem "DM Sans", sans-serif; }
+.needs-clear span:not(.check), .none-up span { font-size: .9rem; color: var(--deep-muted); }
+.none-up { margin-top: 10px; border: 1px dashed color-mix(in srgb, var(--deep-ink) 25%, transparent); border-radius: 16px; padding: 16px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; color: var(--deep-accent); }
+.none-up > div { flex: 1; min-width: 200px; color: var(--deep-ink); }
+.none-up .fill { background: var(--deep-accent); border-color: var(--deep-accent); color: var(--goal-ink); }
+.tiles { display: flex; flex-direction: column; gap: 12px; }
 .tiles > .card { margin-top: 0; }
-a.tile { display: flex; flex-direction: column; color: var(--ink); text-decoration: none; }
+a.tile { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; }
 a.tile:hover { border-color: var(--accent); }
-a.tile:hover h2 { color: var(--accent); }
-a.tile p { margin: 0; }
-.tile-stat { margin-top: auto !important; padding-top: .6rem; font-weight: 600; color: var(--accent); }
+a.tile h2 { margin: 0; }
+a.tile p { margin: 6px 0 0; font-size: .9rem; }
+a.tile svg { flex: none; color: var(--accent); }
+a.tile.tile-soft { background: var(--soft); border-color: var(--soft); }
+.big-num.zero { color: var(--blank); }
 
 /* Goals */
 .goal { display: flex; justify-content: space-between; align-items: flex-start; gap: .4rem .8rem; flex-wrap: wrap; padding: .6rem 0; }
@@ -199,12 +242,54 @@ details.goal-group summary { cursor: pointer; font-weight: 600; font-size: .9rem
 .note-wrap { padding: .6rem 0; border-top: 1px solid var(--line); }
 .feed :is(h2, .hint) + .note-wrap, .list-head + .note-wrap { border-top: 0; }
 .note-wrap p { margin: .2rem 0 0; }
-/* A note in a feed (noteFeedItem) is one link, reaching past the text like list rows so the hover fills it */
-a.note-link { display: block; padding: .6rem; margin: 0 -.6rem; border-radius: 8px; color: var(--ink); text-decoration: none; }
-a.note-link:hover { background: color-mix(in srgb, var(--soft) 70%, transparent); }
-a.note-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* A note in a feed (noteFeedItem) is one link: a small line on top, then the note in a text-message bubble */
+a.note-link { display: block; margin-top: 12px; color: var(--ink); text-decoration: none; border-radius: 16px; }
+a.note-link .note-meta { display: block; margin: 0 0 4px 2px; }
+.bub { display: block; background: var(--bg); border-radius: 16px 16px 16px 6px; padding: 10px 12px; font-size: .93rem; overflow-wrap: anywhere; }
+a.note-link:hover .bub { background: var(--soft); }
+a.note-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .note-plan { color: var(--accent); }
 a.note-link:hover .note-plan { text-decoration: underline; }
+
+/* Filter tabs with a count (Students, Users, Exercises & Drills) */
+.tabs button .count { margin-left: .35rem; opacity: .7; }
+/* People as cards: the Students and Users lists. Two a row beside the side column on desktop. */
+.people { display: grid; gap: 12px; }
+@media (min-width: 1000px) { .people { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+a.person { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+  padding: 14px; color: var(--ink); text-decoration: none; }
+a.person:hover { border-color: var(--accent); }
+a.person.off { opacity: .6; }
+.ini { flex: none; width: 42px; height: 42px; border-radius: 50%; background: var(--soft); color: var(--accent); display: grid; place-items: center;
+  font: 800 1rem "Bricolage Grotesque", sans-serif; }
+.ini.plain { background: var(--chip); color: var(--ink-2); }
+.person-body { flex: 1; min-width: 0; }
+.person-body b { font: 800 1.2rem/1.15 "Bricolage Grotesque", sans-serif; }
+.person-sub { display: block; margin: 2px 0 0; font-size: .9rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.person-sub.blank { color: var(--blank); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip { font-size: .75rem; font-weight: 700; padding: .15rem .65rem; border-radius: 99px; background: var(--bg); color: var(--ink-2); white-space: nowrap; }
+.chip.ok { background: var(--soft); color: var(--accent); }
+.chip.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.chip.bad { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.chip.role { background: var(--accent); color: var(--accent-ink); }
+.chip.warn-fill { background: var(--warn); color: var(--card); }
+.page-head .chips { margin-top: 10px; }
+input.search { min-height: 46px; border-radius: 14px; padding: 0 14px; background: var(--card); }
+/* Users: students waiting for an admin to pick their coach. On a phone it sits above the search. */
+.waiting .eyebrow { color: var(--warn); }
+.wait-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--warn) 25%, transparent); }
+.waiting .row + .wait-row { border-top: 0; }
+.wait-row > span { flex: 1; min-width: 0; }
+.wait-row b { display: block; font: 800 1.1rem/1.15 "Bricolage Grotesque", sans-serif; }
+.wait-row b + span { font-size: .85rem; color: var(--warn); }
+a.pick-btn { flex: none; font-weight: 700; font-size: .85rem; min-height: 40px; padding: 0 14px; border-radius: 12px; background: var(--warn);
+  color: var(--card); text-decoration: none; display: inline-flex; align-items: center; }
+@media (max-width: 760px) { .users-grid > aside { order: -1; } }
+/* A row in a card group that opens another page */
+a.card.group-link { display: block; color: var(--ink); text-decoration: none; padding-top: 14px; padding-bottom: 14px; }
+a.card.group-link h2 { margin: 0; font-size: 1.1rem; }
+a.card.group-link:hover h2 { color: var(--accent); }
 /* Opened from Session History (showCoachNotes): lit up for a moment. */
 .note-wrap.spot { animation: spot 2s ease-out; }
 @keyframes spot { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } }
@@ -290,6 +375,42 @@ a.note-link:hover .note-plan { text-decoration: underline; }
 .next-day { margin: 10px 0 0; font: 800 1.9rem/1 "Bricolage Grotesque", sans-serif; letter-spacing: -.02em; }
 .next-meta { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin-top: 10px; color: var(--deep-muted); font-size: .9rem; }
 .next-meta span { display: inline-flex; align-items: center; gap: 6px; }
+/* The coach's side of the next session: struck through once it has ended, with the button to set the next one */
+.next-card .pill.warn { background: #E3AE5A; color: #2C1A00; }
+.next-day.gone { color: var(--deep-muted); text-decoration: line-through; }
+.next-day.unset { color: var(--deep-muted); }
+.next-say { margin: 8px 0 0; color: var(--deep-muted); font-size: .9rem; }
+.next-card button { background: transparent; color: var(--deep-ink); border-color: color-mix(in srgb, var(--deep-ink) 25%, transparent); }
+.next-btns { margin-top: 12px; }
+.next-card button.next-go { width: 100%; min-height: 46px; margin-top: 12px; background: var(--deep-accent); border-color: var(--deep-accent); color: var(--goal-ink); }
+/* The coach's Goals card: green like the student's, with its buttons and form on it */
+.card.goals-card { background: var(--goal); color: var(--goal-ink); border-color: transparent; }
+.goals-card .hint, .goals-card .item-sub, .goals-card .muted, .goals-card .pager .muted { color: color-mix(in srgb, var(--goal-ink) 72%, transparent); }
+.goals-card .list li { border-color: color-mix(in srgb, var(--goal-ink) 18%, transparent); }
+.goals-card .goal-text p { font: 800 1.1rem/1.2 "Bricolage Grotesque", sans-serif; }
+.goals-card button { background: color-mix(in srgb, var(--goal-ink) 12%, transparent); border-color: transparent; color: var(--goal-ink); }
+.goals-card button.primary, .goals-card form button { background: var(--goal-ink); color: var(--goal); }
+.goals-card button.danger { color: #7A1A12; }
+.goals-card input { background: var(--card); border-color: transparent; }
+.goals-card details summary { color: var(--goal-ink); }
+/* The rarely used cards, joined into one list; each folds to its heading and a short summary */
+.card-group { border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+.card-group > .card { border: 0; border-radius: 0; box-shadow: none; margin: 0 !important; }
+.card-group > .card + .card { border-top: 1px solid var(--line); }
+.card-group > .card.folded { padding-top: 14px; padding-bottom: 14px; }
+.card-group > .card > .row:first-child > h2, .card-group > .card > h2:first-child { font-size: 1.1rem; }
+.card-group > .card.unsaved { box-shadow: inset 0 0 0 2px var(--warn); }
+.fold-sum { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+.card:not(.folded) .fold-sum:not(.tag) { display: none; }
+/* Counts beside a student's name */
+.head-stats { display: grid; grid-template-columns: repeat(3, minmax(72px, 1fr)); gap: 6px; }
+.head-stats .stat { border: 1px solid var(--line); border-radius: 14px; }
+@media (max-width: 760px) { .head-stats { width: 100%; } }
+.plan-title { font-size: 1.9rem !important; margin: .3rem 0 .2rem; }
+#planCard > .muted { margin-bottom: .8rem; }
+details.other-plans { margin-top: 1rem; }
+details.other-plans summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+h2 .count { font: 700 .95rem "DM Sans", sans-serif; color: var(--muted); letter-spacing: 0; }
 .goal-card { background: var(--goal); color: var(--goal-ink); border-radius: 22px; padding: 16px 18px; }
 .goal-card.many { padding-bottom: 8px; }
 .goal-card .eyebrow { color: inherit; }
@@ -324,14 +445,18 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .note-form { margin-top: .6rem; display: grid; gap: .4rem; justify-items: end; }
 
 /* Plan editor */
-.savebar { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
-/* Only stays in view while there are unsaved changes */
-.savebar.unsaved { position: sticky; top: .5rem; z-index: 5; }
-#saveState.warn { color: var(--warn); font-weight: 600; }
+/* Beside the plan's title. While there are unsaved changes it turns dark and floats at the bottom of the screen. */
+.savebar { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.savebar.unsaved { position: fixed; right: 24px; bottom: 20px; z-index: 40; background: var(--deep); color: var(--deep-ink);
+  border-radius: 16px; padding: 8px 8px 8px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+.savebar.unsaved button { background: transparent; color: var(--deep-ink); border-color: color-mix(in srgb, var(--deep-ink) 25%, transparent); }
+.savebar.unsaved [data-act="save"]:not(:disabled) { background: var(--deep-accent); border-color: var(--deep-accent); color: var(--goal-ink); }
+#saveState.warn { color: #E3AE5A; font-weight: 700; }
+body:has(.savebar.unsaved) main { padding-bottom: 7rem; }
 /* On a phone, unsaved, it sits at the bottom of the screen like #unsavedBar, and hides while typing (the keyboard is there) */
 @media (max-width: 600px) {
   .savebar.unsaved { position: fixed; top: auto; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; border: 0; border-radius: 0;
-    border-top: 2px solid var(--warn); padding: .6rem 16px calc(.6rem + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(0,0,0,.12); }
+    padding: .6rem 16px calc(.6rem + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(0,0,0,.2); }
   .savebar, .savebar .row { flex-wrap: nowrap; }
   .savebar .row { flex-shrink: 0; gap: .4rem; }
   #saveState { font-size: .85rem; line-height: 1.3; }
@@ -346,10 +471,28 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.ex-head, .ex-row { display: grid; grid-template-columns: 2fr .7fr 1.1fr .8fr 2fr auto; gap: .4rem; align-items: center; }
-.ex-head { font-size: .8rem; font-weight: 600; color: var(--muted); margin-top: .8rem; }
-.ex-head span:last-child { width: 2rem; }
-.ex-row { margin-top: .4rem; }
+/* Plan editor: the sessions (as tabs) on the wide side, the plan's details beside them; on a phone the details come first */
+.plan-grid .week { margin-top: 0; }
+.plan-grid .week + .week { margin-top: 1.6rem; }
+.plan-grid .week > h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+@media (max-width: 760px) { .plan-grid > aside { order: -1; } }
+.tabs .add-tab { border-style: dashed; color: var(--accent); }
+.session-edit { display: flex; flex-direction: column; gap: 10px; }
+.session-edit[hidden] { display: none; }
+.session-title { font: 800 1.15rem "Bricolage Grotesque", sans-serif !important; }
+.ex-list { display: flex; flex-direction: column; gap: 8px; }
+/* One exercise: name, then three boxes, then notes; on a wide screen the name and boxes share a line */
+.ex-edit { background: var(--bg); border-radius: 16px; padding: 12px; display: grid; gap: 8px; }
+@media (min-width: 900px) { .ex-edit { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr); column-gap: 10px; align-items: end; }
+  .ex-edit .ex-notes, .ex-edit .ex-acts { grid-column: 1 / -1; } }
+.ex-edit label { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ex-edit input { background: var(--card); font-size: .95rem; letter-spacing: normal; text-transform: none; color: var(--ink); }
+.ex-edit .ex-name input { font: 800 1rem "Bricolage Grotesque", sans-serif; }
+.ex-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ex-three input { text-align: center; font-weight: 700; }
+.ex-acts { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+button.add-ex { border-style: dashed; color: var(--accent); align-self: flex-start; }
+.session-foot { display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--line); }
 /* Exercise name picker (the master list), in place of the browser's datalist popup */
 .combo-menu { position: absolute; z-index: 20; margin: 0; padding: .3rem; list-style: none; max-height: 16rem; overflow: hidden auto;
   background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
@@ -369,13 +512,18 @@ fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
 .pick-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .pick-row label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .pick-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.ex-purposes { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
-@media (max-width: 700px) {
-  .ex-head { display: none; }
-  .ex-row { grid-template-columns: 1fr 1fr 1fr auto; padding: .5rem 0; border-top: 1px solid var(--line); }
-  .ex-row > [data-f="name"], .ex-row > [data-f="notes"] { grid-column: 1 / -1; }
-  .ex-row > button { grid-column: 4; grid-row: 2; }
-}
+.ex-purposes { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .6rem; }
+.ex-purposes .tag { border: 0; background: var(--soft); color: var(--accent); font-weight: 700; }
+/* Exercises & Drills: each one a card like the student's, with Edit and Delete beside the name */
+.ex-card.lib { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+.ex-card.lib .stat { background: var(--bg); }
+.ex-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.ex-top .ex-name { margin: 0; font: 800 1.2rem/1.15 "Bricolage Grotesque", sans-serif; }
+@media (min-width: 1000px) { #exList { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tabs .more-tabs { border-style: dashed; color: var(--accent); }
+@media (min-width: 761px) { .only-phone { display: none !important; } }
+/* On a phone, Add Exercise opens from the button at the top */
+@media (max-width: 760px) { #exAddCard:not(.open) { display: none; } #exAddCard.open { margin-bottom: 12px; } }
 .danger-zone { margin-top: 2rem; display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
 
 #flash { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); max-width: calc(100% - 32px);

@@ -34,7 +34,9 @@ async function adminPlan(id, sid) {
   }
 
   // library: the master exercise list, for the Exercise picker.
-  draft = { plan, sessions, library, savedIds: new Set(sessions.map(s => s.id)), preview: false };
+  // tab: the picked session in each week (from a note in a feed: that session's).
+  const from = sid && sessions.find(s => s.id === sid);
+  draft = { plan, sessions, library, savedIds: new Set(sessions.map(s => s.id)), preview: false, tab: from ? { [from.week]: sid } : {} };
   dirty = false;
   renderEditor();
   window.scrollTo(0, 0);
@@ -72,36 +74,54 @@ function markDirty() {
   if (el) { el.textContent = 'Unsaved changes'; el.classList.add('warn'); el.parentElement.classList.add('unsaved'); }
 }
 
-function sessionEditHTML(s, i) {
-  const f = (field, label, e, ph = label) => `<input data-s="${i}"${e != null ? ` data-e="${e}"` : ''} data-f="${field}" placeholder="${ph}" aria-label="${label}"
-    ${field === 'name' && e != null ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
-    value="${esc(e != null ? s.exercises[e][field] : s[field])}">`;
-  return `<article class="card session-edit">
+// One exercise as a small card: its name (the master list picker), Sets / Reps/Time / Rest, notes, then its buttons.
+// Move Up and Move Down only where there's somewhere to go.
+function exEditHTML(s, i, e) {
+  const f = (field, label, ph = label) => `<label class="ex-${field}">${label}<input data-s="${i}" data-e="${e}" data-f="${field}" placeholder="${ph}"
+    ${field === 'name' ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
+    value="${esc(s.exercises[e][field])}"></label>`;
+  const n = s.exercises.length, btn = (act, label) => `<button type="button" class="small" data-act="${act}" data-s="${i}" data-e="${e}">${label}</button>`;
+  return `<div class="ex-edit">${f('name', 'Exercise', 'Exercise/Purpose')}
+    <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
+    ${f('notes', 'Notes')}
+    <div class="ex-acts"><span class="row">${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
+      <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove</button></div></div>`;
+}
+
+// One session: shown when its tab is picked (data-session, like the student's view; showSession switches them).
+// first/last: where it sits in its week, so Move Earlier and Move Later only show where they can go.
+function sessionEditHTML(s, i, shown, first, last) {
+  return `<article class="card session-edit" data-session="${s.id}"${shown ? '' : ' hidden'}>
     <div class="row">
       ${draft.plan.repeats ? '' : `<label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>`}
-      <label class="grow">Session<input data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Session 1/Mondays/Off the Wall Warm Up"></label>
+      <label class="grow">Session<input class="session-title" data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Session 1/Mondays/Off the Wall Warm Up"></label>
     </div>
-    <label style="margin-top:.6rem">Details<textarea data-s="${i}" data-f="details" rows="2"
+    <label>Details<textarea data-s="${i}" data-f="details" rows="2"
       placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
-    ${s.exercises.length ? '<div class="ex-head"><span>Exercise</span><span>Sets</span><span>Reps/Time</span><span>Rest</span><span>Notes</span><span></span></div>' : ''}
-    ${s.exercises.map((_, e) => `<div class="ex-row">${f('name', 'Exercise', e, 'Exercise/Purpose')}${f('sets', 'Sets', e)}${f('reps', 'Reps/Time', e)}${f('rest', 'Rest', e)}${f('notes', 'Notes', e)}
-      <button class="icon ghost" data-act="del-ex" data-s="${i}" data-e="${e}" title="Remove exercise" aria-label="Remove exercise">×</button></div>`).join('')}
-    <div class="row between" style="margin-top:.7rem">
-      <button class="ghost small" data-act="add-ex" data-s="${i}">+ Add Exercise</button>
-      <div class="row">
-        <button class="icon ghost" data-act="up" data-s="${i}" title="Move up" aria-label="Move up">↑</button>
-        <button class="icon ghost" data-act="down" data-s="${i}" title="Move down" aria-label="Move down">↓</button>
-        <button class="ghost small" data-act="dup" data-s="${i}">Duplicate</button>
-        <button class="ghost small danger" data-act="del-session" data-s="${i}">Remove</button>
-      </div>
+    <div class="ex-list">${s.exercises.map((_, e) => exEditHTML(s, i, e)).join('')}</div>
+    <button type="button" class="add-ex" data-act="add-ex" data-s="${i}">+ Add Exercise</button>
+    <div class="session-foot">
+      <span class="row">${first ? '' : `<button type="button" data-act="up" data-s="${i}">Move Earlier</button>`}${last ? '' : `<button type="button" data-act="down" data-s="${i}">Move Later</button>`}</span>
+      <span class="row"><button type="button" data-act="dup" data-s="${i}">Duplicate</button>
+        <button type="button" class="ghost danger" data-act="del-session" data-s="${i}">Remove</button></span>
     </div>
     ${draft.savedIds.has(s.id) ? notesHTML(s.id) : ''}
   </article>`;
+}
+const sessionLabel = (s, k) => s.title.trim() || `Session ${k + 1}`;
+// A week's sessions: a tab each (and + Add Session), then the picked one. draft.tab[week] remembers the pick.
+function weekSessionsHTML(w, list) {
+  const S = draft.sessions, pick = list.some(({ i }) => S[i].id === draft.tab[w]) ? draft.tab[w] : S[list[0]?.i]?.id;
+  return `<div class="tabs" role="tablist" aria-label="Sessions">${list.map(({ i }, k) =>
+      `<button type="button" role="tab" data-tab="${S[i].id}" data-week="${w}" aria-selected="${S[i].id === pick}">${esc(sessionLabel(S[i], k))}</button>`).join('')}
+      <button type="button" class="add-tab" data-act="add-session" data-week="${w}"${list.length ? '' : ' data-first data-need="Add at least one session."'}>+ Add Session</button></div>
+    ${list.map(({ i }, k) => sessionEditHTML(S[i], i, S[i].id === pick, k === 0, k === list.length - 1)).join('')}`;
 }
 
 function renderEditor() {
   const p = draft.plan;
   const order = displayOrder();
+  draft.tab ||= {};
   let body;
   if (draft.preview) {
     body = planReadHTML(p, order.map(i => draft.sessions[i]), { notes: false });
@@ -109,40 +129,38 @@ function renderEditor() {
     const weeks = byWeek(order.map(i => ({ week: draft.sessions[i].week, i })));
     const sessionsHTML = p.repeats ? `<section class="week">
       <h2>Every Week <span class="muted">Repeat these sessions each week</span></h2>
-      ${weeks.length ? '' : '<p class="muted">No sessions yet. Add the first one below.</p>'}
-      ${order.map(i => sessionEditHTML(draft.sessions[i], i)).join('')}
-      <button class="ghost" style="margin-top:.8rem" data-act="add-session" data-week="1" data-first data-need="Add at least one session.">+ Add Session</button>
+      ${weeks.length ? '' : '<p class="muted">No sessions yet. Add the first one.</p>'}
+      ${weekSessionsHTML(1, weeks[0]?.[1] || [])}
     </section>` : `
-    ${weeks.length ? '' : '<p class="muted" style="margin-top:1rem">No sessions yet. Add the first week below.</p>'}
+    ${weeks.length ? '' : '<p class="muted">No sessions yet. Add the first week below.</p>'}
     ${weeks.map(([w, list]) => `<section class="week">
       <h2>Week ${w} <span class="muted">${weekRange(p.start_date, w)}</span></h2>
-      ${list.map(({ i }) => sessionEditHTML(draft.sessions[i], i)).join('')}
-      <button class="ghost" style="margin-top:.8rem" data-act="add-session" data-week="${w}">+ Add Session to Week ${w}</button>
+      ${weekSessionsHTML(w, list)}
     </section>`).join('')}
     <div class="row" style="margin-top:1.4rem"><button data-act="add-week" data-first data-need="Add at least one week with a session.">+ Add Week</button></div>`;
-    body = `<section class="card stack">
+    body = `<div class="grid2 plan-grid"><div class="plan-sessions">${sessionsHTML}</div>
+    <aside><section class="card stack"><h2>Plan Details</h2>
       <div class="stack" style="gap:.3rem"><div class="seg" role="radiogroup" aria-label="Plan Layout">
         <label><input type="radio" name="layout" data-p="repeats" value="1" ${p.repeats ? 'checked' : ''}>Repeat Weekly</label>
         <label><input type="radio" name="layout" data-p="repeats" value="0" ${p.repeats ? '' : 'checked'}>Week by Week</label>
       </div>
-      <p class="hint" style="margin:0">${p.repeats ? 'One week of sessions the student repeats every week.' : 'A different set of sessions for each week, with dates from the start date.'}</p></div>
+      <p class="hint" style="margin:0">${p.repeats ? `One week of sessions ${esc(p.student.name.split(' ')[0])} repeats every week.` : 'A different set of sessions for each week, with dates from the start date.'}</p></div>
       <label>Training Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="e.g. Spring Power Block" required data-need="Give the plan a title."></label>
-      <div class="row">
-        <div><label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label></div>
-        <label class="check" style="margin-top:1.2rem"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan (shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan)</label>
-      </div>
+      <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label>
+      <label class="check" title="Shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan</label>
       <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
-    </section>
-    ${sessionsHTML}
+    </section></aside></div>
     <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Training Plan</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
   }
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
-    <div class="card savebar${dirty ? ' unsaved' : ''}">
+    <div class="page-head"><div><span class="eyebrow">${p.active ? 'Current Plan' : 'Plan'} · ${esc(p.student.name)}</span>
+      <h1>${esc(p.title.trim() || 'Untitled Plan')}</h1></div>
+    <div class="savebar${dirty ? ' unsaved' : ''}">
       <span id="saveState" class="${dirty ? 'warn' : 'muted'}">${dirty ? 'Unsaved changes' : 'All changes saved'}</span>
       <div class="row"><button data-act="preview">${draft.preview ? 'Back to Editing' : 'Student View'}</button>
       <button class="primary" data-act="save">Save Plan</button></div>
-    </div>
+    </div></div>
     ${body}`, { keepScroll: true });
 
   app.oninput = e => {
@@ -169,15 +187,24 @@ function renderEditor() {
     }
   };
   app.onclick = async e => {
+    // A session's tab: showSession (student-view.js) switches it; remember the pick for the next redraw.
+    const tab = e.target.closest('[data-tab][data-week]');
+    if (tab) { draft.tab[tab.dataset.week] = tab.dataset.tab; return; }
     const b = e.target.closest('[data-act]');
     if (!b) return;
-    const S = draft.sessions, i = +b.dataset.s;
+    const S = draft.sessions, i = +b.dataset.s, x = +b.dataset.e;
+    const pick = s => { draft.tab[s.week] = s.id; };   // a new or copied session opens on its tab
     switch (b.dataset.act) {
       case 'add-ex': S[i].exercises.push(blankEx()); break;
-      case 'del-ex': S[i].exercises.splice(+b.dataset.e, 1); break;
-      case 'add-session': S.push(blankSession(+b.dataset.week)); break;
-      case 'add-week': S.push(blankSession(Math.max(0, ...S.map(s => s.week)) + 1)); break;
-      case 'dup': S.splice(i + 1, 0, { ...structuredClone(S[i]), id: crypto.randomUUID() }); break;
+      case 'del-ex': S[i].exercises.splice(x, 1); break;
+      case 'ex-up': case 'ex-down': {
+        const y = x + (b.dataset.act === 'ex-up' ? -1 : 1), list = S[i].exercises;
+        if (!list[y]) return;
+        [list[x], list[y]] = [list[y], list[x]]; break;
+      }
+      case 'add-session': { const s = blankSession(+b.dataset.week); S.push(s); pick(s); break; }
+      case 'add-week': { const s = blankSession(Math.max(0, ...S.map(s => s.week)) + 1); S.push(s); pick(s); break; }
+      case 'dup': { const s = { ...structuredClone(S[i]), id: crypto.randomUUID() }; S.splice(i + 1, 0, s); pick(s); break; }
       case 'del-session': {
         const n = notesCtx.notes.filter(x => x.session_id === S[i].id).length;
         const lastInWeek = !draft.plan.repeats && !S.some((x, k) => k !== i && x.week === S[i].week);
@@ -239,7 +266,7 @@ function setExName(x, input) {
   const m = draft.library.find(y => y.name_key === exKey(x.name));
   if (!m || filledFrom.get(x) === m.name_key) return;
   filledFrom.set(x, m.name_key);
-  const row = input.closest('.ex-row');
+  const row = input.closest('.ex-edit');
   for (const [f] of EX_FIELDS) row.querySelector(`[data-f="${f}"]`).value = x[f] = m[f];
 }
 

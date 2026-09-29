@@ -30,10 +30,9 @@
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "DM Sans", system-ui, sans-serif; }
 h1, h2, h3 { font-family: "Bricolage Grotesque", "DM Sans", sans-serif; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; margin: 0 0 .5rem; }
-/* Page headings are big and heavy, like the student pages; a sign-in card's heading stays smaller */
+/* Page headings are big and heavy, like the student pages */
 h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; } h2 { font-size: 1.2rem; } h3 { font-size: 1.05rem; }
 @media (min-width: 761px) { h1 { font-size: 3.25rem; } }
-.narrow h1 { font-size: 1.8rem; }
 .card > h2, .card > .row > h2 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.02em; }
 a { color: var(--accent); }
 p { margin: 0 0 .75rem; }
@@ -57,7 +56,6 @@ main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 18px; box-shadow: var(--shadow); }
 .card + .card, .card + [data-folds], .stack > * + * { margin-top: .9rem; }
-.narrow { max-width: 420px; margin: 2rem auto; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
 /* Student page: plan and notes on the left; next session, goals and the rarely used cards on the right.
@@ -380,6 +378,28 @@ a.card.group-link:hover h2 { color: var(--accent); }
   .stu-grid .past-plans { order: 4; } .stu-grid .achieved { order: 5; } #historyCard { order: 6; }
   .stu-grid .your-coach { order: 7; } #myDetails { order: 8; }
 }
+
+/* Sign-in and account pages (authPage): the greeting and its note on the left, the card on the right; stacked on a phone */
+.auth { display: grid; grid-template-columns: minmax(0, 1fr) 420px; grid-template-areas: "head card" "note card";
+  column-gap: 80px; align-items: center; padding-top: 5rem; }
+.auth .hey { grid-area: head; align-self: end; font-size: 4.75rem; margin: 0; }
+.auth .hey span { display: block; }
+.auth-note { grid-area: note; align-self: start; font-size: 1rem; margin: 1.5rem 0 0; }
+.auth-card { grid-area: card; padding: 22px 20px; }
+.auth-card > * + * { margin-top: 16px; }
+.auth-card p { margin: 0; font-size: 1rem; color: var(--ink-2); }
+.auth-card p + p { margin-top: .6rem; }
+.auth-card .stack > * + * { margin-top: 16px; }
+.auth-card .stack > .field-error { margin-top: .3rem; }
+.auth-card label { font-weight: 700; }
+.auth-card input { min-height: 50px; margin-top: 6px; padding: 0 14px; border-radius: 14px; font-size: 1rem; }
+.auth-card .fill { width: 100%; min-height: 52px; font-size: 1rem; }
+.auth-card > button.link { display: block; margin: 8px auto 0; min-height: 44px; padding: 0 8px; font-weight: 700; font-size: .95rem; }
+@media (max-width: 860px) {
+  .auth { display: block; max-width: 480px; margin: 0 auto; padding-top: .75rem; }
+  .auth .hey { font-size: 2.9rem; margin: 0 4px 1.4rem; }
+  .auth-note { text-align: center; font-size: .9rem; margin: 1.1rem 4px 0; }
+}
 .next-card { background: var(--deep); color: var(--deep-ink); border: 1px solid var(--deep-line); border-radius: 22px; padding: 18px; }
 .next-card .eyebrow { color: var(--deep-accent); }
 .next-card .pill { font-size: .75rem; font-weight: 700; padding: .15rem .65rem; border-radius: 99px; background: var(--deep-accent); color: var(--goal-ink); }
@@ -546,7 +566,7 @@ fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
   background: var(--ink); color: var(--bg); padding: .6rem 1rem; border-radius: 8px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
 #flash.error { background: var(--danger); color: #fff; }
 
-dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink);
+dialog { border: 1px solid var(--line); border-radius: 22px; background: var(--card); color: var(--ink);
   padding: 1.2rem; width: min(440px, calc(100% - 32px)); }
 dialog::backdrop { background: rgba(0,0,0,.4); }
 dialog .row { margin-top: 1rem; }

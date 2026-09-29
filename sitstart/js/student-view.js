@@ -142,7 +142,7 @@ async function studentPlan(id, allPlans, goals, coaches, next, history) {
   ]);
   if (t !== navToken) return;
   const home = me.isStaff ? '#/me' : '#/';
-  if (!plan) { view(`<section class="card narrow"><h1>Plan Not Found</h1><p><a href="${home}">Back to your plans</a></p></section>`); return; }
+  if (!plan) { authPage('Sorry,', 'plan not found.', `<p>It may have been deleted, or the link is wrong.</p><p><a href="${home}">Back to your plans</a></p>`); return; }
   const notes = sessions.length
     ? await sb.from('notes').select('*').in('session_id', sessions.map(s => s.id)).order('created_at').then(must) : [];
   if (t !== navToken) return;

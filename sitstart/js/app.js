@@ -2,9 +2,8 @@
 
 async function boot() {
   if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey || !window.supabase) {
-    view(`<section class="card narrow"><h1>Almost There</h1>
-      <p>This site isn't connected to Supabase yet. Follow <strong>SETUP.md</strong>, then fill in
-      <code>supabaseUrl</code> and <code>supabaseKey</code> near the top of the script in <code>index.html</code>.</p></section>`);
+    authPage('Almost there,', 'one more step.', `<p>This site isn't connected to Supabase yet. Follow <strong>SETUP.md</strong>, then fill in
+      <code>supabaseUrl</code> and <code>supabaseKey</code> in <code>CONFIG</code> at the top of <code>js/core.js</code>.</p>`);
     return;
   }
   sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, { auth: { flowType: 'implicit' } });
@@ -237,7 +236,7 @@ function redirect(hash) {
 }
 
 function showError(e) {
-  view(`<section class="card narrow"><h1>Something Went Wrong</h1><p>${esc(msgOf(e))}</p><p><a href="#/">Back to the start</a></p></section>`);
+  authPage('Sorry,', 'something went wrong.', `<p>${esc(msgOf(e))}</p><p><a href="#/">Back to the start</a></p>`);
 }
 
 $('#signOut').onclick = async () => {
@@ -251,17 +250,23 @@ $('#signOut').onclick = async () => {
 
 // ---------- Sign-in pages ----------
 
+// Sign-in and account pages (design A on the canvas's Sign In & Account page): a two-line greeting (head, then sub
+// in moss) and one card, with an optional note under the greeting. Side by side on wide screens, stacked on a phone.
+function authPage(head, sub, card, note = '') {
+  view(`<section class="auth"><h1 class="hey">${head}<span> ${sub}</span></h1>
+    <div class="card auth-card">${card}</div>${note ? `<p class="hint auth-note">${note}</p>` : ''}</section>`);
+}
+
 function viewLogin() {
-  view(`<section class="card narrow">
-    <h1>Sign In</h1>
+  authPage('Welcome back,', "let's climb.", `
     ${linkError ? `<p class="alert">${esc(linkError)}</p>` : ''}
     <form id="loginForm" class="stack">
       <label>Email<input type="email" name="email" autocomplete="email" required data-need="Enter your email."></label>
       <label>Password<input type="password" name="password" autocomplete="current-password" required data-need="Enter your password."></label>
-      <button class="primary">Sign In</button>
+      <button class="fill">Sign In</button>
     </form>
-    <p class="hint"><button type="button" id="forgotBtn" class="link">Forgot Password?</button></p>
-  </section>`);
+    <button type="button" id="forgotBtn" class="link">Forgot Password?</button>`,
+    'No account yet? Your coach sends you an invite by email.');
   if (deactivated) deactivatedNotice();
   $('#forgotBtn').onclick = e => forgotPassword(e.target);
 
@@ -283,7 +288,7 @@ function viewLogin() {
 // page always says the same thing: it never tells anyone whether an email has an account.
 async function forgotPassword(btn) {
   const typed = $('#loginForm').elements.email.value.trim();
-  const f = await ask({ title: 'Reset Password', ok: 'Send Link',
+  const f = await ask({ title: 'Reset Password', ok: 'Send Link', fill: true,
     body: `<p class="muted">Enter the email you sign in with. If it has an account, we'll email you a link to choose a new password.</p>
       <label>Email<input type="email" name="email" value="${esc(typed)}" autocomplete="email" required data-need="Enter your email."></label>` });
   if (!f) return;
@@ -302,12 +307,13 @@ function deactivatedNotice() {
 }
 
 function viewSetPassword() {
-  view(`<section class="card narrow"><h1>Choose a Password</h1>
-    <p class="muted">You'll sign in with ${esc(me.user.email)} and this password from now on.<br>Passwords must be at least 8 characters long.</p>
+  authPage(me.firstName ? `Hey ${esc(me.firstName)},` : 'Welcome,', 'choose a password.', `
+    <p>You'll sign in with <strong>${esc(me.user.email)}</strong> and this password from now on. Passwords must be at least 8 characters long.</p>
     <form id="pwForm" class="stack">
       <label>New Password<input type="password" name="pw" minlength="8" autocomplete="new-password" required data-need="Choose a password."></label>
-      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required data-need="Enter the same password again."></label>      <button class="primary">Save Password</button>
-    </form></section>`);
+      <label>Confirm Password<input type="password" name="pw2" minlength="8" autocomplete="new-password" required data-need="Enter the same password again."></label>
+      <button class="fill">Save Password</button>
+    </form>`);
   $('#pwForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -326,9 +332,8 @@ function viewSetPassword() {
 }
 
 function viewNoAccess() {
-  view(`<section class="card narrow"><h1>No Plan Linked Yet</h1>
-    <p>You're signed in as ${esc(me.user.email)}, but this account isn't on the student list.
-    Ask your coach to check which email they have for you.</p></section>`);
+  authPage('Almost there,', 'no plan linked yet.', `<p>You're signed in as <strong>${esc(me.user.email)}</strong>, but this account
+    isn't on the student list. Ask your coach to check which email they have for you.</p>`);
 }
 
 // ---------- Staff: home ----------

@@ -111,11 +111,12 @@ document.addEventListener('input', e => {
 
 // Returns the form's FormData when confirmed, or null. Settles on submit, not close.
 // cancel: false for a notice with just the OK button.
-function ask({ title, body = '', ok = 'OK', warn = false, cancel = true }) {
+// fill: the OK button is always filled (Reset Password on the sign-in page, which has no unsaved-form cue).
+function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, fill = false }) {
   const d = $('#dlg');
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
     <div class="row end">${cancel ? '<button value="cancel" formnovalidate class="ghost">Cancel</button>' : ''}
-    <button value="ok" class="primary${warn ? ' danger' : ''}">${esc(ok)}</button></div></form>`;
+    <button value="ok" class="${fill ? 'fill' : 'primary'}${warn ? ' danger' : ''}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
     f.addEventListener('submit', e => resolve(e.submitter?.value === 'ok' ? new FormData(f) : null), { once: true });

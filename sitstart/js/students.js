@@ -9,7 +9,7 @@ const noteFeedItem = (n, name) => `<a class="note-link" href="#/plan/${n.session
     ${name ? `<strong>${esc(name)}</strong> · ` : ''}${fmtWhen(n.created_at)} ·
     <span class="note-plan">${esc(n.session?.plan?.title || 'Untitled Plan')}, ${n.session?.plan?.repeats
       ? esc(n.session?.title || 'Session') : `Week ${n.session?.week}`}</span></span>
-    <span class="bub">${para(n.body)}</span></a>`;
+    <span class="bub">${para(n.body, false)}</span></a>`;
 // The student's initials, in a round badge.
 const initials = name => esc((name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase());
 // Short day for a chip: "Wed, Oct 1".

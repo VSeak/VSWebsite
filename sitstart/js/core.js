@@ -10,8 +10,18 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const app = $('#app');
 const BASE = location.origin + location.pathname;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-// Notes can have **bold** words (para() shows them bold) and new lines.
-const para = s => esc(s).replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+// Notes can have **bold** words (para() shows them bold), new lines, and web links (https://… or www.…),
+// which open in a new tab. links=false leaves them as text, for a note that's already inside a link.
+// Runs on the escaped text: a link ends at a space, a tag, or an escaped quote/bracket (& other than &amp;),
+// and drops punctuation that ends a sentence.
+const linkify = h => h.replace(/\b(?:https?:\/\/|www\.)(?:[^\s&<]|&amp;)+/gi, m => {
+  const url = m.replace(/[.,;:!?)\]*]+$/, ''), rest = m.slice(url.length);
+  return `<a href="${/^www\./i.test(url) ? 'https://' : ''}${url}" target="_blank" rel="noopener noreferrer">${url}</a>${rest}`;
+});
+const para = (s, links = true) => {
+  const h = esc(s).replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>');
+  return (links ? linkify(h) : h).replace(/\n/g, '<br>');
+};
 // A textarea with a Bold button in its corner (Ctrl+B does the same): wraps the picked words in **, or unwraps them.
 const rich = textarea => `<div class="rich">${textarea}<button type="button" class="rich-b" data-bold title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button></div>`;
 function toggleBold(t) {

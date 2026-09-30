@@ -104,7 +104,7 @@ function sessionEditHTML(s, i, shown, first, last) {
     <button type="button" class="add-ex" data-act="add-ex" data-s="${i}">+ Add Exercise</button>
     <div class="session-foot">
       <span class="row">${first ? '' : `<button type="button" data-act="up" data-s="${i}">Move Earlier</button>`}${last ? '' : `<button type="button" data-act="down" data-s="${i}">Move Later</button>`}</span>
-      <span class="row"><button type="button" data-act="dup" data-s="${i}">Duplicate</button>
+      <span class="row"><button type="button" data-act="dup" data-s="${i}">Duplicate Session</button>
         <button type="button" class="ghost danger" data-act="del-session" data-s="${i}">Remove</button></span>
     </div>
     ${draft.savedIds.has(s.id) ? notesHTML(s.id) : ''}

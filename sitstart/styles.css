@@ -478,6 +478,8 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .note.mine { margin-left: auto; border-radius: 14px 14px 4px 14px; background: var(--soft); }
 .note.mine .note-meta { text-align: right; }
 .note p { margin: .2rem 0 0; }
+/* Long links in notes wrap instead of widening the page. */
+p a[target="_blank"], .prose a[target="_blank"] { overflow-wrap: anywhere; }
 .note-meta { font-size: .8rem; color: var(--muted); }
 .note-form { margin-top: .6rem; display: grid; gap: .4rem; justify-items: end; }
 .note-form .rich { justify-self: stretch; }

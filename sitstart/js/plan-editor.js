@@ -1,17 +1,22 @@
 // ---------- Coach: plan editor ----------
 
 const blankEx = () => ({ name: '', sets: '', reps: '', rest: '', notes: '' });
-const blankSession = week => ({ id: crypto.randomUUID(), week, title: '', details: '', exercises: [blankEx()] });
+const blankSession = week => ({ id: crypto.randomUUID(), week, title: '', details: '', exercises: [] });
+// Your last few plans' exercises, for the browser's Used Lately (exbRecent). Nice to have, so a failure just leaves it out.
+const RECENT_PLANS = 10;
 
 // sid: a session to open at, from a student note in a feed (openNotes).
 async function adminPlan(id, sid) {
   const t = ++navToken;
   view(loading);
-  const [plan, sessions, library, notes] = await Promise.all([
+  const [plan, sessions, library, notes, recent] = await Promise.all([
     sb.from('plans').select('*, student:students(id,name,pronouns,email,coach_id)').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
     sb.from('exercises').select('*').then(must),
     planNotes(id),
+    sb.from('plans').select('sessions(exercises), student:students!inner(coach_id)').eq('student.coach_id', me.staffId).neq('id', id)
+      .order('updated_at', { ascending: false }).limit(RECENT_PLANS)
+      .then(r => (r.data ?? []).flatMap(p => p.sessions.flatMap(s => s.exercises ?? []))),
   ]);
   if (t !== navToken) return;
   if (!plan) { location.hash = '#/'; return; }
@@ -31,10 +36,13 @@ async function adminPlan(id, sid) {
     return;
   }
 
-  // library: the master exercise list, for the Exercise picker.
+  // library: the master exercise list, for the Exercise picker and browser; recent: exercises from your last plans.
   // tab: the picked session in each week (from a note in a feed: that session's).
+  // openEx: the one exercise shown as its full card (the rest are rows); details: sessions showing an empty Details box.
   const from = sid && sessions.find(s => s.id === sid);
-  draft = { plan, sessions, library, savedIds: new Set(sessions.map(s => s.id)), preview: false, tab: from ? { [from.week]: sid } : {} };
+  draft = { plan, sessions, library, recent, savedIds: new Set(sessions.map(s => s.id)), preview: false, tab: from ? { [from.week]: sid } : {},
+    openEx: null, details: new Set() };
+  Object.assign(exb, { q: '', purpose: '', sid: from?.id ?? null });
   dirty = false;
   renderEditor();
   window.scrollTo(0, 0);
@@ -72,10 +80,25 @@ function markDirty() {
   if (el) { el.textContent = 'Unsaved changes'; el.classList.add('warn'); el.parentElement.classList.add('unsaved'); }
 }
 
-// One exercise as a small card: its name (the master list picker), Sets / Reps/Time / Rest, notes, then its buttons.
-// Move Up and Move Down only where there's somewhere to go; the grip drags it (EX_DRAG) when there's more than one.
+// A session's exercises are rows (exRowHTML: name, values, the first line of the notes); tapping one opens it as its
+// full card (exEditHTML), one at a time (draft.openEx), and Done closes it. The grip drags either (EX_DRAG) when
+// there's more than one.
 const GRIP = '<svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden="true">'
   + [6, 10, 14].map(y => `<circle cx="7" cy="${y}" r="1.6"/><circle cx="13" cy="${y}" r="1.6"/>`).join('') + '</svg>';
+const CHEVRON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const DOTS = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+const gripHTML = (s, i, e) => s.exercises.length > 1 ? `<span class="grip" data-s="${i}" data-e="${e}" title="Drag to Reorder">${GRIP}</span>` : '';
+
+function exRowHTML(s, i, e) {
+  const x = s.exercises[e], sum = exSummary(x);
+  const note = String(x.notes ?? '').replace(/\*\*/g, '').split('\n').find(l => l.trim()) ?? '';
+  return `<div class="ex-row" data-ex>${gripHTML(s, i, e)}<button type="button" class="ex-open" data-act="open-ex" data-s="${i}" data-e="${e}">
+    <span class="ex-main"><span class="ex-rname">${esc(x.name.trim() || 'Unnamed Exercise')}</span>${sum ? `<span class="ex-val">${esc(sum)}</span>` : ''}${
+      note ? `<span class="ex-rnote">${esc(note)}</span>` : ''}</span>${CHEVRON}</button></div>`;
+}
+
+// The open exercise: its name (the master list picker), Sets / Reps/Time / Rest, notes, then Move Up and Move Down
+// (only where there's somewhere to go) and Remove.
 function exEditHTML(s, i, e) {
   const f = (field, label, ph = label) => `<label class="ex-${field}">${label}<input data-s="${i}" data-e="${e}" data-f="${field}" placeholder="${ph}"
     ${field === 'name' ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
@@ -83,34 +106,46 @@ function exEditHTML(s, i, e) {
   const n = s.exercises.length, btn = (act, label) => `<button type="button" class="small" data-act="${act}" data-s="${i}" data-e="${e}">${label}</button>`;
   // Notes grow downward as the coach types, and can have new lines and bold words.
   const notes = `<label class="ex-notes">Notes${rich(`<textarea rows="1" data-grow data-s="${i}" data-e="${e}" data-f="notes" placeholder="Notes">${esc(s.exercises[e].notes)}</textarea>`)}</label>`;
-  return `<div class="ex-edit">${f('name', 'Exercise', 'Exercise/Purpose')}
+  return `<div class="ex-edit" data-ex><div class="ex-top-row"><span class="row">${gripHTML(s, i, e)}<span class="ex-count">Exercise ${e + 1} of ${n}</span></span>
+      <button type="button" class="small fill" data-act="close-ex">Done</button></div>
+    ${f('name', 'Exercise', 'Exercise/Purpose')}
     <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
     ${notes}
-    <div class="ex-acts"><span class="row">${n > 1 ? `<span class="grip" data-s="${i}" data-e="${e}" title="Drag to Reorder">${GRIP}</span>` : ''}${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
-      <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove Exercise</button></div></div>`;
+    <div class="ex-acts"><span class="row">${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
+      <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove</button></div></div>`;
 }
 
 // One session: shown when its tab is picked (data-session, like the student's view; showSession switches them).
-// first/last: where it sits in its week, so Move Earlier and Move Later only show where they can go.
+// Its head is Week (Week by Week), Session and a ⋯ menu with Move Earlier / Move Later (only where they can go),
+// Duplicate Session and Remove Session. Details shows once it has text (or + Add Details is pressed). A session
+// with no exercises says so, with a big + Add Exercises (the browser, openExBrowser).
 function sessionEditHTML(s, i, shown, first, last) {
+  const item = (act, label, cls = '') => `<button type="button" role="menuitem" class="${cls}" data-act="${act}" data-s="${i}">${label}</button>`;
+  const exs = s.exercises;
   return `<article class="card session-edit" data-session="${s.id}"${shown ? '' : ' hidden'}>
-    <div class="row">
+    <div class="session-head">
       ${planLayout(draft.plan) !== 'weeks' ? '' : `<label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>`}
       <label class="grow">Session<input class="session-title" data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Session 1/Mondays/Off the Wall Warm Up"></label>
+      <div class="sess-more"><button type="button" class="more-btn" data-act="sess-menu" aria-haspopup="menu" aria-expanded="false" aria-label="Session Options">${DOTS}</button>
+        <div class="sess-menu" role="menu" aria-label="Session Options" hidden>${first ? '' : item('up', 'Move Earlier')}${last ? '' : item('down', 'Move Later')}${
+          item('dup', 'Duplicate Session')}<div class="sep" role="separator"></div>${item('del-session', 'Remove Session', 'danger')}</div></div>
     </div>
-    <label>Details<textarea data-s="${i}" data-f="details" rows="2" data-grow
-      placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
-    <div class="ex-list">${s.exercises.map((_, e) => exEditHTML(s, i, e)).join('')}</div>
-    <button type="button" class="add-ex" data-act="add-ex" data-s="${i}">+ Add Exercise</button>
-    <div class="session-foot">
-      <span class="row">${first ? '' : `<button type="button" data-act="up" data-s="${i}">Move Earlier</button>`}${last ? '' : `<button type="button" data-act="down" data-s="${i}">Move Later</button>`}</span>
-      <span class="row"><button type="button" data-act="dup" data-s="${i}">Duplicate Session</button>
-        <button type="button" class="ghost danger" data-act="del-session" data-s="${i}">Remove Session</button></span>
-    </div>
+    ${s.details || draft.details.has(s.id) ? `<label>Details<textarea data-s="${i}" data-f="details" rows="2" data-grow
+      placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>`
+      : `<button type="button" class="add-details" data-act="add-details" data-s="${i}">+ Add Details</button>`}
+    ${exs.length ? `<div class="ex-head"><h3>Exercises</h3><span class="hint">Tap one to change it.</span></div>
+      <div class="ex-list">${exs.map((x, e) => x === draft.openEx ? exEditHTML(s, i, e) : exRowHTML(s, i, e)).join('')}</div>
+      <button type="button" class="add-ex" data-act="browse" data-s="${i}">+ Add Exercises</button>`
+    : `<div class="ex-empty"><h3>No Exercises Yet</h3><p class="muted">Pick from your Exercises &amp; Drills, or type a new one.</p>
+      <button type="button" class="fill" data-act="browse" data-s="${i}">+ Add Exercises</button></div>`}
     ${draft.savedIds.has(s.id) ? notesHTML(s.id) : ''}
   </article>`;
 }
 const sessionLabel = (s, k) => s.title.trim() || `Session ${k + 1}`;
+function sessionLabelOf(id) {
+  const S = draft.sessions, i = S.findIndex(s => s.id === id);
+  return i < 0 ? '' : sessionLabel(S[i], displayOrder().filter(j => S[j].week === S[i].week).indexOf(i));
+}
 // A week's sessions: a tab each (and + Add Session), then the picked one. draft.tab[week] remembers the pick.
 function weekSessionsHTML(w, list) {
   const S = draft.sessions, pick = list.some(({ i }) => S[i].id === draft.tab[w]) ? draft.tab[w] : S[list[0]?.i]?.id;
@@ -164,10 +199,13 @@ function renderEditor() {
       <label class="check" title="Shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan</label>
       <label class="pd-overview">Overview<textarea data-p="overview" rows="3" data-grow placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
     </section>
-    <div class="plan-sessions">${sessionsHTML}</div></div>
+    <div class="plan-work"><div class="plan-sessions">${sessionsHTML}</div>
+      <aside class="card exb-panel" id="exPanel" aria-labelledby="exPanelTitle"><h2 id="exPanelTitle">Exercises &amp; Drills</h2><p class="hint exb-to"></p>${exbShellHTML()}</aside>
+    </div></div>
     <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Training Plan</button><button class="ghost small" data-act="copy-plan">Copy to Another Student</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
   }
 
+  const panelTop = $('#exPanel .exb-list')?.scrollTop;   // the panel keeps its place through redraws
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
     <div class="page-head"><div><span class="eyebrow">${p.active ? 'Current Plan' : 'Plan'} · ${esc(p.student.name)}</span>
       <h1>${esc(p.title.trim() || 'Untitled Plan')}</h1></div>
@@ -177,11 +215,14 @@ function renderEditor() {
       <button class="primary" data-act="save">Save Plan</button></div>
     </div></div>
     ${body}`, { keepScroll: true });
+  renderExPanel();
+  if (panelTop) $('#exPanel .exb-list').scrollTop = panelTop;
 
   // In braces: a handler that returns false cancels the press, and fields stop taking clicks.
   app.onpointerdown = draft.preview ? null : e => { dragSort(e, EX_DRAG) || dragSort(e, TAB_DRAG); };
   app.oninput = e => {
     const t = e.target, d = t.dataset;
+    if (t.closest('#exPanel')) { exb.q = t.value; renderExPanel(); return; }   // the panel's search
     if (d.p && t.type !== 'checkbox' && t.type !== 'radio') draft.plan[d.p] = t.value;
     else if (d.b != null) {
       // A block's name or length; a new length moves the dates of it and every later block.
@@ -210,15 +251,39 @@ function renderEditor() {
   };
   app.onclick = async e => {
     // A session's tab: showSession (student-view.js) switches it; remember the pick for the next redraw.
-    const tab = e.target.closest('[data-tab][data-week]');
+    if (e.target.closest('#exPanel')) return exPanelClick(e);
+    // The panel adds to the session last clicked in (or picked by its tab).
+    const tab = e.target.closest('[data-tab][data-week]'), sess = e.target.closest('.session-edit');
+    if (tab || sess) { const id = tab ? tab.dataset.tab : sess.dataset.session; if (id !== exb.sid) { exb.sid = id; renderExPanel(); } }
     if (tab) { draft.tab[tab.dataset.week] = tab.dataset.tab; return; }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const S = draft.sessions, i = +b.dataset.s, x = +b.dataset.e;
+    if (b.dataset.act === 'sess-menu') return toggleSessMenu(b);
+    closeSessMenus();
+    // Opening and closing an exercise, Details and the browser change what's shown, not the plan.
+    switch (b.dataset.act) {
+      case 'open-ex': case 'close-ex': {
+        const was = draft.openEx;
+        draft.openEx = b.dataset.act === 'open-ex' ? S[i].exercises[x] : null;
+        renderEditor();
+        const at = draft.openEx ?? was, sid = S.find(s => s.exercises.includes(at))?.id, list = sid && app.querySelector(`[data-session="${sid}"] .ex-list`);
+        const el = list?.children[S.find(s => s.id === sid).exercises.indexOf(at)];
+        el?.scrollIntoView({ block: 'nearest' });
+        (draft.openEx ? el : el?.querySelector('button'))?.focus({ preventScroll: true });
+        return;
+      }
+      case 'add-details': {
+        draft.details.add(S[i].id);
+        renderEditor();
+        app.querySelector(`[data-session="${S[i].id}"] [data-f="details"]`)?.focus();
+        return;
+      }
+      case 'browse': return openExBrowser(S[i].id);
+    }
     const pick = s => { draft.tab[s.week] = s.id; };   // a new or copied session opens on its tab
     let copied = null;
     switch (b.dataset.act) {
-      case 'add-ex': S[i].exercises.push(blankEx()); break;
       case 'del-ex': S[i].exercises.splice(x, 1); break;
       case 'ex-up': case 'ex-down': {
         const y = x + (b.dataset.act === 'ex-up' ? -1 : 1), list = S[i].exercises;
@@ -281,9 +346,49 @@ function renderEditor() {
   };
 }
 
-// Drag to reorder (drag.js). An exercise moves by its grip within its own session.
+// A session's ⋯ menu. A click anywhere else or Escape closes it.
+function toggleSessMenu(b) {
+  const m = b.nextElementSibling, open = m.hidden;
+  closeSessMenus();
+  m.hidden = !open;
+  b.setAttribute('aria-expanded', open);
+  if (open) m.querySelector('button').focus();
+}
+function closeSessMenus() {
+  app.querySelectorAll('.sess-menu:not([hidden])').forEach(m => { m.hidden = true; m.previousElementSibling.setAttribute('aria-expanded', 'false'); });
+}
+document.addEventListener('click', e => { if (!e.target.closest?.('.sess-more')) closeSessMenus(); });
+document.addEventListener('keydown', e => {
+  const m = e.key === 'Escape' && app.querySelector('.sess-menu:not([hidden])');
+  if (m) { closeSessMenus(); m.previousElementSibling.focus(); }
+});
+
+// From the exercise browser: adds exercises by name to the end of a session. A master exercise brings its values
+// (filledFrom, so its name's values aren't filled in again); a new one opens, with Sets focused, for the coach to fill in.
+function addExercises(sid, names) {
+  const s = draft.sessions.find(x => x.id === sid);
+  if (!s || !names.length) return;
+  const from = s.exercises.length;
+  let open = null;
+  for (const name of names) {
+    const m = draft.library.find(y => y.name_key === exKey(name));
+    const x = m ? { name: m.name, ...Object.fromEntries(EX_FIELDS.map(([f]) => [f, m[f] ?? ''])) } : { ...blankEx(), name };
+    if (m) filledFrom.set(x, m.name_key); else open ||= x;
+    s.exercises.push(x);
+  }
+  if (open) draft.openEx = open;
+  markDirty();
+  renderEditor();
+  const list = [...app.querySelectorAll(`[data-session="${sid}"] .ex-list > [data-ex]`)].slice(from);
+  list.forEach(el => el.classList.add('just-added'));
+  const el = open ? list[s.exercises.slice(from).indexOf(open)] : list.at(-1);
+  el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  if (open) el?.querySelector('[data-f="sets"]')?.focus({ preventScroll: true });
+}
+
+// Drag to reorder (drag.js). An exercise (row or open card) moves by its grip within its own session.
 const EX_DRAG = {
-  handle: '.ex-edit .grip', item: h => h.closest('.ex-edit'), lists: el => [el.parentNode], items: '.ex-edit', axis: 'y',
+  handle: '.ex-list .grip', item: h => h.closest('[data-ex]'), lists: el => [el.parentNode], items: '[data-ex]', axis: 'y',
   drop(el, list, index) {
     const g = el.querySelector('.grip'), all = draft.sessions[+g.dataset.s].exercises, from = +g.dataset.e;
     if (from === index) return;

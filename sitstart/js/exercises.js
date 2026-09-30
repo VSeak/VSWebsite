@@ -323,3 +323,165 @@ document.addEventListener('keydown', e => {
 exMenu.addEventListener('mousedown', e => e.preventDefault());   // keep focus in the field
 exMenu.addEventListener('click', e => { const li = e.target.closest('li'); if (li) exMenuPick(+li.dataset.k); });
 addEventListener('resize', () => exMenuFor && exMenuOpen(exMenuFor));
+
+// ---------- The exercise browser: + Add Exercises in the plan editor ----------
+// Every master exercise, found by search and purpose chips. Under EXB_WIDE it's a sheet (#exSheet): tick as many as
+// you like, then Add n Exercises. On a wide screen it's a panel beside the sessions (#exPanel, drawn by renderEditor),
+// where each row's + Add adds straight away to the shown session (exb.sid, the last one clicked). Either way the
+// exercise's values are copied (addExercises). Typed text that isn't on the list can be added as a new exercise,
+// which Save Plan puts on the list (addToMasterList). Used Lately: the exercises most used in this plan and the
+// coach's last few plans (draft.recent).
+const EXB_WIDE = matchMedia('(min-width: 1000px)');   // matches .plan-work in styles.css
+const EXB_RECENT = 5;
+const exb = { q: '', purpose: '', picked: new Map(), sid: null };   // picked: key → name, in the order ticked
+const EXB_ICON = {
+  search: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  close: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  tick: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+};
+// "5 × 4 tries · Rest 3 min": an exercise's values on one line (rest: say "Rest").
+const exSummary = (x, rest = true) => {
+  const v = f => String(x[f] ?? '').trim(), sets = v('sets'), reps = v('reps');
+  return [sets && reps ? `${sets} × ${reps}` : sets || reps, v('rest') && (rest ? `Rest ${v('rest')}` : v('rest'))].filter(Boolean).join(' · ');
+};
+const exbHit = (s, q) => { const i = q ? s.toLowerCase().indexOf(q) : -1;
+  return i < 0 ? esc(s) : `${esc(s.slice(0, i))}<mark>${esc(s.slice(i, i + q.length))}</mark>${esc(s.slice(i + q.length))}`; };
+const exbShellHTML = () => `<div class="exb-search">${EXB_ICON.search}<input type="search" value="${esc(exb.q)}" placeholder="Search by name or purpose" aria-label="Search exercises" autocomplete="off"></div>
+  <div class="exb-chips" role="tablist" aria-label="Purposes"></div><div class="exb-list"></div>`;
+
+// The master exercises matching the search (names first, as in #exMenu) and a purpose.
+function exbMatches(purpose = exb.purpose) {
+  const q = exKey(exb.q);
+  const rank = x => !q || x.name_key.startsWith(q) ? 0 : x.name_key.includes(q) ? 1 : (x.purposes ?? []).some(h => exKey(h).includes(q)) ? 2 : 3;
+  return draft.library.filter(x => rank(x) < 3 && (!purpose || (x.purposes ?? []).includes(purpose)))
+    .sort((a, b) => (rank(a) - rank(b)) || a.name_key.localeCompare(b.name_key));
+}
+
+// here: the session's own exercises, left out (they're already in it).
+function exbRecent(here) {
+  const n = new Map();
+  for (const x of [...draft.recent, ...draft.sessions.flatMap(s => s.exercises)]) {
+    const k = exKey(x.name);
+    if (k) n.set(k, (n.get(k) || 0) + 1);
+  }
+  return draft.library.filter(x => n.has(x.name_key) && !here.has(x.name_key))
+    .sort((a, b) => (n.get(b.name_key) - n.get(a.name_key)) || a.name_key.localeCompare(b.name_key)).slice(0, EXB_RECENT);
+}
+
+// All, then the purposes in use among the search's matches, with counts (a picked one stays, even at 0).
+function exbChipsHTML() {
+  const all = exbMatches(''), n = new Map();
+  all.forEach(x => (x.purposes ?? []).forEach(h => n.set(h, (n.get(h) || 0) + 1)));
+  if (exb.purpose && !n.has(exb.purpose)) n.set(exb.purpose, 0);
+  const chip = (g, label, k) => `<button type="button" role="tab" data-purpose="${esc(g)}" aria-selected="${g === exb.purpose}">${esc(label)}<span class="count">${k}</span></button>`;
+  return chip('', 'All', all.length) + [...n].sort((a, b) => a[0].localeCompare(b[0])).map(([g, k]) => chip(g, g, k)).join('');
+}
+
+// wide: the panel's rows (+ Add) instead of the sheet's (a tick to press).
+function exbListHTML(wide) {
+  const s = draft.sessions.find(x => x.id === exb.sid);
+  const here = new Set((s?.exercises ?? []).map(x => exKey(x.name)));
+  const q = exKey(exb.q), text = exb.q.trim(), list = exbMatches();
+  const item = x => {
+    const tag = here.has(x.name_key) ? '<span class="tag">In Session</span>' : '', sum = exSummary(x, false);
+    const sub = x.purposes?.length ? `<span class="exb-sub">${x.purposes.map(h => exbHit(h, q)).join(' · ')}</span>` : '';
+    if (wide) return `<li class="exb-item"><span class="exb-main"><span class="exb-name">${exbHit(x.name, q)}${tag}</span>
+      ${sum ? `<span class="exb-val">${esc(sum)}</span>` : ''}${sub}</span><button type="button" class="small" data-add="${esc(x.name_key)}">+ Add</button></li>`;
+    const on = exb.picked.has(x.name_key);
+    return `<li><button type="button" class="exb-item" data-key="${esc(x.name_key)}" aria-pressed="${on}"><span class="tick">${on ? EXB_ICON.tick : ''}</span>
+      <span class="exb-main"><span class="exb-name">${exbHit(x.name, q)}${tag}</span>${sub}</span>${sum ? `<span class="exb-val">${esc(sum)}</span>` : ''}</button></li>`;
+  };
+  let head;
+  if (text) head = `${exb.purpose ? `${esc(exb.purpose)}: ` : ''}Matches for “${esc(text)}” · ${list.length}`;
+  else if (exb.purpose) head = `${esc(exb.purpose)} · ${list.length}`;
+  else {
+    const recent = draft.library.length > 8 ? exbRecent(here) : [];
+    head = recent.length ? `Used Lately</h3><ul>${recent.map(item).join('')}</ul><h3 class="exb-grp">All, A to Z` : 'All, A to Z';
+  }
+  // Not on the list yet: add the typed text as a new exercise.
+  const isNew = text && !draft.library.some(x => x.name_key === q), nk = 'new:' + q;
+  const sub = 'Not on the list? Adds it here, and to Exercises &amp; Drills when you save.';
+  const add = !isNew ? '' : wide
+    ? `<li class="exb-item"><span class="exb-main"><span class="exb-name">New Exercise “${esc(text)}”</span><span class="exb-sub">${sub}</span></span><button type="button" class="small" data-new>+ Add</button></li>`
+    : `<li><button type="button" class="exb-item exb-new" data-new aria-pressed="${exb.picked.has(nk)}"><span class="${exb.picked.has(nk) ? 'tick' : 'plus'}">${exb.picked.has(nk) ? EXB_ICON.tick : EXB_ICON.plus}</span>
+      <span class="exb-main"><span class="exb-name">New Exercise “${esc(text)}”</span><span class="exb-sub">${sub}</span></span></button></li>`;
+  const none = list.length ? '' : `<p class="muted exb-none">${draft.library.length ? 'No exercise matches that.' : 'Nothing on your Exercises &amp; Drills list yet. Type a name to add a new one.'}</p>`;
+  return `<h3 class="exb-grp">${head}</h3>${none}<ul>${list.map(item).join('')}${add}</ul>`;
+}
+
+function exbRender(root, wide) {
+  root.querySelector('.exb-chips').innerHTML = exbChipsHTML();
+  root.querySelector('.exb-list').innerHTML = exbListHTML(wide);
+  if (wide) return;
+  const n = exb.picked.size, add = root.querySelector('[data-addpicked]');
+  root.querySelector('.exb-count').textContent = n ? `${n} Picked` : '';
+  root.querySelector('[data-clear]').disabled = !n;
+  add.disabled = !n;
+  add.textContent = n ? `Add ${n} Exercise${n === 1 ? '' : 's'}` : 'Add Exercises';
+}
+
+const exSheet = Object.assign(document.createElement('dialog'), { id: 'exSheet', className: 'exb-sheet' });
+exSheet.setAttribute('aria-labelledby', 'exSheetTitle');
+document.body.append(exSheet);
+
+// + Add Exercises: the sheet, or on a wide screen the panel's search.
+function openExBrowser(sid) {
+  exb.sid = sid;
+  const panel = $('#exPanel');
+  if (EXB_WIDE.matches && panel) { renderExPanel(); panel.querySelector('input').focus(); return; }
+  exb.q = ''; exb.purpose = ''; exb.picked.clear();
+  exSheet.innerHTML = `<div class="exb-head"><div><h2 id="exSheetTitle">Add Exercises</h2><p class="hint">To ${esc(sessionLabelOf(sid))} · tick as many as you like</p></div>
+    <button type="button" class="exb-close" data-close aria-label="Close">${EXB_ICON.close}</button></div>
+    ${exbShellHTML()}
+    <div class="exb-foot"><button type="button" class="exb-clear" data-clear>Clear</button><span class="exb-count" aria-live="polite"></span>
+      <button type="button" class="exb-add" data-addpicked>Add Exercises</button></div>`;
+  exbRender(exSheet, false);
+  exSheet.showModal();
+}
+
+exSheet.addEventListener('input', e => { exb.q = e.target.value; exbRender(exSheet, false); });
+// Its search and picks end with it (the wide-screen panel shares exb).
+exSheet.addEventListener('close', () => { exb.q = ''; exb.purpose = ''; exb.picked.clear(); });
+exSheet.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const d = b.dataset;
+  if ('close' in d) return exSheet.close();
+  if ('addpicked' in d) { const names = [...exb.picked.values()]; exSheet.close(); return addExercises(exb.sid, names); }
+  // Redraws replace the buttons, so the focus goes back to the same one.
+  let again = null;
+  if (d.purpose != null) { exb.purpose = d.purpose; again = `[data-purpose="${CSS.escape(d.purpose)}"]`; }
+  else if (d.key) {
+    const x = draft.library.find(y => y.name_key === d.key);
+    if (exb.picked.has(d.key)) exb.picked.delete(d.key); else exb.picked.set(d.key, x.name);
+    again = `[data-key="${CSS.escape(d.key)}"]`;
+  } else if ('new' in d) {
+    const k = 'new:' + exKey(exb.q);
+    if (exb.picked.has(k)) exb.picked.delete(k); else exb.picked.set(k, exb.q.trim().slice(0, 200));
+    again = '[data-new]';
+  } else if ('clear' in d) exb.picked.clear();
+  else return;
+  exbRender(exSheet, false);
+  (again && exSheet.querySelector(again))?.focus();
+});
+
+// The wide-screen panel, after renderEditor draws it: for the shown session the coach last clicked in (or the first).
+function exbTargetId() {
+  const shown = [...app.querySelectorAll('.session-edit:not([hidden])')].map(el => el.dataset.session);
+  return shown.includes(exb.sid) ? exb.sid : shown[0] ?? null;
+}
+function renderExPanel() {
+  const p = $('#exPanel');
+  if (!p) return;
+  exb.sid = exbTargetId();
+  p.querySelector('.exb-to').textContent = exb.sid ? `Adds to ${sessionLabelOf(exb.sid)}` : 'Add a session first.';
+  exbRender(p, true);
+}
+function exPanelClick(e) {
+  const b = e.target.closest('button'), d = b?.dataset;
+  if (!b) return;
+  if (d.purpose != null) { exb.purpose = d.purpose; renderExPanel(); $(`#exPanel [data-purpose="${CSS.escape(d.purpose)}"]`)?.focus(); }
+  else if (d.add) addExercises(exb.sid, [draft.library.find(y => y.name_key === d.add).name]);
+  else if ('new' in d) { const t = exb.q.trim().slice(0, 200); exb.q = ''; addExercises(exb.sid, [t]); }
+}

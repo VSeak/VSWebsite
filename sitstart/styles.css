@@ -507,13 +507,17 @@ body:has(.savebar.unsaved) main { padding-bottom: 7rem; }
   body:has(.savebar.unsaved) main { padding-bottom: 8rem; }
   body:has(.savebar.unsaved) #flash { bottom: 5.5rem; }
 }
-.session-edit .wk { width: 90px; }
-/* Repeat Weekly / Week by Week switch: two radios drawn as one pill */
+.session-edit .wk, .block-fields .wk { width: 90px; }
+/* Training Blocks: a block's name and length, under its heading */
+.block-fields { margin: .5rem 0 .9rem; align-items: flex-start; }
+/* Radios drawn as one pill: Repeat Weekly / Week by Week / Training Blocks, and the Coach Notes filter */
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--field); }
 .seg label { margin: 0; padding: .35rem .9rem; border-radius: 999px; cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--muted); }
 .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The plan layout switch fills the width on a phone, so its three options fit */
+@media (max-width: 480px) { .pd-layout .seg { display: flex; } .pd-layout .seg label { flex: 1; text-align: center; padding: .35rem .3rem; font-size: .84rem; } }
 /* Plan editor: Plan Details over the sessions (title and start date side by side on a wide screen), then the sessions as tabs */
 .plan-grid { display: flex; flex-direction: column; gap: 1.4rem; }
 .plan-details { display: grid; gap: .8rem; }

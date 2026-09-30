@@ -7,10 +7,10 @@ async function adminStudent(id, again = false) {
   const restore = again && keepEdits(again);
   if (!again) view(loading);
   const [s, coaches, notes, cnotes, log] = await Promise.all([
-    sb.from('students').select('*, plans(id,title,active,start_date,repeats,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
+    sb.from('students').select('*, plans(id,title,active,start_date,repeats,blocks,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
-    sb.from('notes').select('id,session_id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,student_id))')
+    sb.from('notes').select('id,session_id,body,created_at,session:sessions!inner(title,week,plan:plans!inner(id,title,repeats,blocks,student_id))')
       .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).then(must),
     sb.from('coach_notes').select('*').eq('student_id', id).then(must),
     sb.from('session_history').select('*').eq('student_id', id).then(must),
@@ -47,7 +47,7 @@ async function adminStudent(id, again = false) {
   <div class="grid2 phone-order" data-folds="student">
     <div>
       <section class="card" id="planCard">
-        ${current ? `<span class="eyebrow">Current Plan · ${current.repeats ? 'Repeats Weekly' : 'Week by Week'}</span>
+        ${current ? `<span class="eyebrow">Current Plan · ${layoutName(current)}</span>
         <h2 class="plan-title">${esc(current.title || 'Untitled Plan')}</h2>
         <p class="muted">${current.start_date ? fmtStart(current.start_date) : 'No start date'}</p>
         <div class="row"><a class="fill grow" href="#/plan/${current.id}">Open Plan</a>${edit ? '<button type="button" data-act="new-plan">+ New Plan</button>' : ''}</div>`

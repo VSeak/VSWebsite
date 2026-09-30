@@ -8,7 +8,7 @@ const accountStatus = s => s.user_id ? 'Active' : s.invited_at ? 'Invited' : 'No
 const noteFeedItem = (n, name) => `<a class="note-link" href="#/plan/${n.session?.plan?.id}/${n.session_id}"><span class="note-meta">
     ${name ? `<strong>${esc(name)}</strong> · ` : ''}${fmtWhen(n.created_at)} ·
     <span class="note-plan">${esc(n.session?.plan?.title || 'Untitled Plan')}, ${n.session?.plan?.repeats
-      ? esc(n.session?.title || 'Session') : `Week ${n.session?.week}`}</span></span>
+      ? esc(n.session?.title || 'Session') : `${n.session?.plan?.blocks ? 'Block' : 'Week'} ${n.session?.week}`}</span></span>
     <span class="bub">${para(n.body, false)}</span></a>`;
 // The student's initials, in a round badge.
 const initials = name => esc((name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase());
@@ -21,7 +21,7 @@ async function adminStudents() {
   view(loading);
   const [students, recent, coachList] = await Promise.all([
     sb.from('students').select(`id,name,pronouns,email,invited_at,user_id,coach_id,training_ended_at,${NEXT_COLS},plans(id,title,active)`).order('name').then(must),
-    sb.from('notes').select('id,session_id,body,created_at,session:sessions(title,week,plan:plans(id,title,repeats,student:students(id,name,email,coach_id)))')
+    sb.from('notes').select('id,session_id,body,created_at,session:sessions(title,week,plan:plans(id,title,repeats,blocks,student:students(id,name,email,coach_id)))')
       .eq('from_coach', false).order('created_at', { ascending: false }).limit(40).then(must),
     sb.rpc('coach_list').then(must),
   ]);

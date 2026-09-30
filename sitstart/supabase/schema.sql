@@ -59,6 +59,9 @@ create table public.plans (
   start_date date,
   -- true = Repeat Weekly: one week of sessions (all week 1), done every week. false = Week by Week.
   repeats boolean not null default true,
+  -- Training Blocks (repeats is false): [{"name": "Strength", "weeks": 4}, ...] in order, each block's sessions done every
+  -- week of the block, a session's week being its block's number. Null = Repeat Weekly or Week by Week.
+  blocks jsonb check (blocks is null or (jsonb_typeof(blocks) = 'array' and jsonb_array_length(blocks) between 1 and 52)),
   active boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

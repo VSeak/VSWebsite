@@ -247,12 +247,29 @@ const planTag = p => `<span class="tag${p.active ? ' ok' : ''}">${planStatus(p)}
 // "Started Sep 1, 2026" once the day has come (today included), "Starts on Oct 3, 2026" before.
 const fmtStart = d => (day(d) <= new Date() ? 'Started ' : 'Starts on ') + fmtDate(d);
 const fmtWhen = t => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-function weekRange(start, w) {
+// Weeks w to w + n - 1 of a plan, as "Oct 1 – Oct 7".
+function weekRange(start, w, n = 1) {
   if (!start) return '';
   const a = day(start); a.setDate(a.getDate() + 7 * (w - 1));
-  const b = new Date(a); b.setDate(b.getDate() + 6);
+  const b = new Date(a); b.setDate(b.getDate() + 7 * n - 1);
   const f = x => x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return `${f(a)} – ${f(b)}`;
+}
+// A plan's layout: 'weekly' (Repeat Weekly), 'weeks' (Week by Week) or 'blocks' (Training Blocks, plans.blocks).
+const planLayout = p => p.blocks ? 'blocks' : p.repeats ? 'weekly' : 'weeks';
+const layoutName = p => ({ weekly: 'Repeats Weekly', weeks: 'Week by Week', blocks: 'Training Blocks' })[planLayout(p)];
+// Training Blocks: block k (from 1) runs blockWeeks(b) weeks, starting at week blockStart(blocks, k) of the plan.
+const blockWeeks = b => Math.min(52, Math.max(1, parseInt(b?.weeks, 10) || 1));
+const blockStart = (blocks, k) => 1 + blocks.slice(0, k - 1).reduce((n, b) => n + blockWeeks(b), 0);
+const blockName = (b, k) => `Block ${k}${b?.name?.trim() ? `: ${b.name.trim()}` : ''}`;
+const blockRange = (start, blocks, k) => weekRange(start, blockStart(blocks, k), blockWeeks(blocks[k - 1]));
+const blockLength = b => { const n = blockWeeks(b); return `Every week for ${n} week${n > 1 ? 's' : ''}`; };
+// The block today falls in, or 0 (before the start, after the last block, or no start date).
+function blockNow(start, blocks) {
+  if (!start || !blocks?.length) return 0;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const w = Math.floor(Math.round((today - day(start)) / 864e5) / 7) + 1;
+  return blocks.findIndex((b, i) => w >= blockStart(blocks, i + 1) && w < blockStart(blocks, i + 1) + blockWeeks(b)) + 1;
 }
 
 // Sign-in links (only ever sent by the coach: invites and new sign-in links) go through a separate

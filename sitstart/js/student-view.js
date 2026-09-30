@@ -4,15 +4,23 @@
 function planReadHTML(plan, sessions, { notes = true } = {}) {
   const weeks = byWeek(sessions);
   return `<div class="plan-read"><header class="plan-head">
-      <p class="eyebrow">${planStatus(plan)} Plan · ${plan.repeats ? 'Repeats Weekly' : 'Week by Week'}</p>
+      <p class="eyebrow">${planStatus(plan)} Plan · ${layoutName(plan)}</p>
       <h1>${esc(plan.title || 'Untitled Plan')}</h1>
       ${plan.start_date ? `<p class="muted plan-start">${fmtStart(plan.start_date)}</p>` : ''}
       ${plan.overview ? `<div class="prose">${para(plan.overview)}</div>` : ''}
     </header>
     ${!weeks.length ? '<p class="muted">No sessions in this plan yet.</p>'
+    : plan.blocks ? weeks.map(([k, list]) => weekHTML(blockHeadHTML(plan, k), list, notes)).join('')
     : plan.repeats ? weekHTML('', sessions, notes)
     : weeks.map(([w, list]) => weekHTML(`<h2>Week ${w} <span class="muted">${weekRange(plan.start_date, w)}</span></h2>`, list, notes)).join('')}
   </div>`;
+}
+
+// A training block's heading: its name, Now while today is in it, then how long it runs and its dates.
+function blockHeadHTML(plan, k) {
+  const b = plan.blocks[k - 1], range = blockRange(plan.start_date, plan.blocks, k);
+  return `<h2>${esc(blockName(b, k))}${blockNow(plan.start_date, plan.blocks) === k ? ' <span class="tag ok">Now</span>' : ''}
+    <span class="muted">${blockLength(b)}${range ? ` · ${range}` : ''}</span></h2>`;
 }
 
 const weekHTML = (head, list, notes) => `<section class="week">${head}

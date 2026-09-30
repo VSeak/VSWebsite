@@ -95,7 +95,7 @@ function exEditHTML(s, i, e) {
 function sessionEditHTML(s, i, shown, first, last) {
   return `<article class="card session-edit" data-session="${s.id}"${shown ? '' : ' hidden'}>
     <div class="row">
-      ${draft.plan.repeats ? '' : `<label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>`}
+      ${planLayout(draft.plan) !== 'weeks' ? '' : `<label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>`}
       <label class="grow">Session<input class="session-title" data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Session 1/Mondays/Off the Wall Warm Up"></label>
     </div>
     <label>Details<textarea data-s="${i}" data-f="details" rows="2" data-grow
@@ -129,7 +129,16 @@ function renderEditor() {
     body = planReadHTML(p, order.map(i => draft.sessions[i]), { notes: false });
   } else {
     const weeks = byWeek(order.map(i => ({ week: draft.sessions[i].week, i })));
-    const sessionsHTML = p.repeats ? `<section class="week">
+    const first = esc(p.student.name.split(' ')[0]), L = planLayout(p);
+    const sessionsHTML = L === 'blocks' ? `${p.blocks.map((b, j) => `<section class="week">
+      <div class="week-head"><h2>Block ${j + 1} <span class="muted" data-range="${j + 1}">${blockRange(p.start_date, p.blocks, j + 1)}</span></h2>
+        ${p.blocks.length > 1 ? `<button type="button" class="small ghost danger" data-act="del-week" data-week="${j + 1}">Remove Block</button>` : ''}</div>
+      <div class="row block-fields"><label class="grow">Block Name<input data-b="${j}" data-bf="name" value="${esc(b.name || '')}" maxlength="60" placeholder="e.g. Strength/Power/Deload"></label>
+        <label class="wk">Weeks<input type="number" min="1" max="52" data-b="${j}" data-bf="weeks" value="${esc(b.weeks ?? '')}" required data-need="Between 1 and 52 weeks."></label></div>
+      ${weekSessionsHTML(j + 1, weeks.find(([w]) => w === j + 1)?.[1] || [])}
+    </section>`).join('')}
+    <div class="row" style="margin-top:1.4rem"><button data-act="add-block">+ Add Block</button></div>`
+    : L === 'weekly' ? `<section class="week">
       <h2>Every Week <span class="muted">Repeat these sessions each week</span></h2>
       ${weeks.length ? '' : '<p class="muted">No sessions yet. Add the first one.</p>'}
       ${weekSessionsHTML(1, weeks[0]?.[1] || [])}
@@ -144,10 +153,12 @@ function renderEditor() {
     body = `<div class="plan-grid">
     <section class="card plan-details"><h2>Plan Details</h2>
       <div class="stack pd-layout" style="gap:.3rem"><div class="seg" role="radiogroup" aria-label="Plan Layout">
-        <label><input type="radio" name="layout" data-p="repeats" value="1" ${p.repeats ? 'checked' : ''}>Repeat Weekly</label>
-        <label><input type="radio" name="layout" data-p="repeats" value="0" ${p.repeats ? '' : 'checked'}>Week by Week</label>
+        ${[['weekly', 'Repeat Weekly'], ['weeks', 'Week by Week'], ['blocks', 'Training Blocks']].map(([v, label]) =>
+          `<label><input type="radio" name="layout" data-p="layout" value="${v}" ${L === v ? 'checked' : ''}>${label}</label>`).join('')}
       </div>
-      <p class="hint" style="margin:0">${p.repeats ? `One week of sessions ${esc(p.student.name.split(' ')[0])} repeats every week.` : 'A different set of sessions for each week, with dates from the start date.'}</p></div>
+      <p class="hint" style="margin:0">${{ weekly: `One week of sessions ${first} repeats every week.`,
+        weeks: 'A different set of sessions for each week, with dates from the start date.',
+        blocks: `Blocks of weeks in order (e.g. strength, then power), each with sessions ${first} repeats every week of the block.` }[L]}</p></div>
       <label>Training Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="e.g. Spring Power Block" required data-need="Give the plan a title."></label>
       <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label>
       <label class="check" title="Shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan</label>
@@ -172,7 +183,12 @@ function renderEditor() {
   app.oninput = e => {
     const t = e.target, d = t.dataset;
     if (d.p && t.type !== 'checkbox' && t.type !== 'radio') draft.plan[d.p] = t.value;
-    else if (d.s != null && d.f !== 'week') {
+    else if (d.b != null) {
+      // A block's name or length; a new length moves the dates of it and every later block.
+      const B = draft.plan.blocks;
+      B[+d.b][d.bf] = t.value;
+      if (d.bf === 'weeks') app.querySelectorAll('[data-range]').forEach(el => { el.textContent = blockRange(draft.plan.start_date, B, +el.dataset.range); });
+    } else if (d.s != null && d.f !== 'week') {
       const s = draft.sessions[+d.s];
       if (d.e == null) s[d.f] = t.value;
       else if (d.f === 'name') setExName(s.exercises[+d.e], t);
@@ -182,7 +198,7 @@ function renderEditor() {
   };
   app.onchange = e => {
     const t = e.target, d = t.dataset;
-    if (d.p === 'repeats') return setRepeats(t.value === '1');
+    if (d.p === 'layout') return setLayout(t.value);
     if (d.p === 'active') { draft.plan.active = t.checked; markDirty(); }
     if (d.p === 'start_date') renderEditor();          // week date ranges
     if (d.f === 'week') {
@@ -211,6 +227,7 @@ function renderEditor() {
       }
       case 'add-session': { const s = blankSession(+b.dataset.week); S.push(s); pick(s); break; }
       case 'add-week': { const s = blankSession(Math.max(0, ...S.map(s => s.week)) + 1); S.push(s); pick(s); break; }
+      case 'add-block': { draft.plan.blocks.push({ name: '', weeks: 4 }); const s = blankSession(draft.plan.blocks.length); S.push(s); pick(s); break; }
       // The copy is named "<name> (Copy)" and its Session title box is scrolled to and focused.
       case 'dup': {
         const k = displayOrder().filter(j => S[j].week === S[i].week).indexOf(i);
@@ -219,20 +236,23 @@ function renderEditor() {
       }
       case 'del-session': {
         const n = notesCtx.notes.filter(x => x.session_id === S[i].id).length;
-        const lastInWeek = !draft.plan.repeats && !S.some((x, k) => k !== i && x.week === S[i].week);
+        // Week by Week: a week is only its sessions, so the last one takes the week. A block stays (empty until saved).
+        const L = planLayout(draft.plan), lastInWeek = L === 'weeks' && !S.some((x, k) => k !== i && x.week === S[i].week);
         const name = S[i].title.trim() ? `“${esc(S[i].title.trim())}”` : 'This session';
         if (!await ask({ title: lastInWeek ? `Remove Week ${S[i].week}?` : 'Remove This Session?', warn: true, ok: 'Remove',
-          body: `<p>${lastInWeek ? `${name} is the only session in week ${S[i].week}, so the week will go too.` : `${name} will be removed${draft.plan.repeats ? '' : ` from week ${S[i].week}`}.`}</p>
+          body: `<p>${lastInWeek ? `${name} is the only session in week ${S[i].week}, so the week will go too.` : `${name} will be removed${L === 'weekly' ? '' : ` from ${L === 'blocks' ? 'block' : 'week'} ${S[i].week}`}.`}</p>
             ${n ? `<p>It has ${n} note${n > 1 ? 's' : ''}, which will be deleted when you save the plan.</p>` : ''}` })) return;
         S.splice(i, 1); break;
       }
-      // A whole week goes, and later weeks move up one so the weeks (and their dates) have no gap.
+      // A whole week (or block) goes, and later ones move up one so the weeks (and their dates) have no gap.
       case 'del-week': {
-        const w = +b.dataset.week, gone = S.filter(s => s.week === w);
+        const w = +b.dataset.week, gone = S.filter(s => s.week === w), B = draft.plan.blocks;
+        const unit = B ? 'Block' : 'Week', them = B ? 'blocks' : 'weeks', what = B ? blockName(B[w - 1], w) : `Week ${w}`;
         const n = notesCtx.notes.filter(x => gone.some(s => s.id === x.session_id)).length;
-        if (!await ask({ title: `Remove Week ${w}?`, warn: true, ok: 'Remove Week',
-          body: `<p>Week ${w} and its ${gone.length === 1 ? 'session' : `${gone.length} sessions`} will be removed${S.some(s => s.week > w) ? ', and later weeks move up one' : ''}.</p>
+        if (!await ask({ title: `Remove ${unit} ${w}?`, warn: true, ok: `Remove ${unit}`,
+          body: `<p>${esc(what)}${gone.length ? ` and its ${gone.length === 1 ? 'session' : `${gone.length} sessions`}` : ''} will be removed${w < (B ? B.length : Math.max(...S.map(s => s.week))) ? `, and later ${them} move up one` : ''}.</p>
             ${n ? `<p>${n === 1 ? 'One note' : `${n} notes`} on ${gone.length === 1 ? 'it' : 'them'} will be deleted when you save the plan.</p>` : ''}` })) return;
+        B?.splice(w - 1, 1);
         draft.sessions = S.filter(s => s.week !== w);
         draft.sessions.forEach(s => { if (s.week > w) s.week--; });
         draft.tab = Object.fromEntries(Object.entries(draft.tab).filter(([k]) => +k !== w).map(([k, id]) => [+k > w ? +k - 1 : +k, id]));
@@ -292,18 +312,20 @@ function moveSession(id, week, k) {
   markDirty(); renderEditor();
 }
 
-// Repeat Weekly keeps one week: the first week's sessions become week 1, and any later
-// weeks are removed from the draft (for good once the plan is saved).
-async function setRepeats(on) {
-  const S = draft.sessions;
-  if (on) {
+// Switching layouts. Repeat Weekly keeps one week (or block): the first one's sessions become week 1, and the
+// rest are removed from the draft (for good once the plan is saved). Week by Week and Training Blocks trade
+// week n for block n; a block's name and length are kept in the draft in case the coach switches back.
+async function setLayout(to) {
+  const p = draft.plan, from = planLayout(p), S = draft.sessions;
+  if (to === from) return;
+  if (to === 'weekly') {
     const first = Math.min(...S.map(s => s.week));
     const later = S.filter(s => s.week !== first);
     if (later.length) {
-      const weeks = new Set(later.map(s => s.week)).size;
+      const unit = from === 'blocks' ? 'block' : 'week', count = new Set(later.map(s => s.week)).size;
       const n = notesCtx.notes.filter(x => later.some(s => s.id === x.session_id)).length;
       if (!await ask({ title: 'Switch to Repeat Weekly?', warn: true, ok: 'Switch',
-        body: `<p>Repeat Weekly keeps only one week. Week ${first} stays, and ${weeks === 1 ? 'the other week' : `the other ${weeks} weeks`}
+        body: `<p>Repeat Weekly keeps only one week. ${from === 'blocks' ? esc(blockName(p.blocks[first - 1], first)) : `Week ${first}`} stays, and ${count === 1 ? `the other ${unit}` : `the other ${count} ${unit}s`}
           (${later.length} session${later.length > 1 ? 's' : ''}) will be removed.</p>
           ${n ? `<p>${n === 1 ? 'One note' : `${n} notes`} on those sessions will be deleted when you save the plan.</p>` : ''}` })) {
         renderEditor(); return;
@@ -312,7 +334,15 @@ async function setRepeats(on) {
     }
     draft.sessions.forEach(s => { s.week = 1; });
   }
-  draft.plan.repeats = on;
+  if (from === 'blocks') draft.oldBlocks = p.blocks;
+  if (to === 'blocks') {
+    // Weeks 1, 2, ... in order with no gaps, then a block for each (one week long from Week by Week, four from Repeat Weekly).
+    const ws = [...new Set(S.map(s => s.week))].sort((a, b) => a - b);
+    S.forEach(s => { s.week = ws.indexOf(s.week) + 1; });
+    draft.tab = {};
+    p.blocks = (ws.length ? ws : [1]).map((_, j) => draft.oldBlocks?.[j] || { name: '', weeks: from === 'weeks' ? 1 : 4 });
+  } else p.blocks = null;
+  p.repeats = to === 'weekly';
   markDirty();
   renderEditor();
 }
@@ -345,9 +375,13 @@ function sessionRows(planId) {
 }
 
 function savePlan(btn) {
-  const p = draft.plan;
+  const p = draft.plan, B = p.blocks;
+  // Training Blocks: every block needs a length (1 to 52 weeks) and at least one session.
+  const okWeeks = b => /^\d+$/.test(String(b.weeks ?? '').trim()) && +b.weeks >= 1 && +b.weeks <= 52;
   const missing = [!p.title.trim() && '[data-p="title"]', !p.start_date && '[data-p="start_date"]',
-    !draft.sessions.length && '[data-first]'].filter(Boolean);
+    ...(B ? B.flatMap((b, j) => [!okWeeks(b) && `[data-b="${j}"][data-bf="weeks"]`,
+      !draft.sessions.some(s => s.week === j + 1) && `[data-act="add-session"][data-week="${j + 1}"]`])
+      : [!draft.sessions.length && '[data-first]'])].filter(Boolean);
   if (missing.length) {
     if (draft.preview) { draft.preview = false; renderEditor(); }
     const els = missing.map(sel => $(sel));
@@ -355,6 +389,7 @@ function savePlan(btn) {
     els[0].focus();
     return;
   }
+  if (B) p.blocks = B.map(b => ({ name: (b.name || '').trim(), weeks: +b.weeks }));
   return busy(btn, async () => {
     const rows = sessionRows(p.id);
     // The database turns the student's other current plan into a past plan; name it in the message.
@@ -362,7 +397,7 @@ function savePlan(btn) {
       .eq('student_id', p.student.id).eq('active', true).neq('id', p.id).then(must) : [];
     must(await sb.from('plans').update({
       title: p.title.trim(), overview: p.overview.trim(), start_date: p.start_date || null,
-      repeats: p.repeats, active: p.active, updated_at: new Date().toISOString(),
+      repeats: p.repeats, blocks: p.blocks, active: p.active, updated_at: new Date().toISOString(),
     }).eq('id', p.id));
     if (rows.length) must(await sb.from('sessions').upsert(rows));
     const gone = [...draft.savedIds].filter(id => !rows.some(r => r.id === id));
@@ -398,7 +433,7 @@ async function duplicatePlan(btn) {
   busy(btn, async () => {
     const current = p.active || (await sb.from('plans').select('id').eq('student_id', p.student.id).eq('active', true).then(must)).length > 0;
     const copy = must(await sb.from('plans').insert({ student_id: p.student.id, title, overview: p.overview.trim(),
-      start_date: p.start_date || null, repeats: p.repeats, active: !current }).select('id').single());
+      start_date: p.start_date || null, repeats: p.repeats, blocks: p.blocks, active: !current }).select('id').single());
     const rows = sessionRows(copy.id).map(r => ({ ...r, id: crypto.randomUUID() }));
     if (rows.length) must(await sb.from('sessions').insert(rows));
     flash(`Plan duplicated. You're now editing “${title}”.`);
@@ -428,7 +463,7 @@ async function copyPlan(btn) {
   busy(btn, async () => {
     const current = (await sb.from('plans').select('id').eq('student_id', to.id).eq('active', true).then(must)).length > 0;
     const copy = must(await sb.from('plans').insert({ student_id: to.id, title: p.title.trim(), overview: p.overview.trim(),
-      repeats: p.repeats, active: !current }).select('id').single());
+      repeats: p.repeats, blocks: p.blocks, active: !current }).select('id').single());
     const rows = sessionRows(copy.id).map(r => ({ ...r, id: crypto.randomUUID() }));
     if (rows.length) must(await sb.from('sessions').insert(rows));
     flash(`Plan copied to ${to.name}. Pick a start date, then save it.`);

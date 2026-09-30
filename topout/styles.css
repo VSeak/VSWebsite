@@ -69,8 +69,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
 .fill { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .fill:hover { border-color: var(--accent); filter: brightness(1.05); }
+/* Save and Add: grey until there is something to save (markUnsaved enables them), then orange, filled on hover. */
 .primary { border-color: var(--accent); color: var(--accent-text); background: var(--card); }
-form.unsaved .primary { background: var(--accent); color: var(--accent-ink); }
+.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.primary:disabled { border-color: var(--line); color: var(--muted); opacity: 1; }
+/* Delete, Leave: a red outline, filled on hover. */
+.risky { border-color: var(--danger); color: var(--danger); background: var(--card); }
+.risky:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #fff; }
 .ghost { background: transparent; }
 .danger { color: var(--danger); }
 .fill.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
@@ -92,14 +97,16 @@ form.unsaved .primary { background: var(--accent); color: var(--accent-ink); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.15rem; margin-bottom: 1rem;
   box-shadow: var(--shadow); }
 .card.empty { text-align: center; padding: 2rem 1rem; }
-.card.overdue { border-color: var(--warn-line); box-shadow: inset 4px 0 0 var(--warn); }
-.card.unsaved { box-shadow: inset 4px 0 0 var(--accent); }
+.card.overdue { border-color: var(--warn-line); }
+.card.unsaved { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); background: color-mix(in srgb, var(--accent-soft) 30%, var(--card)); }
 .card.unsaved > .row:first-child h2::after, .card.unsaved > h2:first-child::after { content: "Unsaved"; margin-left: .5rem; font: 700 .7rem Figtree, sans-serif;
   letter-spacing: .05em; text-transform: uppercase; color: var(--accent-text); background: var(--accent-soft); padding: .15rem .45rem; border-radius: 999px;
   vertical-align: middle; }
 
 /* Forms */
-label { display: flex; flex-direction: column; gap: .3rem; font-weight: 600; font-size: .92rem; }
+/* A label's text (with hints like "(optional)" on the same line), the field under it, and any error inside it. */
+label { display: block; font-weight: 600; font-size: .92rem; }
+label > :is(input, select, textarea) { display: block; margin-top: .3rem; }
 label .muted { font-weight: 400; }
 input, select, textarea { font: inherit; font-weight: 400; color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 12px;
   padding: .55rem .7rem; width: 100%; min-width: 0; }
@@ -107,11 +114,13 @@ textarea { resize: vertical; field-sizing: content; min-height: 3.2em; }
 input[type="color"] { padding: .15rem; width: 2.6rem; height: 2.4rem; flex: none; }
 input[type="number"] { width: 4.5rem; }
 input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); }
-.field-error { color: var(--danger); font-size: .85rem; font-weight: 600; margin-top: -.3rem; }
-label.check { flex-direction: row; align-items: center; gap: .55rem; font-weight: 500; }
-label.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); flex: none; }
-label.inline { flex-direction: row; align-items: center; gap: .5rem; }
-label.inline input { width: auto; }
+.field-error { display: block; color: var(--danger); font-size: .85rem; font-weight: 600; margin-top: .25rem; }
+fieldset > .field-error, .two + .field-error { margin-top: -.3rem; }
+label.check { display: flex; flex-direction: row; align-items: center; gap: .55rem; font-weight: 500; }
+label.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); flex: none; margin: 0; }
+label.inline { display: flex; flex-direction: row; align-items: center; gap: .5rem; }
+label.inline input { width: auto; margin: 0; }
+.days { display: flex; flex-wrap: wrap; gap: .3rem .9rem; }
 fieldset { border: 1px solid var(--line); border-radius: 14px; padding: .7rem .9rem .8rem; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
 legend { font-weight: 700; font-size: .92rem; padding: 0 .3rem; }
 .add-row { margin-bottom: .8rem; }
@@ -294,7 +303,8 @@ details.history[open] { padding-bottom: .6rem; }
 @media (max-width: 400px) { .settings-grid { grid-template-columns: 1fr; } }
 .set-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; padding: .5rem 0; border-top: 1px solid var(--line); }
 .set-row > input[name="name"] { flex: 1 1 8rem; }
-.set-row.unsaved { box-shadow: inset 3px 0 0 var(--accent); padding-left: .5rem; }
+.set-row.unsaved { border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));
+  padding-left: .5rem; padding-right: .5rem; }
 .vrange { display: inline-flex; align-items: center; gap: .2rem; font-weight: 700; color: var(--muted); }
 .vrange input { width: 3.6rem; padding: .4rem; }
 

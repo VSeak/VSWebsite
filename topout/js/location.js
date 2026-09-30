@@ -81,10 +81,10 @@ async function teamTabView(loc, head, t) {
 async function addMember(loc) {
   const f = await ask({ title: `Add Member to ${loc.name}`, ok: 'Add Member',
     body: `<div class="two"><label>First Name<input name="first_name" maxlength="60" required data-need="Enter their first name." autocomplete="off"></label>
-      <label>Last Name<input name="last_name" maxlength="60" autocomplete="off"></label></div>
-      ${pronounsField()}
+      <label>Last Name<input name="last_name" maxlength="60" required data-need="Enter their last name." autocomplete="off"></label></div>
+      ${pronounsField('', true)}
       <label>Email <span class="muted">(optional, just for contact)</span><input type="email" name="email" autocomplete="off"></label>
-      <label>Joined the Team<input type="date" name="joined_on" value="${today()}"></label>` });
+      <label>Joined the Team<input type="date" name="joined_on" value="${today()}" required data-need="Pick the day they joined."></label>` });
   if (!f) return;
   await busy(null, async () => {
     const row = await sb.from('team_members').insert({

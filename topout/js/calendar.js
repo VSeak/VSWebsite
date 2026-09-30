@@ -1,23 +1,33 @@
 // ---------- A location's calendar: #/loc/<id>/calendar ----------
 // Month grid (weeks start Sunday), the picked day's events beside it, and what's coming up.
-// Events at location_id null show at every location; only admins add or change those.
+// An event shows at the locations in location_ids, or at every location when that's null (only admins add those).
+// Repeats Weekly makes one event per day, tied by series_id so they can be changed or deleted together.
 
 let calMonth = null;   // first of the shown month, YYYY-MM-01
 let calPick = null;    // the picked day, YYYY-MM-DD
 const UPCOMING = 8;
+const MAX_REPEATS = 200;
 
-const canEditEvent = e => me.isAdmin || !!e.location_id;   // RLS only lets a coach see their own locations' events
+// A coach changes an event only when it's at their locations alone (RLS: team_can_all_locations). locs = the ones they see.
+const canEditEvent = (e, locs) => me.isAdmin || !!e.location_ids?.every(id => locs.some(l => l.id === id));
 const eventEnd = e => e.end_date || e.event_date;
 const onDay = (e, d) => e.event_date <= d && eventEnd(e) >= d;
 const addDays = (d, n) => { const x = day(d); x.setDate(x.getDate() + n); return iso(x); };
+const addMonths = (d, n) => { const x = day(d); x.setMonth(x.getMonth() + n); return iso(x); };
+// Where else an event is, beside the location being shown.
+const alsoAt = (e, loc, locs) => !e.location_ids ? 'All Locations'
+  : e.location_ids.filter(id => id !== loc.id).map(id => locs.find(l => l.id === id)?.name).filter(Boolean).map(n => 'Also ' + n).join(', ');
 
 async function calendarTab(loc, head, t) {
-  calPick ??= today();
-  calMonth ??= calPick.slice(0, 8) + '01';
+  // Coming to the calendar starts at this month. A redraw (a picked day, another month, a save) keeps the place.
+  if (!redrawing || !calPick) { calPick = today(); calMonth = calPick.slice(0, 8) + '01'; }
   const first = day(calMonth), gridStart = addDays(calMonth, -first.getDay());
   const from = [gridStart, today()].sort()[0];
-  const events = await sb.from('team_events').select('*').or(`location_id.eq.${loc.id},location_id.is.null`)
-    .gte('event_date', addDays(from, -60)).order('event_date').order('start_time', { nullsFirst: true }).limit(1000).then(must);
+  const [events, locs] = await Promise.all([
+    sb.from('team_events').select('*').or(`location_ids.is.null,location_ids.cs.{${loc.id}}`)
+      .gte('event_date', addDays(from, -60)).order('event_date').order('start_time', { nullsFirst: true }).limit(1000).then(must),
+    sb.from('team_locations').select('id, name').order('position').order('name').then(must),
+  ]);
   if (t !== navToken) return;
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   const weeks = cells.at(35).slice(0, 7) === calMonth.slice(0, 7) ? 6 : 5;   // a sixth row only when the month reaches it
@@ -46,63 +56,100 @@ async function calendarTab(loc, head, t) {
       <div class="side">
         <section class="card">
           <div class="row between"><h2>${fmtDay(calPick)}</h2><button type="button" class="small fill" id="addEvent">+ Add Event</button></div>
-          ${picked.length ? picked.map(e => eventRow(e, { where: e.location_id ? '' : 'All Locations' })).join('')
+          ${picked.length ? picked.map(e => eventRow(e, { where: alsoAt(e, loc, locs) })).join('')
             : '<p class="muted">Nothing on this day.</p>'}
         </section>
         <section class="card">
           <h2>Coming Up</h2>
-          ${upcoming.length ? upcoming.map(e => eventRow(e, { where: e.location_id ? '' : 'All Locations' })).join('')
+          ${upcoming.length ? upcoming.map(e => eventRow(e, { where: alsoAt(e, loc, locs) })).join('')
             : '<p class="muted">Nothing coming up. Pick a day and add an event.</p>'}
         </section>
       </div>
     </div>`, { keepScroll: true });
 
+  // Another month or day redraws in place (no Loading step).
   app.onclick = e => {
     const m = e.target.closest('[data-month]'), d = e.target.closest('[data-day]'), ev = e.target.closest('[data-event]');
     if (m) {
       const n = +m.dataset.month;
       if (!n) { calPick = today(); calMonth = calPick.slice(0, 8) + '01'; }
-      else { const x = day(calMonth); x.setMonth(x.getMonth() + n); calMonth = iso(x); }
-      route();
+      else calMonth = addMonths(calMonth, n);
+      redraw();
     } else if (d) {
       calPick = d.dataset.day;
       if (calPick.slice(0, 7) !== month) calMonth = calPick.slice(0, 8) + '01';
-      route();
-    } else if (ev) showEvent(events.find(x => x.id === ev.dataset.event), loc);
+      redraw();
+    } else if (ev) showEvent(events.find(x => x.id === ev.dataset.event), loc, locs);
   };
-  $('#addEvent').onclick = () => editEvent(null, loc);
+  $('#addEvent').onclick = () => editEvent(null, loc, locs);
 }
 
+const locsText = (e, locs) => !e.location_ids ? 'All Locations' : e.location_ids.map(id => locs.find(l => l.id === id)?.name).filter(Boolean).join(', ');
+
 // An event's details, with Edit and Delete for someone who can change it.
-async function showEvent(e, loc) {
-  const edit = canEditEvent(e);
+async function showEvent(e, loc, locs) {
+  const edit = canEditEvent(e, locs);
   const f = await ask({ title: e.title, ok: edit ? 'Edit' : 'Close', cancel: edit,
     extra: edit ? { value: 'delete', label: 'Delete' } : null,
-    body: `<p class="event-meta"><span class="kind k-${e.kind}">${KINDS[e.kind]}</span> ${e.location_id ? '' : '<span class="chip">All Locations</span>'}</p>
+    body: `<p class="event-meta wrap"><span class="kind k-${e.kind}">${KINDS[e.kind]}</span> <span class="chip">${esc(locsText(e, locs))}</span>
+        ${e.series_id ? '<span class="chip soft">Repeats Weekly</span>' : ''}</p>
       <p><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
       ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
       <p class="hint">Added by ${esc(e.author_name || 'staff')}${e.edited_at ? ` · edited ${fmtWhen(e.edited_at)}` : ''}</p>` });
   if (!f || !edit) return;
-  if (f.get('button') === 'delete') {
-    if (!await confirmDelete('Delete Event?', `“${esc(e.title)}” will be removed from the calendar${e.location_id ? '' : ' at every location'}.`)) return;
-    await busy(null, async () => { await sb.from('team_events').delete().eq('id', e.id).then(must); flash('Event deleted.'); redraw(); });
-    return;
-  }
-  editEvent(e, loc);
+  if (f.get('button') === 'delete') return deleteEvent(e);
+  editEvent(e, loc, locs);
 }
 
-async function editEvent(e, loc) {
-  const v = e || { kind: 'practice', title: '', event_date: calPick || today(), end_date: null, start_time: null, end_time: null, place: '', notes: '', location_id: loc.id };
+const SCOPES = { one: 'This Event Only', later: 'This and Later Events' };
+const scopeField = (verb) => `<fieldset><legend>${verb}</legend>${Object.entries(SCOPES).map(([k, v], i) =>
+  `<label class="check"><input type="radio" name="scope" value="${k}"${i ? '' : ' checked'}> ${v}</label>`).join('')}</fieldset>`;
+
+async function deleteEvent(e) {
+  const where = e.location_ids ? '' : ' at every location';
+  const f = e.series_id
+    ? await ask({ title: 'Delete Event?', ok: 'Delete', warn: true,
+        body: `<p>“${esc(e.title)}” repeats weekly. Delete just this one, or it and every later one?</p>${scopeField('Delete')}` })
+    : await confirmDelete('Delete Event?', `“${esc(e.title)}” will be removed from the calendar${where}.`);
+  if (!f) return;
+  await busy(null, async () => {
+    if (f.get('scope') === 'later') await sb.from('team_events').delete().eq('series_id', e.series_id).gte('event_date', e.event_date).then(must);
+    else await sb.from('team_events').delete().eq('id', e.id).then(must);
+    flash(f.get('scope') === 'later' ? 'Events deleted.' : 'Event deleted.');
+    redraw();
+  });
+}
+
+// The days a weekly repeat lands on, from the first date to the last, on the ticked weekdays (0 = Sunday).
+function repeatDates(from, until, weekdays) {
+  const out = [];
+  for (let d = from; d <= until && out.length <= MAX_REPEATS; d = addDays(d, 1)) if (weekdays.includes(day(d).getDay())) out.push(d);
+  return out;
+}
+
+async function editEvent(e, loc, locs) {
+  const v = e || { kind: 'practice', title: '', event_date: calPick || today(), end_date: null, start_time: null, end_time: null, place: '', notes: '',
+    location_ids: [loc.id] };
   const allDay = !v.start_time;
+  const pickLocs = me.isAdmin || locs.length > 1;   // a coach at one location has nothing to pick
+  const at = id => !v.location_ids || v.location_ids.includes(id);
+  const weekdayNames = Array.from({ length: 7 }, (_, i) => day(addDays('2026-01-04', i)).toLocaleDateString(undefined, { weekday: 'short' }));   // Jan 4 2026 is a Sunday
   const f = await ask({ title: e ? 'Edit Event' : 'Add Event', ok: e ? 'Save Event' : 'Add Event', wide: true,
-    body: `<label>Title<input name="title" maxlength="120" required value="${esc(v.title)}" data-need="Give the event a title."
+    body: `${e?.series_id ? scopeField('Change') + '<p class="hint" id="scopeHint" hidden>Later events keep their own dates.</p>' : ''}
+      <label>Title<input name="title" maxlength="120" required value="${esc(v.title)}" data-need="Give the event a title."
         placeholder="E.g. Tuesday practice: overhangs" autocomplete="off"></label>
       <div class="two"><label>Type<select name="kind">${Object.entries(KINDS).map(([k, l]) =>
         `<option value="${k}"${k === v.kind ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Place <span class="muted">(optional)</span><input name="place" maxlength="200" value="${esc(v.place)}" autocomplete="off"></label></div>
       <div class="two"><label>Date<input type="date" name="event_date" required value="${v.event_date}" data-need="Pick the date."></label>
-        <label>Last Day <span class="muted">(if several days)</span><input type="date" name="end_date" value="${v.end_date || ''}" min="${v.event_date}"
+        <label id="evLast">Last Day <span class="muted">(if several days)</span><input type="date" name="end_date" value="${v.end_date || ''}" min="${v.event_date}"
           data-range="The last day can't be before the first."></label></div>
+      ${e ? '' : `<label class="check"><input type="checkbox" name="repeat"> Repeats Weekly</label>
+      <fieldset id="evRepeat" hidden><legend>Repeats On</legend>
+        <div class="days">${weekdayNames.map((w, i) => `<label class="check"><input type="checkbox" name="dow" value="${i}"> ${w}</label>`).join('')}</div>
+        <label>Until<input type="date" name="until" value="${addMonths(v.event_date, 3)}" min="${v.event_date}"
+          data-need="Pick the last day it repeats." data-range="Pick a day after the first date, within a year."></label>
+      </fieldset>`}
       <label class="check"><input type="checkbox" name="all_day"${allDay ? ' checked' : ''}> All Day</label>
       <div class="two" id="evTimes"${allDay ? ' hidden' : ''}><label>Start Time<input type="time" name="start_time" value="${(v.start_time || '').slice(0, 5)}"
           ${allDay ? '' : 'required'} data-need="Pick a start time, or tick All Day."></label>
@@ -110,7 +157,10 @@ async function editEvent(e, loc) {
           data-range="End after it starts."></label></div>
       <label>Notes <span class="muted">(agenda, what to bring, links)</span><textarea name="notes" rows="5"
         placeholder="E.g. Warm-up, then 4×4s on the 40° wall. Focus: heel hooks.">${esc(v.notes)}</textarea></label>
-      ${me.isAdmin ? `<label class="check"><input type="checkbox" name="everywhere"${v.location_id ? '' : ' checked'}> Show at Every Location</label>` : ''}`,
+      ${pickLocs ? `<fieldset><legend>Show At</legend>
+        ${me.isAdmin ? `<label class="check"><input type="checkbox" name="everywhere"${v.location_ids ? '' : ' checked'}> Every Location</label>` : ''}
+        ${locs.map(l => `<label class="check"><input type="checkbox" name="loc" value="${l.id}"${at(l.id) ? ' checked' : ''}> ${esc(l.name)}</label>`).join('')}
+      </fieldset>` : ''}`,
     onOpen: form => {
       const els = form.elements;
       els.all_day.onchange = () => {
@@ -118,24 +168,74 @@ async function editEvent(e, loc) {
         els.start_time.required = !els.all_day.checked;
         if (els.all_day.checked) { clearFieldError(els.start_time); }
       };
-      els.event_date.onchange = () => { els.end_date.min = els.event_date.value; };
+      els.event_date.onchange = () => {
+        els.end_date.min = els.event_date.value;
+        if (els.until) { els.until.min = els.event_date.value; els.until.max = addDays(els.event_date.value, 366); }
+      };
       els.start_time.onchange = () => { els.end_time.min = els.start_time.value; };
       if (els.start_time.value) els.end_time.min = els.start_time.value;
+      // Repeats Weekly: pick the weekdays and the last day; a repeating event is one day long.
+      if (els.repeat) {
+        const days = [...form.querySelectorAll('[name="dow"]')];
+        const need = () => days[0].setCustomValidity(els.repeat.checked && !days.some(b => b.checked) ? 'Pick at least one day.' : '');
+        days[0].dataset.need = 'Pick at least one day.';
+        els.until.max = addDays(v.event_date, 366);
+        els.repeat.onchange = () => {
+          const on = els.repeat.checked;
+          $('#evRepeat').hidden = !on;
+          $('#evLast').hidden = on;
+          els.until.required = on;
+          if (on) { els.end_date.value = ''; if (!days.some(b => b.checked)) days[day(els.event_date.value || v.event_date).getDay()].checked = true; }
+          need();
+        };
+        days.forEach(b => b.addEventListener('change', () => { need(); clearFieldError(days[0]); }));
+      }
+      // This and Later Events: the dates stay as they are.
+      form.querySelectorAll('[name="scope"]').forEach(r => r.onchange = () => {
+        const later = form.querySelector('[name="scope"]:checked').value === 'later';
+        els.event_date.disabled = els.end_date.disabled = later;
+        $('#scopeHint').hidden = !later;
+      });
+      // Every Location ticks them all; unticking one takes it off.
+      if (pickLocs) {
+        const boxes = [...form.querySelectorAll('[name="loc"]')], every = els.everywhere;
+        const need = () => boxes[0].setCustomValidity(boxes.some(b => b.checked) ? '' : 'Pick at least one location.');
+        boxes[0].dataset.need = 'Pick at least one location.';
+        if (every) every.onchange = () => {
+          boxes.forEach(b => { b.checked = every.checked || b.value === loc.id; });
+          need(); clearFieldError(boxes[0]);
+        };
+        boxes.forEach(b => b.addEventListener('change', () => {
+          if (every && !b.checked) every.checked = false;
+          need(); clearFieldError(boxes[0]);
+        }));
+        need();
+      }
     } });
   if (!f) return;
   const timed = !f.get('all_day');
   const row = {
     title: f.get('title').trim(), kind: f.get('kind'), place: f.get('place').trim(), notes: f.get('notes').trim(),
-    event_date: f.get('event_date'), end_date: f.get('end_date') && f.get('end_date') !== f.get('event_date') ? f.get('end_date') : null,
     start_time: timed ? f.get('start_time') : null, end_time: timed && f.get('end_time') ? f.get('end_time') : null,
-    location_id: me.isAdmin && f.get('everywhere') ? null : (v.location_id || loc.id),
+    location_ids: !pickLocs ? v.location_ids : f.get('everywhere') ? null : f.getAll('loc'),
   };
+  const later = f.get('scope') === 'later';
+  const date = later ? v.event_date : f.get('event_date');
+  if (!later) row.end_date = f.get('end_date') && f.get('end_date') !== date ? f.get('end_date') : null;
   await busy(null, async () => {
-    if (e) await sb.from('team_events').update(row).eq('id', e.id).then(must);
-    else await sb.from('team_events').insert(row).then(must);
-    calPick = row.event_date;
+    if (e && later) await sb.from('team_events').update(row).eq('series_id', e.series_id).gte('event_date', e.event_date).then(must);
+    else if (e) await sb.from('team_events').update({ ...row, event_date: date }).eq('id', e.id).then(must);
+    else if (f.get('repeat')) {
+      const dates = repeatDates(date, f.get('until'), f.getAll('dow').map(Number));
+      if (dates.length > MAX_REPEATS) throw new Error(`That's more than ${MAX_REPEATS} events. Pick an earlier Until date.`);
+      if (!dates.length) throw new Error('None of the picked weekdays fall between the date and Until.');
+      const series_id = crypto.randomUUID();
+      await sb.from('team_events').insert(dates.map(d => ({ ...row, event_date: d, end_date: null, series_id }))).then(must);
+      calPick = dates[0];
+    } else await sb.from('team_events').insert({ ...row, event_date: date }).then(must);
+    calPick = e || !f.get('repeat') ? date : calPick;
     calMonth = calPick.slice(0, 8) + '01';
-    flash(e ? 'Event saved.' : 'Event added.');
+    flash(e ? (later ? 'Events saved.' : 'Event saved.') : f.get('repeat') ? 'Events added.' : 'Event added.');
     redraw();
   });
 }

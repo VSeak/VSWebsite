@@ -112,10 +112,10 @@ function detailsHTML(m, locs) {
   return `<section class="card"><h2>Details</h2>
     <form id="detailsForm" class="stack" data-save>
       <div class="two"><label>First Name<input name="first_name" maxlength="60" required value="${esc(m.first_name)}" data-need="Enter their first name."></label>
-        <label>Last Name<input name="last_name" maxlength="60" value="${esc(m.last_name)}"></label></div>
-      ${pronounsField(m.pronouns)}
+        <label>Last Name<input name="last_name" maxlength="60" required value="${esc(m.last_name)}" data-need="Enter their last name."></label></div>
+      ${pronounsField(m.pronouns, true)}
       <label>Email <span class="muted">(optional)</span><input type="email" name="email" value="${esc(m.email || '')}"></label>
-      <div class="two"><label>Joined the Team<input type="date" name="joined_on" value="${m.joined_on || ''}"></label>
+      <div class="two"><label>Joined the Team<input type="date" name="joined_on" value="${m.joined_on || ''}" required data-need="Pick the day they joined."></label>
         <label>Location<select name="location_id">${locs.map(l => `<option value="${l.id}"${l.id === m.location_id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label></div>
       <button class="primary">Save Details</button>
     </form>

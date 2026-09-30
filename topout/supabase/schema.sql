@@ -142,11 +142,13 @@ create table public.team_checkins (
 );
 create index on public.team_checkins (member_id, checkin_date desc);
 
--- The calendar. location_id null = every location (only admins add those).
+-- The calendar. location_ids: the locations it shows at, or null = every location (only admins add those).
 -- kind: competition, practice (an agenda: what to work on that day), open_house, other.
+-- series_id: the events made by one Repeats Weekly, changed or deleted together.
 create table public.team_events (
   id uuid primary key default gen_random_uuid(),
-  location_id uuid references public.team_locations (id) on delete cascade,
+  location_ids uuid[] check (location_ids is null or cardinality(location_ids) > 0),
+  series_id uuid,
   kind text not null default 'other' check (kind in ('competition', 'practice', 'open_house', 'other')),
   title text not null check (length(trim(title)) between 1 and 120),
   event_date date not null,
@@ -160,8 +162,9 @@ create table public.team_events (
   created_at timestamptz not null default now(),
   edited_at timestamptz
 );
-create index on public.team_events (location_id, event_date);
-create index on public.team_events (event_date) where location_id is null;
+create index on public.team_events using gin (location_ids);
+create index on public.team_events (event_date) where location_ids is null;
+create index on public.team_events (series_id, event_date) where series_id is not null;
 
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
@@ -197,6 +200,16 @@ $$;
 create function public.team_can_member(p uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
   select public.team_can_location((select location_id from public.team_members where id = p));
+$$;
+
+-- Can see one of these locations (reading an event), or every one of them (changing it).
+create function public.team_can_any_location(p uuid[]) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from unnest(p) l where public.team_can_location(l));
+$$;
+create function public.team_can_all_locations(p uuid[]) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select cardinality(p) > 0 and not exists (select 1 from unnest(p) l where not public.team_can_location(l));
 $$;
 
 -- Admins' Staff page: every staff member plus when they last signed in (Active vs Invited).
@@ -255,6 +268,18 @@ create trigger team_stamp_author before insert or update on public.team_checkins
   for each row execute function public.team_stamp_author();
 create trigger team_stamp_author before insert or update on public.team_events
   for each row execute function public.team_stamp_author();
+
+-- A deleted location comes off its events; an event that was only there goes too.
+create function public.team_drop_event_location() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.team_events where location_ids = array[old.id];
+  update public.team_events set location_ids = array_remove(location_ids, old.id) where old.id = any (location_ids);
+  return old;
+end;
+$$;
+create trigger team_drop_event_location after delete on public.team_locations
+  for each row execute function public.team_drop_event_location();
 
 -- There must always be an admin, so nobody locks everyone out of the Staff page.
 create function public.team_keep_an_admin() returns trigger
@@ -382,12 +407,13 @@ create policy "staff: read" on public.team_rating_areas for select to authentica
 create policy "admin: everything" on public.team_rating_areas for all to authenticated
   using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
 
--- Calendar: a location's staff read and write its events; everyone reads all-location events, admins write them.
+-- Calendar: staff read the events at their locations and every-location events; they change an event only when
+-- they have all its locations. Admins change any (and only they add every-location ones).
 create policy "staff: read" on public.team_events for select to authenticated
-  using ((location_id is null and (select public.team_is_staff())) or public.team_can_location(location_id));
+  using ((location_ids is null and (select public.team_is_staff())) or public.team_can_any_location(location_ids));
 create policy "staff: write" on public.team_events for all to authenticated
-  using ((select public.team_is_admin()) or (location_id is not null and public.team_can_location(location_id)))
-  with check ((select public.team_is_admin()) or (location_id is not null and public.team_can_location(location_id)));
+  using ((select public.team_is_admin()) or (location_ids is not null and public.team_can_all_locations(location_ids)))
+  with check ((select public.team_is_admin()) or (location_ids is not null and public.team_can_all_locations(location_ids)));
 
 -- 5. Shared logins with Sit Start ----------------------------------------------
 -- Sit Start's gate_signup, delete_student, delete_staff and staff_deactivated ask login_in_other_app() before
@@ -481,11 +507,13 @@ revoke execute on function public.person_pull(), public.person_push() from publi
 
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
-  public.team_can_location(uuid), public.team_can_member(uuid), public.team_staff_list(), public.team_stamp_sender(text),
+  public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
+  public.team_staff_list(), public.team_stamp_sender(text),
   public.team_staff_lookup(text)
   from public, anon;
 grant execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
-  public.team_can_location(uuid), public.team_can_member(uuid), public.team_staff_list(), public.team_stamp_sender(text),
+  public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
+  public.team_staff_list(), public.team_stamp_sender(text),
   public.team_staff_lookup(text)
   to authenticated;
 

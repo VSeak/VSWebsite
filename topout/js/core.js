@@ -47,6 +47,7 @@ function view(html, { keepScroll = false } = {}) {
   if (redrawing) { keepScroll = true; redrawing = false; }
   app.oninput = app.onchange = app.onclick = app.onsubmit = null;
   app.innerHTML = html;
+  markUnsaved();   // Save buttons start greyed out
   if (!keepScroll) window.scrollTo(0, 0);
 }
 
@@ -87,7 +88,9 @@ function fieldError(el, msg) {
   err.id = 'err-' + Math.random().toString(36).slice(2);
   err.textContent = msg;
   el.setAttribute('aria-describedby', err.id);
-  (el.closest('label') || el).after(err);
+  // Inside the field's label, so it never becomes its own cell in a two-column row; after a checkbox's label.
+  const label = el.closest('label');
+  if (label && !label.matches('.check')) label.append(err); else (label || el).after(err);
 }
 function clearFieldError(el) {
   if (el.getAttribute('aria-invalid') !== 'true') return;
@@ -126,9 +129,15 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = 
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
     <div class="row end">${extra ? `<button value="${extra.value}" formnovalidate class="ghost danger push-left">${esc(extra.label)}</button>` : ''}
     ${cancel ? '<button value="cancel" formnovalidate class="ghost">Cancel</button>' : ''}
-    <button value="ok" class="fill${warn ? ' danger' : ''}">${esc(ok)}</button></div></form>`;
+    <button value="ok" class="${warn ? 'risky' : 'fill'}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
+    // Enter in a field means OK. (The browser would press the first button in the form, which is Cancel.)
+    f.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.isComposing || !e.target.matches('input:not([type="button"], [type="submit"])')) return;
+      e.preventDefault();
+      f.requestSubmit(f.querySelector('button[value="ok"]'));
+    });
     f.addEventListener('submit', e => {
       const v = e.submitter?.value;
       if (v === 'ok') resolve(new FormData(f));
@@ -156,10 +165,11 @@ const initials = name => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).
 
 const PRONOUNS = ['she/her', 'he/him', 'they/them', 'she/they', 'he/they'];
 const pronounsTag = p => p ? ` <span class="pronouns">${esc(p)}</span>` : '';
-function pronounsField(value = '') {
+// required: Not Set can't be saved (team members).
+function pronounsField(value = '', required = false) {
   const other = !!value && !PRONOUNS.includes(value);
-  return `<label>Pronouns<select name="pronouns" data-pronouns>
-      <option value="">Not Set</option>
+  return `<label>Pronouns<select name="pronouns" data-pronouns${required ? ' required data-need="Pick their pronouns."' : ''}>
+      <option value="">${required ? 'Pick…' : 'Not Set'}</option>
       ${PRONOUNS.map(p => `<option${p === value ? ' selected' : ''}>${p}</option>`).join('')}
       <option value="other"${other ? ' selected' : ''}>Other</option>
     </select></label>

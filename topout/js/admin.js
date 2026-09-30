@@ -14,15 +14,15 @@ async function staffPage() {
     sb.from('team_locations').select('id, name').order('position').then(must),
   ]);
   if (t !== navToken) return;
-  const locName = id => locs.find(l => l.id === id)?.name;
   const card = s => {
     const st = staffStatus(s);
-    const where = s.roles.includes('admin') ? ['Every Location'] : s.location_ids.map(locName).filter(Boolean);
+    // The locations ticked for them. An admin with none ticked still sees every location, so no warning for them.
+    const where = locs.filter(l => s.location_ids.includes(l.id)).map(l => l.name);
     return `<button type="button" class="person" data-staff="${s.id}"><span class="ini">${esc(initials(s.name || s.email))}</span>
       <span class="person-main"><b>${esc(s.name || s.email)}${pronounsTag(s.pronouns)}${s.owner ? ' <span class="tag">Owner</span>' : ''}</b>
         <span class="muted small-text">${esc(s.email)}</span>
         <span class="chips">${s.roles.map(r => `<span class="chip strong">${ROLE_LABEL[r]}</span>`).join('')}
-          ${where.length ? where.map(w => `<span class="chip">${esc(w)}</span>`).join('') : '<span class="chip warn">No Location</span>'}
+          ${where.length ? where.map(w => `<span class="chip">${esc(w)}</span>`).join('') : s.roles.includes('admin') ? '' : '<span class="chip warn">No Location</span>'}
           ${st === 'Active' ? '' : `<span class="chip ${st === 'Not Invited' ? 'warn' : 'soft'}">${st}</span>`}</span></span></button>`;
   };
   view(`${crumbs([['Home', '#/'], ['Staff']])}
@@ -158,7 +158,7 @@ async function settingsPage() {
         <p class="hint">Easiest first. The V range helps compare progress. Leave the top empty for an open-ended range, like V11+.
           A color used by a check-in can be renamed but not deleted.</p>
         ${circuits.map((c, i) => `<form class="set-row circuit-row" data-kind="circuit" data-id="${c.id}" data-save>
-          <input type="color" name="color" value="${esc(c.color)}" aria-label="Color">
+          <input type="color" name="color" value="${esc(c.color.toLowerCase())}" aria-label="Color">
           <input name="name" maxlength="30" required value="${esc(c.name)}" aria-label="Name" data-need="Name the color.">
           <span class="vrange">V<input type="number" name="v_min" min="0" max="17" value="${c.v_min ?? ''}" aria-label="Lowest V grade">–V<input type="number" name="v_max" min="0" max="17" value="${c.v_max ?? ''}" aria-label="Highest V grade"></span>
           ${moveBtns('circuit', i, circuits.length, c.id)}

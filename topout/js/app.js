@@ -50,8 +50,10 @@ const ROLE_LABEL = { admin: 'Admin', coach: 'Coach' };
 const rolesText = roles => ['admin', 'coach'].filter(r => roles.includes(r)).map(r => ROLE_LABEL[r]).join(' · ');
 
 // Unsaved edits: a form field on the page that differs from how the page drew it (pages redraw their forms after a save).
+// A color field reads back in lowercase (#e8622c for #E8622C), so colors compare ignoring case.
 const fieldChanged = el => el.type === 'checkbox' || el.type === 'radio' ? el.checked !== el.defaultChecked
   : el.tagName === 'SELECT' ? el.selectedIndex !== Math.max(0, [...el.options].findIndex(o => o.defaultSelected))
+  : el.type === 'color' ? el.value.toLowerCase() !== el.defaultValue.toLowerCase()
   : el.value !== el.defaultValue;
 const unsaved = () => [...app.querySelectorAll('form:not([data-nosave]) :is(input, textarea, select)')].some(fieldChanged);
 
@@ -60,13 +62,18 @@ async function okToLeave(signOut = false) {
   return !!await ask({ title: signOut ? 'Sign Out Without Saving?' : 'Leave Without Saving?', ok: signOut ? 'Sign Out' : 'Leave', warn: true,
     body: "<p>You have changes on this page that haven't been saved.</p>" });
 }
-// A card with an unsaved form gets an Unsaved tag and a filled Save button (phones have no hover to hint it).
+// A card with an unsaved form gets an orange edge and an Unsaved tag, and its Save button turns on (greyed out until then).
+// Settings' one-line forms (.set-row, .add-row) light up on their own instead of the whole card.
 function markUnsaved() {
+  const cards = new Map();
   for (const f of app.querySelectorAll('form[data-save]')) {
     const on = [...f.querySelectorAll('input, textarea, select')].some(fieldChanged);
     f.classList.toggle('unsaved', on);
-    f.closest('.card')?.classList.toggle('unsaved', on);
+    f.querySelectorAll('.primary').forEach(b => { b.disabled = !on; });
+    const card = f.closest('.card');
+    if (card) cards.set(card, (cards.get(card) || false) || (on && !f.matches('.set-row, .add-row')));
   }
+  cards.forEach((on, card) => card.classList.toggle('unsaved', on));
 }
 ['input', 'change', 'reset'].forEach(t => app.addEventListener(t, () => requestAnimationFrame(markUnsaved)));
 
@@ -216,13 +223,14 @@ async function homePage() {
   const [locs, members, events] = await Promise.all([
     sb.from('team_locations').select('id, name').order('position').order('name').then(must),
     sb.from('team_members').select('location_id').is('left_on', null).then(must),
-    sb.from('team_events').select('id, location_id, kind, title, event_date, end_date, start_time, end_time')
+    sb.from('team_events').select('id, location_ids, kind, title, event_date, end_date, start_time, end_time')
       .or(`event_date.gte.${today()},end_date.gte.${today()}`).order('event_date').order('start_time', { nullsFirst: true }).limit(40).then(must),
   ]);
   if (t !== navToken) return;
   const count = id => members.filter(m => m.location_id === id).length;
-  const locName = id => id ? locs.find(l => l.id === id)?.name || '' : 'All Locations';
-  const nextAt = id => events.find(e => e.location_id === id || !e.location_id);
+  const isAt = (e, id) => !e.location_ids || e.location_ids.includes(id);
+  const locNames = e => e.location_ids ? locs.filter(l => isAt(e, l.id)).map(l => l.name).join(', ') : 'All Locations';
+  const nextAt = id => events.find(e => isAt(e, id));
   const card = l => {
     const n = count(l.id), next = nextAt(l.id);
     return `<a class="card loc-card" href="#/loc/${l.id}">
@@ -243,8 +251,8 @@ async function homePage() {
       </div>
       <aside class="side">
         <section class="needs"><span class="eyebrow">Coming Up</span>
-          ${up.length ? up.map(e => eventRow(e, { where: locs.length > 1 ? locName(e.location_id) : "",
-            href: `#/loc/${e.location_id || locs[0]?.id}/calendar` })).join('')
+          ${up.length ? up.map(e => eventRow(e, { where: locs.length > 1 ? locNames(e) : "",
+            href: `#/loc/${locs.find(l => isAt(e, l.id))?.id}/calendar` })).join('')
             : '<p class="none-up">Nothing coming up. Add competitions, practices and open houses on a location’s calendar.</p>'}
         </section>
         ${me.isAdmin ? `<div class="tiles">

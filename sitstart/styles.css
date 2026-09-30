@@ -328,8 +328,9 @@ a.card.group-link:hover h2 { color: var(--accent); }
 /* Plans */
 .plan-head { margin-bottom: 1.2rem; }
 .week { margin-top: 1.6rem; }
-.week > h2 { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
-.week > h2 .muted { font: 400 .9rem "DM Sans", sans-serif; }
+.week > h2, .week-head > h2 { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+.week-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.week > h2 .muted, .week-head > h2 .muted { font: 400 .9rem "DM Sans", sans-serif; }
 .session { margin-top: .8rem; }
 .prose { white-space: normal; }
 .list-head { display: flex; justify-content: space-between; gap: .8rem; font-weight: 600; color: var(--muted); font-size: .8rem; padding: .3rem 0; border-bottom: 1px solid var(--line); margin-top: .6rem; }
@@ -518,7 +519,7 @@ body:has(.savebar.unsaved) main { padding-bottom: 7rem; }
   .plan-details > h2, .pd-layout, .plan-details > .check, .pd-overview { grid-column: 1 / -1; } }
 .plan-grid .week { margin-top: 0; }
 .plan-grid .week + .week { margin-top: 1.6rem; }
-.plan-grid .week > h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+.plan-grid .week > h2, .plan-grid .week-head > h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
 .tabs .add-tab { border-style: dashed; color: var(--accent); }
 .session-edit { display: flex; flex-direction: column; gap: 10px; }
 .session-edit[hidden] { display: none; }

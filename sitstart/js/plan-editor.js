@@ -87,7 +87,7 @@ function exEditHTML(s, i, e) {
     <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
     ${notes}
     <div class="ex-acts"><span class="row">${n > 1 ? `<span class="grip" data-s="${i}" data-e="${e}" title="Drag to Reorder">${GRIP}</span>` : ''}${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
-      <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove</button></div></div>`;
+      <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove Exercise</button></div></div>`;
 }
 
 // One session: shown when its tab is picked (data-session, like the student's view; showSession switches them).
@@ -105,7 +105,7 @@ function sessionEditHTML(s, i, shown, first, last) {
     <div class="session-foot">
       <span class="row">${first ? '' : `<button type="button" data-act="up" data-s="${i}">Move Earlier</button>`}${last ? '' : `<button type="button" data-act="down" data-s="${i}">Move Later</button>`}</span>
       <span class="row"><button type="button" data-act="dup" data-s="${i}">Duplicate Session</button>
-        <button type="button" class="ghost danger" data-act="del-session" data-s="${i}">Remove</button></span>
+        <button type="button" class="ghost danger" data-act="del-session" data-s="${i}">Remove Session</button></span>
     </div>
     ${draft.savedIds.has(s.id) ? notesHTML(s.id) : ''}
   </article>`;
@@ -136,7 +136,8 @@ function renderEditor() {
     </section>` : `
     ${weeks.length ? '' : '<p class="muted">No sessions yet. Add the first week below.</p>'}
     ${weeks.map(([w, list]) => `<section class="week">
-      <h2>Week ${w} <span class="muted">${weekRange(p.start_date, w)}</span></h2>
+      <div class="week-head"><h2>Week ${w} <span class="muted">${weekRange(p.start_date, w)}</span></h2>
+        <button type="button" class="small ghost danger" data-act="del-week" data-week="${w}">Remove Week</button></div>
       ${weekSessionsHTML(w, list)}
     </section>`).join('')}
     <div class="row" style="margin-top:1.4rem"><button data-act="add-week" data-first data-need="Add at least one week with a session.">+ Add Week</button></div>`;
@@ -224,6 +225,18 @@ function renderEditor() {
           body: `<p>${lastInWeek ? `${name} is the only session in week ${S[i].week}, so the week will go too.` : `${name} will be removed${draft.plan.repeats ? '' : ` from week ${S[i].week}`}.`}</p>
             ${n ? `<p>It has ${n} note${n > 1 ? 's' : ''}, which will be deleted when you save the plan.</p>` : ''}` })) return;
         S.splice(i, 1); break;
+      }
+      // A whole week goes, and later weeks move up one so the weeks (and their dates) have no gap.
+      case 'del-week': {
+        const w = +b.dataset.week, gone = S.filter(s => s.week === w);
+        const n = notesCtx.notes.filter(x => gone.some(s => s.id === x.session_id)).length;
+        if (!await ask({ title: `Remove Week ${w}?`, warn: true, ok: 'Remove Week',
+          body: `<p>Week ${w} and its ${gone.length === 1 ? 'session' : `${gone.length} sessions`} will be removed${S.some(s => s.week > w) ? ', and later weeks move up one' : ''}.</p>
+            ${n ? `<p>${n === 1 ? 'One note' : `${n} notes`} on ${gone.length === 1 ? 'it' : 'them'} will be deleted when you save the plan.</p>` : ''}` })) return;
+        draft.sessions = S.filter(s => s.week !== w);
+        draft.sessions.forEach(s => { if (s.week > w) s.week--; });
+        draft.tab = Object.fromEntries(Object.entries(draft.tab).filter(([k]) => +k !== w).map(([k, id]) => [+k > w ? +k - 1 : +k, id]));
+        break;
       }
       case 'up': case 'down': {
         const order = displayOrder(), j = order[order.indexOf(i) + (b.dataset.act === 'up' ? -1 : 1)];

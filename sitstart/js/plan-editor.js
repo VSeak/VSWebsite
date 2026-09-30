@@ -195,7 +195,7 @@ function renderEditor() {
     if (!b) return;
     const S = draft.sessions, i = +b.dataset.s, x = +b.dataset.e;
     const pick = s => { draft.tab[s.week] = s.id; };   // a new or copied session opens on its tab
-    let top = false;
+    let copied = null;
     switch (b.dataset.act) {
       case 'add-ex': S[i].exercises.push(blankEx()); break;
       case 'del-ex': S[i].exercises.splice(x, 1); break;
@@ -206,11 +206,11 @@ function renderEditor() {
       }
       case 'add-session': { const s = blankSession(+b.dataset.week); S.push(s); pick(s); break; }
       case 'add-week': { const s = blankSession(Math.max(0, ...S.map(s => s.week)) + 1); S.push(s); pick(s); break; }
-      // The copy is named "<name> (Copy)" and the page goes back to the top, where its tab is.
+      // The copy is named "<name> (Copy)" and its Session title box is scrolled to and focused.
       case 'dup': {
         const k = displayOrder().filter(j => S[j].week === S[i].week).indexOf(i);
         const s = { ...structuredClone(S[i]), id: crypto.randomUUID(), title: `${sessionLabel(S[i], k)} (Copy)` };
-        S.splice(i + 1, 0, s); pick(s); top = true; break;
+        S.splice(i + 1, 0, s); pick(s); copied = s; break;
       }
       case 'del-session': {
         const n = notesCtx.notes.filter(x => x.session_id === S[i].id).length;
@@ -235,7 +235,12 @@ function renderEditor() {
     }
     markDirty();
     renderEditor();
-    if (top) window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (copied) {
+      const t = app.querySelector(`[data-session="${copied.id}"] .session-title`);
+      t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      t.focus({ preventScroll: true });
+      t.select();
+    }
   };
 }
 

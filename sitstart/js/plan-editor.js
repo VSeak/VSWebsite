@@ -166,7 +166,8 @@ function renderEditor() {
     </div></div>
     ${body}`, { keepScroll: true });
 
-  app.onpointerdown = draft.preview ? null : e => dragSort(e, EX_DRAG) || dragSort(e, TAB_DRAG);
+  // In braces: a handler that returns false cancels the press, and fields stop taking clicks.
+  app.onpointerdown = draft.preview ? null : e => { dragSort(e, EX_DRAG) || dragSort(e, TAB_DRAG); };
   app.oninput = e => {
     const t = e.target, d = t.dataset;
     if (d.p && t.type !== 'checkbox' && t.type !== 'radio') draft.plan[d.p] = t.value;

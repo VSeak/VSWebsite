@@ -60,7 +60,7 @@ if (location.hash && !location.hash.startsWith('#/')) {
 // ---------- Helpers ----------
 
 function view(html, { keepScroll = false } = {}) {
-  app.oninput = app.onchange = app.onclick = null;
+  app.oninput = app.onchange = app.onclick = app.onpointerdown = null;
   $('#exMenu')?.setAttribute('hidden', '');   // its field is about to go
   app.innerHTML = html;
   if (!keepScroll) window.scrollTo(0, 0);

@@ -73,7 +73,9 @@ function markDirty() {
 }
 
 // One exercise as a small card: its name (the master list picker), Sets / Reps/Time / Rest, notes, then its buttons.
-// Move Up and Move Down only where there's somewhere to go.
+// Move Up and Move Down only where there's somewhere to go; the grip drags it (EX_DRAG) when there's more than one.
+const GRIP = '<svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden="true">'
+  + [6, 10, 14].map(y => `<circle cx="7" cy="${y}" r="1.6"/><circle cx="13" cy="${y}" r="1.6"/>`).join('') + '</svg>';
 function exEditHTML(s, i, e) {
   const f = (field, label, ph = label) => `<label class="ex-${field}">${label}<input data-s="${i}" data-e="${e}" data-f="${field}" placeholder="${ph}"
     ${field === 'name' ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
@@ -84,7 +86,7 @@ function exEditHTML(s, i, e) {
   return `<div class="ex-edit">${f('name', 'Exercise', 'Exercise/Purpose')}
     <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
     ${notes}
-    <div class="ex-acts"><span class="row">${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
+    <div class="ex-acts"><span class="row">${n > 1 ? `<span class="grip" data-s="${i}" data-e="${e}" title="Drag to Reorder">${GRIP}</span>` : ''}${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
       <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove</button></div></div>`;
 }
 
@@ -112,7 +114,7 @@ const sessionLabel = (s, k) => s.title.trim() || `Session ${k + 1}`;
 // A week's sessions: a tab each (and + Add Session), then the picked one. draft.tab[week] remembers the pick.
 function weekSessionsHTML(w, list) {
   const S = draft.sessions, pick = list.some(({ i }) => S[i].id === draft.tab[w]) ? draft.tab[w] : S[list[0]?.i]?.id;
-  return `<div class="tabs" role="tablist" aria-label="Sessions">${list.map(({ i }, k) =>
+  return `<div class="tabs" role="tablist" aria-label="Sessions" data-week="${w}">${list.map(({ i }, k) =>
       `<button type="button" role="tab" data-tab="${S[i].id}" data-week="${w}" aria-selected="${S[i].id === pick}">${esc(sessionLabel(S[i], k))}</button>`).join('')}
       <button type="button" class="add-tab" data-act="add-session" data-week="${w}"${list.length ? '' : ' data-first data-need="Add at least one session."'}>+ Add Session</button></div>
     ${list.map(({ i }, k) => sessionEditHTML(S[i], i, S[i].id === pick, k === 0, k === list.length - 1)).join('')}`;
@@ -164,6 +166,7 @@ function renderEditor() {
     </div></div>
     ${body}`, { keepScroll: true });
 
+  app.onpointerdown = draft.preview ? null : e => dragSort(e, EX_DRAG) || dragSort(e, TAB_DRAG);
   app.oninput = e => {
     const t = e.target, d = t.dataset;
     if (d.p && t.type !== 'checkbox' && t.type !== 'radio') draft.plan[d.p] = t.value;
@@ -242,6 +245,37 @@ function renderEditor() {
       t.select();
     }
   };
+}
+
+// Drag to reorder (drag.js). An exercise moves by its grip within its own session.
+const EX_DRAG = {
+  handle: '.ex-edit .grip', item: h => h.closest('.ex-edit'), lists: el => [el.parentNode], items: '.ex-edit', axis: 'y',
+  drop(el, list, index) {
+    const g = el.querySelector('.grip'), all = draft.sessions[+g.dataset.s].exercises, from = +g.dataset.e;
+    if (from === index) return;
+    all.splice(index, 0, ...all.splice(from, 1));
+    markDirty(); renderEditor();
+  },
+};
+// A session moves by its tab (hold it first on a touch screen), within its week or into another week's tabs.
+const TAB_DRAG = {
+  handle: '.plan-sessions [data-tab]', hold: true, item: h => h, axis: 'x',
+  lists: () => [...app.querySelectorAll('.plan-sessions .tabs')], zone: l => l.closest('.week'),
+  items: '[data-tab]', end: l => l.querySelector('.add-tab'),
+  drop: (el, list, index) => moveSession(el.dataset.tab, +list.dataset.week, index),
+};
+
+// Puts a session at index k among the week's sessions, changing its week if it's another one. It stays the picked tab.
+function moveSession(id, week, k) {
+  const S = draft.sessions, from = S.findIndex(s => s.id === id), s = S[from];
+  const inWeek = w => displayOrder().filter(j => S[j].week === w);
+  if (s.week === week && inWeek(week).indexOf(from) === k) return;
+  S.splice(from, 1);
+  const list = inWeek(week);
+  S.splice(k < list.length ? list[k] : list.length ? list.at(-1) + 1 : S.length, 0, s);
+  s.week = week;
+  draft.tab[week] = id;
+  markDirty(); renderEditor();
 }
 
 // Repeat Weekly keeps one week: the first week's sessions become week 1, and any later

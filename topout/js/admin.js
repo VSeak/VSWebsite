@@ -128,7 +128,7 @@ async function settingsPage() {
         <p class="hint">The cards on Home, in this order. A location with members can't be deleted: move or delete them first.</p>
         ${locs.map((l, i) => `<form class="set-row" data-kind="loc" data-id="${l.id}" data-save>
           <input name="name" maxlength="60" required value="${esc(l.name)}" aria-label="Location name" data-need="Name the location.">
-          <span class="muted small-text">${nMembers(l.id)} members</span>
+          <span class="muted small-text">${nMembers(l.id)} ${nMembers(l.id) === 1 ? "member" : "members"}</span>
           ${moveBtns('loc', i, locs.length, l.id)}
           <button class="small primary">Save</button>
           ${nMembers(l.id) ? '' : `<button type="button" class="small ghost danger" data-del="loc" data-id="${l.id}">Delete</button>`}</form>`).join('')}

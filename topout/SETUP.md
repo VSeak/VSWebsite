@@ -8,7 +8,7 @@ Top Out uses the **same Supabase project as Sit Start**, so there's no new proje
 
 ## 1b. Staff lookup
 
-Also run `sitstart/supabase/migrations/2026-09-30-staff-lookup.sql` the same way (it lets Add User fill in names from the other app).
+Also run `sitstart/supabase/migrations/2026-09-30-staff-lookup.sql` and `2026-09-30-login-has-password.sql` the same way. After step 2, run `topout/supabase/migrations/2026-09-30-staff-lookup.sql` only if your `schema.sql` predates it (a fresh `schema.sql` already has it and the name sync).
 
 ## 2. Create Top Out's tables
 

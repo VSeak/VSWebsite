@@ -266,3 +266,14 @@ async function sendLink(email, firstName = '', staff = false) {
   const data = { ...(me.firstName && { sent_by: me.firstName }), ...(firstName && { first_name: firstName }), ...(staff && { staff: true }) };
   return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, data, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
 }
+
+// An invite for a login that already has a password (e.g. they coach on Top Out, which shares the logins) sends
+// nothing: they sign in with the password they have, and the page still marks them invited (login_has_password()).
+// Returns true when an email went out. Call it after the email is saved on their row.
+async function sendInvite(email, firstName = '', staff = false) {
+  const { data: has } = await sb.rpc('login_has_password', { p_email: email });
+  if (has) return false;
+  const { error } = await sendLink(email, firstName, staff);
+  if (error) throw error;
+  return true;
+}

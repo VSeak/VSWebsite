@@ -259,10 +259,9 @@ async function adminStudent(id, again = false) {
         const { error } = await sb.from('students').update({ email }).eq('id', id);
         if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
       }
-      const { error } = await sendLink(email, s.first_name);
-      if (error) throw error;
+      const sent = await sendInvite(email, s.first_name);
       must(await sb.from('students').update({ invited_at: new Date().toISOString() }).eq('id', id));
-      flash(`Invite sent to ${email}.`);
+      flash(sent ? `Invite sent to ${email}.` : `${s.first_name} already has a password (from Top Out), so no email was sent: ${p.they} can sign in now. Let ${p.them} know ${p.their} plan is ready.`);
       adminStudent(id, e.target);
     });
   };

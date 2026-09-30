@@ -296,6 +296,17 @@ begin
 end;
 $$;
 
+-- A student's invite, or a staff member's: whether their login already has a password (e.g. they coach on Top Out).
+-- Then the page skips the email and just marks them invited, so they sign in with the password they have.
+-- Coaches and admins only, and only for an email on the student or staff list.
+create function public.login_has_password(p_email text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select (public.is_coach() or public.is_admin())
+    and (exists (select 1 from public.students where email = lower(trim(p_email)))
+         or exists (select 1 from public.staff where email = lower(trim(p_email))))
+    and exists (select 1 from auth.users u where lower(u.email) = lower(trim(p_email)) and coalesce(u.encrypted_password, '') <> '');
+$$;
+
 -- Called by the site after sign-in: links the account to its student row.
 create function public.claim_student() returns void
 language sql volatile security definer set search_path = '' as $$
@@ -848,6 +859,8 @@ revoke execute on function public.login_in_other_app(text) from public, anon, au
 revoke execute on function public.person_in_other_app(text) from public, anon, authenticated;
 revoke execute on function public.staff_lookup(text) from public, anon;
 grant execute on function public.staff_lookup(text) to authenticated;
+revoke execute on function public.login_has_password(text) from public, anon;
+grant execute on function public.login_has_password(text) to authenticated;
 revoke execute on function public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
   public.coaches_of(uuid), public.my_staff_id(), public.coach_list(), public.update_my_pronouns(text), public.stamp_sender(text),

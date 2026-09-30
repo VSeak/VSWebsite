@@ -354,10 +354,9 @@ async function adminUser(id, again = false) {
           if (error) throw error.code === '23505' ? new Error('Another student already has that email.') : error;
         }
       }
-      const { error } = await sendLink(email, u.first_name, staff);
-      if (error) throw error;
+      const sent = await sendInvite(email, u.first_name, staff);
       must(await sb.from(table).update({ invited_at: new Date().toISOString() }).eq('id', id));
-      flash(`Invite sent to ${email}.`);
+      flash(sent ? `Invite sent to ${email}.` : `${u.first_name || email} already ${p.v('have', 'has')} a password (from Top Out), so no email was sent: ${p.they} can sign in now.`);
       adminUser(id, e.target);
     });
   };

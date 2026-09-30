@@ -59,16 +59,27 @@ async function staffForm(s, locs) {
         ${locs.map(l => `<label class="check"><input type="checkbox" name="loc" value="${l.id}"${at.includes(l.id) ? ' checked' : ''}> ${esc(l.name)}</label>`).join('')}
         <p class="hint">Admins see every location anyway. Tick where they coach so they show on the location page.</p>
       </fieldset>
-      ${s && st !== 'Active' ? '<label class="check"><input type="checkbox" name="resend"> Send the Invite Again</label>' : ''}
-      ${s && st === 'Active' ? '<label class="check"><input type="checkbox" name="resend"> Email a Sign-In Link <span class="muted">(e.g. they forgot their password)</span></label>' : ''}`,
+      ${s && !self ? `<div class="row wrap"><button type="button" class="small" id="linkBtn">${st === 'Active' ? 'Email a Sign-In Link' : 'Resend Invite'}</button>
+        <span class="hint" id="linkSent" role="status" style="margin:0">${st === 'Active' ? 'For a forgotten password: the link signs them in, then they choose a new one.' : ''}</span></div>` : ''}`,
     onOpen: form => {
       const boxes = [...form.querySelectorAll('[name="role"]')];
       if (self) boxes.find(b => b.value === 'admin').disabled = true;
       const need = () => { const none = !boxes.some(b => b.checked); boxes[0].setCustomValidity(none ? 'Pick at least one role.' : ''); boxes[0].dataset.need = 'Pick at least one role.'; };
       boxes.forEach(b => b.addEventListener('change', need)); need();
       if (!s) watchLookup(form);
+      // Shown in the dialog (a flash would sit behind it).
+      if (s && !self) $('#linkBtn').onclick = async e => {
+        const btn = e.target, note = $('#linkSent');
+        btn.disabled = true;
+        try {
+          const { error } = await sendLink(s.email, s.first_name);
+          if (error) throw error;
+          if (st !== 'Active') await sb.from('team_staff').update({ invited_at: new Date().toISOString() }).eq('id', s.id).then(must);
+          note.textContent = `Sent to ${s.email}.`;
+        } catch (err) { note.textContent = msgOf(err); btn.disabled = false; }
+      };
     } });
-  if (!f) return;
+  if (!f) { if ($('#linkSent')?.textContent.startsWith('Sent')) redraw(); return; }   // an invite resent: its status may change
   if (f.get('button') === 'remove') {
     if (!await confirmDelete('Remove From Staff?', `${esc(s.name || s.email)} won't be able to open Top Out anymore. Their notes and check-ins
       stay, signed with their name. Their login stays too, in case they use Sit Start.`)) return;
@@ -96,11 +107,11 @@ async function staffForm(s, locs) {
     if (look?.has_password) {
       await sb.from('team_staff').update({ invited_at: new Date().toISOString() }).eq('id', id).then(must);
       flash(`Added. ${row.first_name} already has a password, so no invite was needed: they can sign in to Top Out with it now.`);
-    } else if (!s || f.get('resend')) {
+    } else if (!s) {
       const { error } = await sendLink(email, row.first_name);
-      if (error) { flash(`Saved, but the email didn't send: ${msgOf(error)}`, 'error'); redraw(); return; }
-      if (!s || !s.last_sign_in_at) await sb.from('team_staff').update({ invited_at: new Date().toISOString() }).eq('id', id).then(must);
-      flash(s ? `Link sent to ${email}.` : `Added. The invite is on its way to ${email}.`);
+      if (error) { flash(`Added, but the invite didn't send: ${msgOf(error)}`, 'error'); redraw(); return; }
+      await sb.from('team_staff').update({ invited_at: new Date().toISOString() }).eq('id', id).then(must);
+      flash(`Added. The invite is on its way to ${email}.`);
     } else flash('Saved.');
     if (self) await loadMe(me.user);
     redraw();

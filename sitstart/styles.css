@@ -43,7 +43,9 @@ p { margin: 0 0 .75rem; }
 #signOut:hover { background: color-mix(in srgb, var(--chip) 80%, var(--ink)); }
 .brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); text-decoration: none; }
 .brand svg { width: 32px; height: 32px; flex: none; color: var(--accent); }
+.brand-text { display: flex; flex-direction: column; line-height: 1; }
 .brand-name { font: 600 1.1rem/1.05 Sora, "DM Sans", sans-serif; white-space: nowrap; }
+.brand-sub { font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-top: .2rem; white-space: nowrap; }
 .who { display: flex; min-width: 0; margin-left: auto; white-space: nowrap; color: var(--muted); font-size: .9rem; }
 #whoName { overflow: hidden; text-overflow: ellipsis; }
 #whoRoles:not(:empty)::before { content: "·"; margin: 0 .4rem; }

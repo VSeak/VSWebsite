@@ -211,9 +211,9 @@ language sql stable security definer set search_path = '' as $$
   order by s.name, s.email;
 $$;
 
--- Emails are shared with Sit Start: the templates switch to Top Out wording when the login's data has app = topout.
+-- Emails are shared with Sit Start: the templates switch to Top Out wording when the login's data has topout = true.
 -- Supabase ignores a link's data for a login that already exists, so the page stamps it here before each send
--- (Sit Start's stamp_sender sets it back to sitstart).
+-- (Sit Start's stamp_sender sets it back to false).
 create function public.team_stamp_sender(p_email text) returns void
 language plpgsql volatile security definer set search_path = '' as $$
 declare
@@ -222,7 +222,7 @@ begin
   select first_name into sender from public.team_staff where email = lower(auth.jwt() ->> 'email');
   if sender is null then raise exception 'Only Top Out staff can send sign-in links.'; end if;
   update auth.users set raw_user_meta_data = (coalesce(raw_user_meta_data, '{}'::jsonb) - 'email_changed_to')
-    || jsonb_build_object('sent_by', sender, 'app', 'topout', 'staff', true)
+    || jsonb_build_object('sent_by', sender, 'topout', true, 'staff', true)
   where lower(email) = lower(trim(p_email));
 end;
 $$;

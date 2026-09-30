@@ -1,7 +1,7 @@
 -- Shared logins with Top Out (topout/, the Adult Team app), which uses this same Supabase project.
 -- Adds login_in_other_app() (false until Top Out's schema replaces it), and makes the sign-up gate, Delete Student,
 -- Delete Staff and Deactivate ask it, so a Top Out coach can create a login and Sit Start never deletes it or signs
--- it out. stamp_sender also marks the login app = sitstart for the shared email templates.
+-- it out. stamp_sender also marks the login topout = false for the shared email templates.
 -- Run this BEFORE topout/supabase/schema.sql.
 begin;
 
@@ -42,9 +42,9 @@ begin
     and ('coach' = any (roles) or 'admin' = any (roles)) and deactivated_at is null;
   if sender is null then raise exception 'Only a coach or an admin can send sign-in links.'; end if;
   -- A normal sign-in link clears email_changed_to (prepare_email_change), so it gets the usual wording again.
-  -- app and staff switch the shared email templates back to Sit Start wording (Top Out's team_stamp_sender sets them too).
+  -- topout and staff switch the shared email templates back to Sit Start wording (Top Out's team_stamp_sender sets them too).
   update auth.users set raw_user_meta_data = (coalesce(raw_user_meta_data, '{}'::jsonb) - 'email_changed_to')
-    || jsonb_build_object('sent_by', sender, 'app', 'sitstart',
+    || jsonb_build_object('sent_by', sender, 'topout', false,
          'staff', exists (select 1 from public.staff where email = lower(trim(p_email))))
   where lower(email) = lower(trim(p_email));
 end;

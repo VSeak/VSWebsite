@@ -333,7 +333,7 @@ addEventListener('resize', () => exMenuFor && exMenuOpen(exMenuFor));
 // coach's last few plans (draft.recent).
 const EXB_WIDE = matchMedia('(min-width: 1000px)');   // matches .plan-work in styles.css
 const EXB_RECENT = 5;
-const exb = { q: '', purpose: '', picked: new Map(), sid: null };   // picked: key → name, in the order ticked
+const exb = { q: '', purpose: '', picked: new Map(), sid: null, allChips: false };   // picked: key → name, in the order ticked
 const EXB_ICON = {
   search: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   close: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
@@ -369,13 +369,22 @@ function exbRecent(here) {
     .sort((a, b) => (n.get(b.name_key) - n.get(a.name_key)) || a.name_key.localeCompare(b.name_key)).slice(0, EXB_RECENT);
 }
 
-// All, then the purposes in use among the search's matches, with counts (a picked one stays, even at 0).
-function exbChipsHTML() {
+// All, then the purposes in use among the search's matches, most used first, with counts (a picked one stays, even
+// at 0). wide: the panel shows the first EXB_CHIPS, then View All (exb.allChips), which becomes View Less; the
+// sheet's chips scroll sideways instead.
+const EXB_CHIPS = 6;
+function exbChipsHTML(wide) {
   const all = exbMatches(''), n = new Map();
   all.forEach(x => (x.purposes ?? []).forEach(h => n.set(h, (n.get(h) || 0) + 1)));
   if (exb.purpose && !n.has(exb.purpose)) n.set(exb.purpose, 0);
   const chip = (g, label, k) => `<button type="button" role="tab" data-purpose="${esc(g)}" aria-selected="${g === exb.purpose}">${esc(label)}<span class="count">${k}</span></button>`;
-  return chip('', 'All', all.length) + [...n].sort((a, b) => a[0].localeCompare(b[0])).map(([g, k]) => chip(g, g, k)).join('');
+  const used = [...n].sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
+  const cut = wide && !exb.allChips && used.length > EXB_CHIPS + 1;
+  let shown = cut ? used.slice(0, EXB_CHIPS) : used;
+  if (cut && exb.purpose && !shown.some(([g]) => g === exb.purpose)) shown = [...shown, used.find(([g]) => g === exb.purpose)];
+  const more = cut ? '<button type="button" class="more-chips" data-chips="all">View All</button>'
+    : wide && exb.allChips && used.length > EXB_CHIPS + 1 ? '<button type="button" class="more-chips" data-chips="less">View Less</button>' : '';
+  return chip('', 'All', all.length) + shown.map(([g, k]) => chip(g, g, k)).join('') + more;
 }
 
 // wide: the panel's rows (+ Add) instead of the sheet's (a tick to press).
@@ -411,7 +420,7 @@ function exbListHTML(wide) {
 }
 
 function exbRender(root, wide) {
-  root.querySelector('.exb-chips').innerHTML = exbChipsHTML();
+  root.querySelector('.exb-chips').innerHTML = exbChipsHTML(wide);
   root.querySelector('.exb-list').innerHTML = exbListHTML(wide);
   if (wide) return;
   const n = exb.picked.size, add = root.querySelector('[data-addpicked]');
@@ -482,6 +491,7 @@ function exPanelClick(e) {
   const b = e.target.closest('button'), d = b?.dataset;
   if (!b) return;
   if (d.purpose != null) { exb.purpose = d.purpose; renderExPanel(); $(`#exPanel [data-purpose="${CSS.escape(d.purpose)}"]`)?.focus(); }
+  else if (d.chips) { exb.allChips = d.chips === 'all'; renderExPanel(); $('#exPanel .more-chips')?.focus(); }
   else if (d.add) addExercises(exb.sid, [draft.library.find(y => y.name_key === d.add).name]);
   else if ('new' in d) { const t = exb.q.trim().slice(0, 200); exb.q = ''; addExercises(exb.sid, [t]); }
 }

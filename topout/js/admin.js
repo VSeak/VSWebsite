@@ -45,7 +45,8 @@ async function staffForm(s, locs) {
   const f = await ask({ title: s ? (s.name || s.email) : 'Add Staff', ok: s ? 'Save' : 'Add & Send Invite', wide: true,
     extra: s && !self && !s.owner ? { value: 'remove', label: 'Remove' } : null,
     body: `${s ? `<p class="muted">${esc(s.email)} · ${st}</p>`
-        : `<label>Email<input type="email" name="email" required data-need="Enter their email." autocomplete="off"></label>`}
+        : `<label>Email<input type="email" name="email" required data-need="Enter their email." autocomplete="off"></label>
+          <p class="hint" id="lookHint" role="status" hidden></p>`}
       <div class="two"><label>First Name<input name="first_name" maxlength="60" required value="${esc(s?.first_name || '')}" data-need="Enter their first name." autocomplete="off"></label>
         <label>Last Name<input name="last_name" maxlength="60" value="${esc(s?.last_name || '')}" autocomplete="off"></label></div>
       ${pronounsField(s?.pronouns || '')}
@@ -65,6 +66,7 @@ async function staffForm(s, locs) {
       if (self) boxes.find(b => b.value === 'admin').disabled = true;
       const need = () => { const none = !boxes.some(b => b.checked); boxes[0].setCustomValidity(none ? 'Pick at least one role.' : ''); boxes[0].dataset.need = 'Pick at least one role.'; };
       boxes.forEach(b => b.addEventListener('change', need)); need();
+      if (!s) watchLookup(form);
     } });
   if (!f) return;
   if (f.get('button') === 'remove') {
@@ -89,7 +91,12 @@ async function staffForm(s, locs) {
     const add = newLocs.filter(l => !at.includes(l)), drop = at.filter(l => !newLocs.includes(l));
     if (add.length) await sb.from('team_staff_locations').insert(add.map(location_id => ({ staff_id: id, location_id }))).then(must);
     if (drop.length) await sb.from('team_staff_locations').delete().eq('staff_id', id).in('location_id', drop).then(must);
-    if (!s || f.get('resend')) {
+    // Already has a password (e.g. from Sit Start): no invite, they sign in with it. invited_at still marks access as given.
+    const look = s ? null : await staffLookup(email).catch(() => null);
+    if (look?.has_password) {
+      await sb.from('team_staff').update({ invited_at: new Date().toISOString() }).eq('id', id).then(must);
+      flash(`Added. ${row.first_name} already has a password, so no invite was needed: they can sign in to Top Out with it now.`);
+    } else if (!s || f.get('resend')) {
       const { error } = await sendLink(email, row.first_name);
       if (error) { flash(`Saved, but the email didn't send: ${msgOf(error)}`, 'error'); redraw(); return; }
       if (!s || !s.last_sign_in_at) await sb.from('team_staff').update({ invited_at: new Date().toISOString() }).eq('id', id).then(must);
@@ -204,4 +211,31 @@ async function settingsPage() {
       busy(del, async () => { await sb.from(TABLE[del.dataset.del]).delete().eq('id', item.id).then(must); flash('Deleted.'); redraw(); });
     }
   };
+}
+
+// ---------- Someone the other app already knows ----------
+// Add Staff looks the email up (team_staff_lookup, admins only): Sit Start's name and pronouns fill in any empty
+// fields, and a login that already has a password is added with no invite (the OK button says so).
+const staffLookup = email => sb.rpc('team_staff_lookup', { p_email: email }).then(must).then(r => r[0] || null);
+function watchLookup(form) {
+  const els = form.elements, hint = $('#lookHint'), ok = form.querySelector('button[value="ok"]');
+  let asked = '';
+  els.email.addEventListener('change', async () => {
+    const email = els.email.value.trim().toLowerCase();
+    if (email === asked) return;
+    asked = email;
+    const look = email && els.email.validity.valid ? await staffLookup(email).catch(() => null) : null;
+    if (email !== asked) return;   // typed again meanwhile
+    const known = !!look?.first_name;
+    if (known) {
+      if (!els.first_name.value.trim()) els.first_name.value = look.first_name;
+      if (!els.last_name.value.trim()) els.last_name.value = look.last_name;
+      if (!els.pronouns.value && look.pronouns) setPronouns(form, look.pronouns);
+      clearFieldError(els.first_name);
+    }
+    ok.textContent = look?.has_password ? 'Add Staff' : 'Add & Send Invite';
+    hint.hidden = !known && !look?.has_password;
+    hint.textContent = [known ? 'Already in Sit Start, so their name and pronouns are filled in.' : '',
+      look?.has_password ? 'They already have a password, so there’s no invite: they can sign in to Top Out with it as soon as you add them.' : ''].join(' ').trim();
+  });
 }

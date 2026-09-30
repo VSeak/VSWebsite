@@ -6,6 +6,10 @@ Top Out uses the **same Supabase project as Sit Start**, so there's no new proje
 
 **SQL Editor → New query**, paste all of `sitstart/supabase/migrations/2026-09-30-shared-logins.sql`, then **Run**. Sit Start keeps working exactly as before. This only lets another app's staff sign up, and stops Sit Start from deleting a login that another app uses.
 
+## 1b. Staff lookup
+
+Also run `sitstart/supabase/migrations/2026-09-30-staff-lookup.sql` the same way (it lets Add User fill in names from the other app).
+
 ## 2. Create Top Out's tables
 
 **SQL Editor → New query**, paste all of `topout/supabase/schema.sql`. At the very bottom, change `you@example.com` to the email you sign in to Sit Start with (you become Top Out's owner and admin). Then **Run**. You should see "Success. No rows returned".

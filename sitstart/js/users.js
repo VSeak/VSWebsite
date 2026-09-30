@@ -93,6 +93,7 @@ async function addUserDialog(btn) {
     <label>Last Name<input name="last_name" autocomplete="off"></label>
     ${pronounsField()}
     <label data-staff>Email<input type="email" name="email" required data-need="Enter their email to send the invite." autocomplete="off"></label>
+    <p class="hint" id="lookHint" role="status" data-staff hidden style="margin:0"></p>
     <div data-staff>${rolesFieldset(['coach'])}</div></div>` });
   const dlg = $('#dlg'), ok = dlg.querySelector('button[value="ok"]'), boxes = [...dlg.querySelectorAll('input[name="roles"]')];
   const isStaff = () => dlg.querySelector('input[name="add_kind"]:checked').value === 'staff';
@@ -112,6 +113,7 @@ async function addUserDialog(btn) {
   }
   setKind();
   $('#addKind').onchange = setKind;
+  watchLookup(dlg.querySelector('form'), ok, isStaff);
   boxes.forEach(b => b.addEventListener('change', () => { needRole(); if (boxes.some(x => x.checked)) clearFieldError(boxes[0]); }));
   const f = await asked;
   if (!f) return;
@@ -128,8 +130,10 @@ async function addUserDialog(btn) {
   busy(btn, async () => {
     const { data, error } = await sb.from('staff').insert(row).select('id').single();
     if (error) throw error.code === '23505' ? new Error('Someone on the staff already has that email.') : error;
-    // Send the invite before opening their page, so it draws once (with Invited) instead of twice.
-    const { error: mailError } = await sendLink(row.email, row.first_name, true);
+    // Send the invite before opening their page, so it draws once (with Invited) instead of twice. A login that already
+    // has a password (e.g. from Top Out) gets no invite: they sign in with it. invited_at still marks access as given.
+    const look = await staffLookup(row.email).catch(() => null);
+    const { error: mailError } = look?.has_password ? {} : await sendLink(row.email, row.first_name, true);
     const invitedAt = !mailError && new Date().toISOString();
     if (invitedAt) must(await sb.from('staff').update({ invited_at: invitedAt }).eq('id', data.id));
     // Student too: signs in with the same login, so the staff invite covers it.
@@ -137,6 +141,7 @@ async function addUserDialog(btn) {
     goTo('#/user/' + data.id);
     if (mailError) flash(`${row.first_name} added, but the invite didn't send: ${msgOf(mailError)}`, 'error');
     else if (stuError) flash(`${row.first_name} added and invited, but couldn't be made a student: ${msgOf(stuError)}`, 'error');
+    else if (look?.has_password) flash(`${row.first_name} added. ${pro(pronouns).They} already ${pro(pronouns).v('have', 'has')} a password, so no invite was needed.`);
     else flash(`${row.first_name} added. Invite sent to ${row.email}.`);
   });
 }
@@ -411,4 +416,36 @@ async function adminUser(id, again = false) {
       });
     }
   };
+}
+
+// Add User (staff) looks the email up (staff_lookup, admins only): the name and pronouns another app (Top Out) has fill
+// in any empty fields, and a login that already has a password is added with no invite (the OK button says so).
+const staffLookup = email => sb.rpc('staff_lookup', { p_email: email }).then(must).then(r => r[0] || null);
+function watchLookup(form, ok, isStaff) {
+  const els = form.elements, hint = $('#lookHint');
+  let asked = '', look = null;
+  const show = () => {
+    if (!isStaff()) return;
+    ok.textContent = look?.has_password ? '+ Add Staff' : '+ Add and Send Invite';
+    hint.hidden = !look?.first_name && !look?.has_password;
+    hint.textContent = [look?.first_name ? 'Already on Top Out, so their name and pronouns are filled in.' : '',
+      look?.has_password ? 'They already have a password, so there’s no invite: they can sign in as soon as you add them.' : ''].join(' ').trim();
+  };
+  els.email.addEventListener('change', async () => {
+    const email = els.email.value.trim().toLowerCase();
+    if (email === asked) return;
+    asked = email;
+    const found = email && els.email.validity.valid ? await staffLookup(email).catch(() => null) : null;
+    if (email !== asked) return;   // typed again meanwhile
+    look = found;
+    if (look?.first_name) {
+      if (!els.first_name.value.trim()) els.first_name.value = look.first_name;
+      if (!els.last_name.value.trim()) els.last_name.value = look.last_name;
+      if (!els.pronouns.value && look.pronouns) setPronouns(form, look.pronouns);
+      clearFieldError(els.first_name);
+    }
+    show();
+  });
+  $('#addKind').addEventListener('change', () => { if (isStaff()) show(); else hint.hidden = true; });
+  show();
 }

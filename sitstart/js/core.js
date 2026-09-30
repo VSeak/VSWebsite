@@ -215,6 +215,13 @@ function pronounsField(value = '', whose = 'Their') {
     <label${other ? '' : ' hidden'}>${whose} Pronouns<input name="pronouns_other" value="${other ? esc(value) : ''}" maxlength="40"
       ${other ? 'required' : ''} data-need="Type the pronouns, or pick one above." placeholder="e.g. ze/hir" autocomplete="off"></label>`;
 }
+// Sets the field to a value (e.g. filled in from another app), Other with the box when it isn't a listed one.
+function setPronouns(form, value) {
+  const sel = form.elements.pronouns, other = !!value && !PRONOUNS.includes(value);
+  sel.value = other ? 'other' : value;
+  if (other) form.elements.pronouns_other.value = value;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+}
 function readPronouns(f) {
   if (f.get('pronouns') !== 'other') return f.get('pronouns') || '';
   const typed = f.get('pronouns_other').trim();

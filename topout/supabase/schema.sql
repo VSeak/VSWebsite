@@ -1,7 +1,7 @@
 -- Top Out (Adult Team): tables, access rules and the shared-login hook.
 -- It shares one Supabase project with Sit Start: the same logins (auth.users), separate tables (all named team_*).
 -- A login alone opens nothing here: every table checks team_staff, so a Sit Start-only account sees no rows.
--- Run once, after Sit Start's schema and its 2026-09-30-shared-logins.sql migration: SQL Editor → New query →
+-- Run once, after Sit Start's schema and its migrations (2026-09-30-shared-logins.sql, 2026-09-30-staff-lookup.sql): SQL Editor → New query →
 -- paste all of this → change the email in step 8 to yours → Run.
 
 -- 1. Tables ------------------------------------------------------------------
@@ -398,12 +398,42 @@ language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.team_staff where email = lower(trim(p_email)));
 $$;
 
+-- Sit Start's Add User asks this for the name and pronouns Top Out has for an email (staff_lookup in Sit Start).
+create or replace function public.person_in_other_app(p_email text)
+returns table (first_name text, last_name text, pronouns text)
+language sql stable security definer set search_path = '' as $$
+  select first_name, last_name, pronouns from public.team_staff where email = lower(trim(p_email));
+$$;
+
+-- Add Staff, admins only: the name and pronouns Sit Start has for this email (its staff, else its students; null if
+-- neither), and whether its login already has a password. Then the invite is skipped: they sign in with the password
+-- they have.
+create function public.team_staff_lookup(p_email text)
+returns table (first_name text, last_name text, pronouns text, has_password boolean)
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  e text := lower(trim(p_email));
+begin
+  if not public.team_is_admin() then return; end if;
+  return query
+  select o.first_name, o.last_name, o.pronouns,
+    exists (select 1 from auth.users u where lower(u.email) = e and coalesce(u.encrypted_password, '') <> '')
+  from (select 1) x left join lateral (
+    select s.first_name, s.last_name, s.pronouns, 1 as pick from public.staff s where s.email = e
+    union all
+    select st.first_name, st.last_name, st.pronouns, 2 from public.students st where st.email = e
+    order by pick limit 1) o on true;
+end;
+$$;
+
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
-  public.team_can_location(uuid), public.team_can_member(uuid), public.team_staff_list(), public.team_stamp_sender(text)
+  public.team_can_location(uuid), public.team_can_member(uuid), public.team_staff_list(), public.team_stamp_sender(text),
+  public.team_staff_lookup(text)
   from public, anon;
 grant execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
-  public.team_can_location(uuid), public.team_can_member(uuid), public.team_staff_list(), public.team_stamp_sender(text)
+  public.team_can_location(uuid), public.team_can_member(uuid), public.team_staff_list(), public.team_stamp_sender(text),
+  public.team_staff_lookup(text)
   to authenticated;
 
 -- 7. The two starting locations.

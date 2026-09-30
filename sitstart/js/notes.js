@@ -9,17 +9,19 @@ const planNotes = id => sb.from('notes').select('*, session:sessions!inner(plan_
 function notesHTML(sid) {
   const list = notesCtx.notes.filter(n => n.session_id === sid);
   const canDelete = n => notesCtx.coach || (n.author_id === me.user.id && !n.from_coach);
+  const mine = n => n.author_id === me.user.id;   // only the author edits a note
   if (!notesCtx.canPost && !list.length) return '';
   return `<details class="notes" data-notes="${sid}" ${list.length ? 'open' : ''}>
     <summary>${list.length ? `Notes (${list.length})` : 'Add a Note'}</summary>
-    ${list.map(n => `<div class="note${n.author_id === me.user.id ? ' mine' : ''}">
-      <div class="note-meta"><strong>${n.from_coach ? esc(n.author_name || 'Coach') : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}
+    ${list.map(n => `<div class="note${mine(n) ? ' mine' : ''}">
+      <div class="note-meta"><strong>${n.from_coach ? esc(n.author_name || 'Coach') : esc(notesCtx.studentName)}</strong> · ${fmtWhen(n.created_at)}${n.edited_at ? ' · Edited' : ''}
+      ${mine(n) ? ` · <button type="button" class="link" data-edit-note="${n.id}">Edit</button>` : ''}
       ${canDelete(n) ? ` · <button type="button" class="link" data-del-note="${n.id}">Delete</button>` : ''}</div>
       <p>${para(n.body)}</p></div>`).join('')}
     ${notesCtx.canPost ? `<form class="note-form" data-note-form="${sid}">
-      <textarea name="body" rows="2" maxlength="4000" required data-need="Write your note first."
+      ${rich(`<textarea name="body" rows="2" maxlength="4000" data-grow required data-need="Write your note first."
         placeholder="${notesCtx.coach ? 'Reply to your student…'
-          : list.some(n => !n.from_coach) ? 'Any other thoughts?' : 'How did the session go? Any questions?'}"></textarea>
+          : list.some(n => !n.from_coach) ? 'Any other thoughts?' : 'How did the session go? Any questions?'}"></textarea>`)}
       <button class="small">+ Post Notes</button>
     </form>` : ''}
   </details>`;
@@ -40,6 +42,22 @@ app.addEventListener('submit', e => {
     const n = await sb.from('notes').insert({ session_id: f.dataset.noteForm, body, from_coach: !!notesCtx.coach }).select().single().then(must);
     notesCtx.notes.push(n);
     refreshNotes(n.session_id);
+  });
+});
+
+// Edit: the author's own note, in a dialog.
+app.addEventListener('click', async e => {
+  const b = e.target.closest('[data-edit-note]');
+  if (!b) return;
+  const n = notesCtx.notes.find(x => x.id === b.dataset.editNote);
+  const f = await ask({ title: 'Edit Note', ok: 'Save Note',
+    body: `<label>Note${rich(`<textarea name="body" rows="6" maxlength="4000" data-grow required data-need="Write your note.">${esc(n.body)}</textarea>`)}</label>` });
+  const body = f?.get('body').trim();
+  if (!body || body === n.body) return;
+  busy(b, async () => {
+    Object.assign(n, await sb.from('notes').update({ body }).eq('id', n.id).select().single().then(must));
+    refreshNotes(n.session_id);
+    flash('Note saved.');
   });
 });
 

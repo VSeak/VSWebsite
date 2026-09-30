@@ -20,7 +20,7 @@ const exFieldsHTML = (x = {}, choices = []) => `<label>Name<input name="name" va
     data-need="Name the exercise." placeholder="${EX_EXAMPLES.name}" autocomplete="off"></label>
   <div class="row">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
     `<label class="grow" style="min-width:90px">${l}<input name="${f}" value="${esc(x[f])}" placeholder="${EX_EXAMPLES[f]}" autocomplete="off"></label>`).join('')}</div>
-  <label>Notes<textarea name="notes" rows="2" placeholder="${EX_EXAMPLES.notes}">${esc(x.notes)}</textarea></label>
+  <label>Notes${rich(`<textarea name="notes" rows="2" data-grow placeholder="${EX_EXAMPLES.notes}">${esc(x.notes)}</textarea>`)}</label>
   <fieldset class="picks"><legend>Purpose</legend>
     <span class="hint field-hint">What the exercise is for. This also helps coaches search and filter through exercises. Students don't see these on their training plans. Add more in the Purposes card.</span>
     <div class="pick-row">${exPicksHTML(choices, x.purposes)}</div>
@@ -138,12 +138,14 @@ async function adminExercises() {
     $('#exPager').innerHTML = pagerHTML(page, shown.length, EX_PAGE, ['Previous', 'Next']);
     bindPager($('#exPager'), n => { page = n; renderList(); });
     // Each one as a card, like the exercise cards students see: the name, three boxes, notes, then its purposes.
-    $('#exList').innerHTML = items.map(x => `<article class="ex-card lib"><div class="ex-top"><p class="ex-name">${esc(x.name)}</p>
+    // One with no purpose yet gets the warn edge and a Needs a Purpose tag (added from a plan, for instance).
+    $('#exList').innerHTML = items.map(x => `<article class="ex-card lib${x.purposes.length ? '' : ' needs-purpose'}"><div class="ex-top"><p class="ex-name">${esc(x.name)}</p>
         <span class="row ex-btns"><button type="button" class="small" data-act="ex-edit" data-ex="${x.id}">Edit</button>
         <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></span></div>
         <div class="stats">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
           `<div class="stat"><span class="stat-l">${l}</span><span class="stat-v${x[f] ? '' : ' none'}">${x[f] ? esc(x[f]) : '—'}</span></div>`).join('')}</div>
-        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${exPurposeTags(x.purposes)}</article>`).join('')
+        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${x.purposes.length ? exPurposeTags(x.purposes)
+          : '<span class="ex-purposes"><span class="tag warn">Needs a Purpose</span></span>'}</article>`).join('')
       || `<p class="muted">${list.length ? 'No exercise matches that search or purpose.' : 'No exercises yet. Add your first one.'}</p>`;
   }
   const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));

@@ -86,6 +86,18 @@ label > input, label > textarea, label > select { margin-top: .25rem; }
 input, textarea, select { width: 100%; font: inherit; color: var(--ink); background: var(--field);
   border: 1px solid var(--line); border-radius: 8px; padding: .5rem .6rem; }
 textarea { resize: vertical; }
+/* Grows downward to fit its text (growAll in core.js does it where field-sizing is missing) */
+textarea[data-grow] { field-sizing: content; min-height: 2.6rem; }
+textarea[data-grow][rows="2"] { min-height: 4.1rem; }
+textarea[data-grow][rows="3"] { min-height: 5.5rem; }
+textarea[data-grow][rows="6"] { min-height: 9.8rem; }
+/* A textarea with a Bold button in its top right corner (rich() in core.js) */
+.rich { position: relative; }
+.rich textarea { padding-right: 2.6rem; }
+.rich-b { position: absolute; top: 5px; right: 5px; min-height: 0; width: 1.9rem; height: 1.9rem; padding: 0;
+  border-radius: 6px; font: 800 .9rem/1 "DM Sans", sans-serif; background: var(--card); color: var(--muted); }
+label > .rich { margin-top: .25rem; }
+label > .rich > textarea { margin-top: 0; }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 [aria-invalid="true"] { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--field)); }
 [aria-invalid="true"]:focus { outline-color: var(--danger); }
@@ -414,17 +426,10 @@ a.card.group-link:hover h2 { color: var(--accent); }
 .next-card button { background: transparent; color: var(--deep-ink); border-color: color-mix(in srgb, var(--deep-ink) 25%, transparent); }
 .next-btns { margin-top: 12px; }
 .next-card button.next-go { width: 100%; min-height: 46px; margin-top: 12px; background: var(--deep-accent); border-color: var(--deep-accent); color: var(--goal-ink); }
-/* The coach's Goals card: green like the student's, with its buttons and form on it */
-.card.goals-card { background: var(--goal); color: var(--goal-ink); border-color: transparent; }
-.goals-card .hint, .goals-card .item-sub, .goals-card .muted, .goals-card .pager .muted { color: color-mix(in srgb, var(--goal-ink) 72%, transparent); }
-.goals-card .list li { border-color: color-mix(in srgb, var(--goal-ink) 18%, transparent); }
+/* The coach's Goals card: a plain card (a green fill hid its hover, Unsaved edge and tag), with each goal
+   marked by a green bar like the student's green goals card */
+.goals-card .goal-text { border-left: 4px solid var(--goal); padding-left: 10px; }
 .goals-card .goal-text p { font: 800 1.1rem/1.2 "Bricolage Grotesque", sans-serif; }
-.goals-card button:not(.fold) { background: color-mix(in srgb, var(--goal-ink) 12%, transparent); border-color: transparent; color: var(--goal-ink); }
-.goals-card button.primary, .goals-card form button { background: var(--goal-ink); color: var(--goal); }
-.goals-card button.danger { color: #7A1A12; }
-.goals-card input { background: var(--card); border-color: transparent; }
-.goals-card details summary { color: var(--goal-ink); }
-.goals-card button.fold::before { border-color: color-mix(in srgb, var(--goal-ink) 72%, transparent); }
 /* The rarely used cards, joined into one list; each folds to its heading and a short summary */
 .card-group { border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
 .card-group > .card { border: 0; border-radius: 0; box-shadow: none; margin: 0 !important; }
@@ -475,11 +480,12 @@ details.notes summary { cursor: pointer; font-weight: 600; font-size: .9rem; col
 .note p { margin: .2rem 0 0; }
 .note-meta { font-size: .8rem; color: var(--muted); }
 .note-form { margin-top: .6rem; display: grid; gap: .4rem; justify-items: end; }
+.note-form .rich { justify-self: stretch; }
 
 /* Plan editor */
-/* Beside the plan's title. While there are unsaved changes it turns dark and floats at the bottom of the screen. */
+/* Beside the plan's title. While there are unsaved changes it turns dark and floats at the bottom, at the right edge of the page column (main's 1040px), not the window's. */
 .savebar { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; }
-.savebar.unsaved { position: fixed; right: 24px; bottom: 20px; z-index: 40; background: var(--deep); color: var(--deep-ink);
+.savebar.unsaved { position: fixed; right: max(24px, calc((100vw - 1040px) / 2 + 16px)); bottom: 20px; z-index: 40; background: var(--deep); color: var(--deep-ink);
   border-radius: 16px; padding: 8px 8px 8px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
 .savebar.unsaved button { background: transparent; color: var(--deep-ink); border-color: color-mix(in srgb, var(--deep-ink) 25%, transparent); }
 .savebar.unsaved [data-act="save"]:not(:disabled) { background: var(--deep-accent); border-color: var(--deep-accent); color: var(--goal-ink); }
@@ -503,11 +509,14 @@ body:has(.savebar.unsaved) main { padding-bottom: 7rem; }
 .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
 .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Plan editor: the sessions (as tabs) on the wide side, the plan's details beside them; on a phone the details come first */
+/* Plan editor: Plan Details over the sessions (title and start date side by side on a wide screen), then the sessions as tabs */
+.plan-grid { display: flex; flex-direction: column; gap: 1.4rem; }
+.plan-details { display: grid; gap: .8rem; }
+@media (min-width: 760px) { .plan-details { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); column-gap: 12px; }
+  .plan-details > h2, .pd-layout, .plan-details > .check, .pd-overview { grid-column: 1 / -1; } }
 .plan-grid .week { margin-top: 0; }
 .plan-grid .week + .week { margin-top: 1.6rem; }
 .plan-grid .week > h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
-@media (max-width: 760px) { .plan-grid > aside { order: -1; } }
 .tabs .add-tab { border-style: dashed; color: var(--accent); }
 .session-edit { display: flex; flex-direction: column; gap: 10px; }
 .session-edit[hidden] { display: none; }
@@ -518,7 +527,7 @@ body:has(.savebar.unsaved) main { padding-bottom: 7rem; }
 @media (min-width: 900px) { .ex-edit { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr); column-gap: 10px; align-items: end; }
   .ex-edit .ex-notes, .ex-edit .ex-acts { grid-column: 1 / -1; } }
 .ex-edit label { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.ex-edit input { background: var(--card); font-size: .95rem; letter-spacing: normal; text-transform: none; color: var(--ink); }
+.ex-edit :is(input, textarea) { background: var(--card); font-size: .95rem; letter-spacing: normal; text-transform: none; color: var(--ink); }
 .ex-edit .ex-name input { font: 800 1rem "Bricolage Grotesque", sans-serif; }
 .ex-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .ex-three input { text-align: center; font-weight: 700; }
@@ -548,6 +557,8 @@ fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
 .ex-purposes .tag { border: 0; background: var(--soft); color: var(--accent); font-weight: 700; }
 /* Exercises & Drills: each one a card like the student's, with Edit and Delete beside the name */
 .ex-card.lib { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+/* No purpose yet: the warn edge, like an Unsaved card */
+.ex-card.lib.needs-purpose { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); background: color-mix(in srgb, var(--warn) 7%, var(--card)); }
 .ex-card.lib .stat { background: var(--bg); }
 /* Two cards a row squeeze the boxes: a box grows to fit its longest word rather than split it ("boulders") */
 .ex-card.lib .stats { grid-template-columns: repeat(3, minmax(min-content, 1fr)); }

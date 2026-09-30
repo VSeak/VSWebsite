@@ -118,7 +118,7 @@ function nextCardHTML(s, edit = true) {
       : '<button type="button" class="next-go" data-next="set">Set Next Session</button>'}
   </section>`;
 }
-// The next session's fields, for the dialog. End Time's min follows Start Time (bindSessions).
+// The next session's fields, for the dialog. End Time follows Start Time (pairTimes).
 const nextSessionFields = s => `<div class="stack">
   <label>Date<input type="date" name="next_date" value="${nextOverdue(s) ? '' : esc(s.next_date || '')}" min="${localToday()}"
     required data-need="Pick the day." data-low="Pick today or a later day."></label>
@@ -137,7 +137,7 @@ function historyCardHTML(s) {
   </section>`;
 }
 
-// The fields for a past session added by hand (in ask()). End Time's min follows Start Time (bindSessions).
+// The fields for a past session added by hand (in ask()). End Time follows Start Time (pairTimes).
 const pastSessionFields = () => `<div class="stack">
   <label>Date<input type="date" name="session_date" max="${localToday()}" required data-need="Pick the day." data-high="Pick today or an earlier day."></label>
   <div class="row">
@@ -145,10 +145,25 @@ const pastSessionFields = () => `<div class="stack">
     <label class="grow" style="min-width:120px">End Time<input type="time" name="end_time" required data-need="Pick an end time." data-low="End after the start time."></label>
   </div>
   <label>Location<input name="location" maxlength="200" required data-need="Say where it was." autocomplete="off" placeholder="e.g. Gym/Wall"></label></div>`;
-const addMinute = t => {
-  const [h, m] = t.split(':').map(Number), n = Math.min(h * 60 + m + 1, 1439);
-  return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+// "HH:MM" plus n minutes, kept within the day.
+const addMins = (t, n) => {
+  const [h, m] = t.split(':').map(Number), x = Math.max(0, Math.min(h * 60 + m + n, 1439));
+  return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
 };
+const mins = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+// A dialog's Start Time and End Time: End Time's min is a minute after the start, and picking a start
+// fills the end in an hour later (or, when both were set, moves the end with it so the length stays).
+function pairTimes(dlg) {
+  const start = dlg.querySelector('[name="start_time"]'), end = dlg.querySelector('[name="end_time"]');
+  let was = start.value;
+  const follow = () => { end.min = start.value ? addMins(start.value, 1) : ''; };
+  start.addEventListener('input', () => {
+    if (start.value) end.value = addMins(start.value, was && end.value ? mins(end.value) - mins(was) : 60);
+    was = start.value;
+    follow();
+  });
+  follow();
+}
 
 // Saves or clears the next session (redrawing the card), and runs Session History in place.
 // hist = { log, page, readOnly?, notes?, showNotes?, addNotes?, changed? }: readOnly (another coach's student) has no
@@ -198,8 +213,7 @@ function bindSessions(id, s, hist) {
         });
     } else if ('histAdd' in b.dataset) {
       const asked = ask({ title: 'Add a Past Session', ok: 'Add Session', body: pastSessionFields() });
-      const dlg = $('#dlg'), start = dlg.querySelector('[name="start_time"]'), end = dlg.querySelector('[name="end_time"]');
-      start.addEventListener('input', () => { end.min = start.value ? addMinute(start.value) : ''; });
+      pairTimes($('#dlg'));
       const f = await asked;
       if (!f) return;
       busy(b, async () => {
@@ -228,10 +242,7 @@ function bindSessions(id, s, hist) {
     }
     const asked = ask({ title: nextOverdue(s) || !s.next_date ? 'Set the Next Session' : 'Change the Next Session', ok: 'Save Session',
       body: `<p class="hint">${pro(s.pronouns).They} ${pro(s.pronouns).v('see', 'sees')} it at the top of ${pro(s.pronouns).their} page until it ends. Then it moves to Session History.</p>${nextSessionFields(s)}` });
-    const dlg = $('#dlg'), start = dlg.querySelector('[name="start_time"]'), end = dlg.querySelector('[name="end_time"]');
-    const follow = () => { end.min = start.value ? addMinute(start.value) : ''; };
-    start.addEventListener('input', follow);
-    follow();
+    pairTimes($('#dlg'));
     const f = await asked;
     if (f) save(b, { next_date: f.get('next_date'), next_start: f.get('start_time'), next_end: f.get('end_time'),
       next_location: f.get('location').trim() }, 'Next session saved.');
@@ -417,7 +428,7 @@ function coachNotesHTML(notes, s, log, at) {
     : missing.length ? `<div class="warn-box" role="status"><strong>${missing.length} sessions have no notes yet.</strong>
       Pick one to fill in its date below, then add its note.${pick}</div>` : ''}
     <form id="cnoteForm" class="stack" data-save>
-      <label>Notes<textarea name="body" rows="3" maxlength="4000" required data-need="Write notes first."></textarea></label>
+      <label>Notes${rich(`<textarea name="body" rows="3" maxlength="4000" data-grow required data-need="Write notes first."></textarea>`)}</label>
       ${cnoteDateField(writeUp)}
       <button class="primary">+ Add Notes</button>
     </form>

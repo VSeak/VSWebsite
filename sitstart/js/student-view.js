@@ -37,7 +37,7 @@ const statHTML = (label, v) => {
 };
 const exCardHTML = x => `<div class="ex-card"><p class="ex-name">${esc(x.name || 'Exercise')}</p>
   <div class="stats">${statHTML('Sets', x.sets)}${statHTML('Reps/Time', x.reps)}${statHTML('Rest', x.rest)}</div>
-  ${String(x.notes ?? '').trim() ? `<p class="ex-note">${esc(x.notes)}</p>` : ''}</div>`;
+  ${String(x.notes ?? '').trim() ? `<p class="ex-note">${para(x.notes)}</p>` : ''}</div>`;
 
 // Session tabs: show that session and hide the rest of its week. openNotes uses it to reach a hidden session.
 function showSession(sid) {

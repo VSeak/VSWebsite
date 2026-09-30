@@ -147,7 +147,7 @@ app.addEventListener('click', e => {
 });
 
 let markQueued = false;
-const queueMark = () => { if (!markQueued) { markQueued = true; requestAnimationFrame(() => { markQueued = false; applyFolds(); markUnsaved(); }); } };
+const queueMark = () => { if (!markQueued) { markQueued = true; requestAnimationFrame(() => { markQueued = false; applyFolds(); markUnsaved(); growAll(); }); } };
 new MutationObserver(queueMark).observe(app, { childList: true, subtree: true });
 ['input', 'change', 'reset'].forEach(t => app.addEventListener(t, queueMark));   // reset: a form cleared after + Add
 

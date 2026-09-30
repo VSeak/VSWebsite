@@ -79,9 +79,11 @@ function exEditHTML(s, i, e) {
     ${field === 'name' ? 'data-combo role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="exMenu" maxlength="200" autocomplete="off"' : ''}
     value="${esc(s.exercises[e][field])}"></label>`;
   const n = s.exercises.length, btn = (act, label) => `<button type="button" class="small" data-act="${act}" data-s="${i}" data-e="${e}">${label}</button>`;
+  // Notes grow downward as the coach types, and can have new lines and bold words.
+  const notes = `<label class="ex-notes">Notes${rich(`<textarea rows="1" data-grow data-s="${i}" data-e="${e}" data-f="notes" placeholder="Notes">${esc(s.exercises[e].notes)}</textarea>`)}</label>`;
   return `<div class="ex-edit">${f('name', 'Exercise', 'Exercise/Purpose')}
     <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
-    ${f('notes', 'Notes')}
+    ${notes}
     <div class="ex-acts"><span class="row">${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
       <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove</button></div></div>`;
 }
@@ -94,7 +96,7 @@ function sessionEditHTML(s, i, shown, first, last) {
       ${draft.plan.repeats ? '' : `<label class="wk">Week<input type="number" min="1" data-s="${i}" data-f="week" value="${s.week}"></label>`}
       <label class="grow">Session<input class="session-title" data-s="${i}" data-f="title" value="${esc(s.title)}" placeholder="e.g. Session 1/Mondays/Off the Wall Warm Up"></label>
     </div>
-    <label>Details<textarea data-s="${i}" data-f="details" rows="2"
+    <label>Details<textarea data-s="${i}" data-f="details" rows="2" data-grow
       placeholder="Warm-up, focus, how hard to go…">${esc(s.details)}</textarea></label>
     <div class="ex-list">${s.exercises.map((_, e) => exEditHTML(s, i, e)).join('')}</div>
     <button type="button" class="add-ex" data-act="add-ex" data-s="${i}">+ Add Exercise</button>
@@ -136,9 +138,9 @@ function renderEditor() {
       ${weekSessionsHTML(w, list)}
     </section>`).join('')}
     <div class="row" style="margin-top:1.4rem"><button data-act="add-week" data-first data-need="Add at least one week with a session.">+ Add Week</button></div>`;
-    body = `<div class="grid2 plan-grid"><div class="plan-sessions">${sessionsHTML}</div>
-    <aside><section class="card stack"><h2>Plan Details</h2>
-      <div class="stack" style="gap:.3rem"><div class="seg" role="radiogroup" aria-label="Plan Layout">
+    body = `<div class="plan-grid">
+    <section class="card plan-details"><h2>Plan Details</h2>
+      <div class="stack pd-layout" style="gap:.3rem"><div class="seg" role="radiogroup" aria-label="Plan Layout">
         <label><input type="radio" name="layout" data-p="repeats" value="1" ${p.repeats ? 'checked' : ''}>Repeat Weekly</label>
         <label><input type="radio" name="layout" data-p="repeats" value="0" ${p.repeats ? '' : 'checked'}>Week by Week</label>
       </div>
@@ -146,9 +148,10 @@ function renderEditor() {
       <label>Training Plan Title<input data-p="title" value="${esc(p.title)}" placeholder="e.g. Spring Power Block" required data-need="Give the plan a title."></label>
       <label>Start Date<input type="date" data-p="start_date" value="${esc(p.start_date || '')}" required data-need="Pick the day the plan starts."></label>
       <label class="check" title="Shown first to the student; replaces ${pro(p.student.pronouns).their} other current plan"><input type="checkbox" data-p="active" ${p.active ? 'checked' : ''}> Current Plan</label>
-      <label>Overview<textarea data-p="overview" rows="3" placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
-    </section></aside></div>
-    <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Training Plan</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
+      <label class="pd-overview">Overview<textarea data-p="overview" rows="3" data-grow placeholder="What this plan is for, how to warm up, what to track…">${esc(p.overview)}</textarea></label>
+    </section>
+    <div class="plan-sessions">${sessionsHTML}</div></div>
+    <div class="danger-zone"><button class="ghost small" data-act="dup-plan">Duplicate Training Plan</button><button class="ghost small" data-act="copy-plan">Copy to Another Student</button><button class="ghost small danger" data-act="del-plan">Delete Plan</button></div>`;
   }
 
   view(`${crumbs([['Home', '#/'], ['Students', '#/students'], [p.student.name, '#/student/' + p.student.id], [p.title || 'Untitled Plan']])}
@@ -192,6 +195,7 @@ function renderEditor() {
     if (!b) return;
     const S = draft.sessions, i = +b.dataset.s, x = +b.dataset.e;
     const pick = s => { draft.tab[s.week] = s.id; };   // a new or copied session opens on its tab
+    let top = false;
     switch (b.dataset.act) {
       case 'add-ex': S[i].exercises.push(blankEx()); break;
       case 'del-ex': S[i].exercises.splice(x, 1); break;
@@ -202,7 +206,12 @@ function renderEditor() {
       }
       case 'add-session': { const s = blankSession(+b.dataset.week); S.push(s); pick(s); break; }
       case 'add-week': { const s = blankSession(Math.max(0, ...S.map(s => s.week)) + 1); S.push(s); pick(s); break; }
-      case 'dup': { const s = { ...structuredClone(S[i]), id: crypto.randomUUID() }; S.splice(i + 1, 0, s); pick(s); break; }
+      // The copy is named "<name> (Copy)" and the page goes back to the top, where its tab is.
+      case 'dup': {
+        const k = displayOrder().filter(j => S[j].week === S[i].week).indexOf(i);
+        const s = { ...structuredClone(S[i]), id: crypto.randomUUID(), title: `${sessionLabel(S[i], k)} (Copy)` };
+        S.splice(i + 1, 0, s); pick(s); top = true; break;
+      }
       case 'del-session': {
         const n = notesCtx.notes.filter(x => x.session_id === S[i].id).length;
         const lastInWeek = !draft.plan.repeats && !S.some((x, k) => k !== i && x.week === S[i].week);
@@ -220,11 +229,13 @@ function renderEditor() {
       case 'preview': draft.preview = !draft.preview; renderEditor(); window.scrollTo(0, 0); return;
       case 'save': return savePlan(b);
       case 'dup-plan': return duplicatePlan(b);
+      case 'copy-plan': return copyPlan(b);
       case 'del-plan': return deletePlan(b);
       default: return;
     }
     markDirty();
     renderEditor();
+    if (top) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 }
 
@@ -266,6 +277,7 @@ function setExName(x, input) {
   filledFrom.set(x, m.name_key);
   const row = input.closest('.ex-edit');
   for (const [f] of EX_FIELDS) row.querySelector(`[data-f="${f}"]`).value = x[f] = m[f];
+  row.querySelectorAll('textarea').forEach(grow);
 }
 
 function sessionRows(planId) {
@@ -316,13 +328,17 @@ function savePlan(btn) {
 
 // A copy of the saved plan for the same student: sessions and exercises, not notes. It's current
 // only if the student has no current plan (like a new plan), and opens in the editor.
+// Unsaved changes (or a plan never saved): say to save first, so a copy has them. True when it's saved.
+async function savedFirst() {
+  if (!dirty && draft.savedIds.size) return true;
+  await ask({ title: 'Save the Plan First', cancel: false,
+    body: `<p>${draft.savedIds.size ? 'Save your changes first, so the copy has them.' : 'Save the plan first, then you can make a copy of it.'}</p>` });
+  return false;
+}
+
 async function duplicatePlan(btn) {
   const p = draft.plan;
-  if (dirty || !draft.savedIds.size) {
-    await ask({ title: 'Save the Plan First', cancel: false,
-      body: `<p>${draft.savedIds.size ? 'Save your changes first, so the copy has them.' : 'Save the plan first, then you can make a copy of it.'}</p>` });
-    return;
-  }
+  if (!await savedFirst()) return;
   const title = `${p.title.trim()} (Copy)`;
   if (!await ask({ title: 'Duplicate This Plan?', ok: 'Duplicate',
     body: `<p>“${esc(title)}” will be added to ${esc(p.student.name)}'s plans with the same sessions and exercises (not the notes), and opened for you to edit.</p>` })) return;
@@ -333,6 +349,36 @@ async function duplicatePlan(btn) {
     const rows = sessionRows(copy.id).map(r => ({ ...r, id: crypto.randomUUID() }));
     if (rows.length) must(await sb.from('sessions').insert(rows));
     flash(`Plan duplicated. You're now editing “${title}”.`);
+    goTo('#/plan/' + copy.id);
+  });
+}
+
+// A copy of the saved plan for another of your active students: sessions and exercises, not the notes or the
+// start date (their plan starts when theirs does). Current only if they have no current plan; opens in the editor.
+async function copyPlan(btn) {
+  const p = draft.plan;
+  if (!await savedFirst()) return;
+  const all = await sb.from('students').select('id,name,email,coach_id,training_ended_at').is('training_ended_at', null).order('name')
+    .then(must).catch(e => { flash(msgOf(e), 'error'); });
+  if (!all) return;
+  const list = all.filter(s => s.id !== p.student.id && canCoach(s));
+  if (!list.length) {
+    await ask({ title: 'No Other Students', cancel: false, body: '<p>You have no other active students to copy this plan to.</p>' });
+    return;
+  }
+  const f = await ask({ title: 'Copy to Another Student', ok: 'Copy Plan',
+    body: `<p>“${esc(p.title.trim())}” will be added to their plans with the same sessions and exercises (not the notes or the start date), and opened for you to edit.</p>
+      <label>Student<select name="to" required data-need="Pick a student."><option value="">Pick a student…</option>
+        ${list.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>` });
+  const to = f && list.find(s => s.id === f.get('to'));
+  if (!to) return;
+  busy(btn, async () => {
+    const current = (await sb.from('plans').select('id').eq('student_id', to.id).eq('active', true).then(must)).length > 0;
+    const copy = must(await sb.from('plans').insert({ student_id: to.id, title: p.title.trim(), overview: p.overview.trim(),
+      repeats: p.repeats, active: !current }).select('id').single());
+    const rows = sessionRows(copy.id).map(r => ({ ...r, id: crypto.randomUUID() }));
+    if (rows.length) must(await sb.from('sessions').insert(rows));
+    flash(`Plan copied to ${to.name}. Pick a start date, then save it.`);
     goTo('#/plan/' + copy.id);
   });
 }

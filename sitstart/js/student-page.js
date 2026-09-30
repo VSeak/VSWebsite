@@ -274,7 +274,7 @@ async function adminStudent(id, again = false) {
     if (cn) {
       if (act === 'cnote-edit') {
         const f = await ask({ title: 'Edit Notes', ok: 'Save Notes', body: `<div class="stack">
-          <label>Notes<textarea name="body" rows="6" maxlength="4000" required data-need="Write notes.">${esc(cn.body)}</textarea></label>
+          <label>Notes${rich(`<textarea name="body" rows="6" maxlength="4000" data-grow required data-need="Write notes.">${esc(cn.body)}</textarea>`)}</label>
           ${cnoteDateField(cn.session_date || '')}</div>` });
         const body = f?.get('body').trim();
         if (body) busy(b, async () => {

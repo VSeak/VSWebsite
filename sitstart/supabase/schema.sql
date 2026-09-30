@@ -100,7 +100,8 @@ create table public.notes (
   from_coach boolean not null default false,
   author_name text not null default '',   -- a coach's name on their replies (stamp_note_author); empty for students
   body text not null check (length(body) between 1 and 4000),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  edited_at timestamptz                    -- stamp_note_author, when the author changes the text
 );
 create index on public.notes (session_id);
 
@@ -328,12 +329,18 @@ end;
 $$;
 
 -- A coach's reply is signed with their name. Students can't read staff, so it is kept on the note, taken from
--- the poster's own staff row (nobody can post as someone else) and fixed after that.
+-- the poster's own staff row (nobody can post as someone else) and fixed after that. An edit (by the author only)
+-- keeps the note's session, author, side and time, and sets edited_at when the text changes.
 create function public.stamp_note_author() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   if tg_op = 'UPDATE' then
     new.author_name := old.author_name;
+    new.author_id := old.author_id;
+    new.from_coach := old.from_coach;
+    new.session_id := old.session_id;
+    new.created_at := old.created_at;
+    new.edited_at := case when new.body is distinct from old.body then now() else old.edited_at end;
   elsif new.from_coach then
     new.author_name := coalesce((select nullif(name, '') from public.staff where email = lower(auth.jwt() ->> 'email')), '');
   else
@@ -436,6 +443,8 @@ create policy "student: read notes" on public.notes for select to authenticated
   using (public.owns_session(session_id));
 create policy "student: add notes" on public.notes for insert to authenticated
   with check (author_id = (select auth.uid()) and not from_coach and public.owns_session(session_id));
+create policy "author: edit own notes" on public.notes for update to authenticated
+  using (author_id = (select auth.uid())) with check (author_id = (select auth.uid()));
 create policy "student: delete own notes" on public.notes for delete to authenticated
   using (author_id = (select auth.uid()) and not from_coach);
 

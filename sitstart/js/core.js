@@ -10,7 +10,29 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const app = $('#app');
 const BASE = location.origin + location.pathname;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const para = s => esc(s).replace(/\n/g, '<br>');
+// Notes can have **bold** words (para() shows them bold) and new lines.
+const para = s => esc(s).replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+// A textarea with a Bold button in its corner (Ctrl+B does the same): wraps the picked words in **, or unwraps them.
+const rich = textarea => `<div class="rich">${textarea}<button type="button" class="rich-b" data-bold title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button></div>`;
+function toggleBold(t) {
+  const a = t.selectionStart, z = t.selectionEnd, v = t.value;
+  if (a >= 2 && v.slice(a - 2, a) === '**' && v.slice(z, z + 2) === '**') t.setRangeText(v.slice(a, z), a - 2, z + 2, 'select');
+  else { t.setRangeText(`**${v.slice(a, z)}**`, a, z); t.setSelectionRange(a + 2, z + 2); }
+  t.focus();
+  t.dispatchEvent(new Event('input', { bubbles: true }));
+}
+document.addEventListener('mousedown', e => { if (e.target.closest('[data-bold]')) e.preventDefault(); });   // keeps the picked words
+document.addEventListener('click', e => { const b = e.target.closest('[data-bold]'); if (b) toggleBold(b.parentElement.querySelector('textarea')); });
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && e.target.matches?.('.rich textarea')) { e.preventDefault(); toggleBold(e.target); }
+});
+// A textarea with data-grow grows downward to fit its text: CSS field-sizing where the browser has it,
+// otherwise here, on typing, on focus and after a redraw (growAll, from queueMark). Hidden ones wait until shown.
+const growable = CSS.supports('field-sizing', 'content');
+function grow(t) { if (growable || !t.offsetParent) return; t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
+const growAll = () => document.querySelectorAll('textarea[data-grow]').forEach(grow);
+['input', 'focusin'].forEach(k => document.addEventListener(k, e => { if (e.target.matches?.('textarea[data-grow]')) grow(e.target); }));
+document.addEventListener('click', e => { if (e.target.closest('[data-tab]')) requestAnimationFrame(growAll); });   // a session tab shows its fields
 const must = ({ data, error }) => { if (error) throw error; return data; };
 const loading = '<p class="muted">Loading…</p>';
 

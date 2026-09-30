@@ -6,7 +6,7 @@ async function boot() {
       <code>supabaseUrl</code> and <code>supabaseKey</code> in <code>CONFIG</code> at the top of <code>js/core.js</code>.</p>`);
     return;
   }
-  sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, { auth: { flowType: 'implicit' } });
+  sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, { auth: { flowType: 'implicit' }, global: { fetch: skewFetch } });
   mailer = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
     auth: { flowType: 'implicit', persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'mailer' },
   });
@@ -26,6 +26,16 @@ async function boot() {
   window.addEventListener('hashchange', onHashChange);
   window.addEventListener('beforeunload', e => { if (unsaved()) { e.preventDefault(); e.returnValue = ''; } });
   route();
+}
+
+// A token refreshed just now (e.g. the page sat open overnight) can reach the database a moment before its clock
+// catches up with the sign-in server's, and it answers 401 "JWT issued at future". Wait and try again, up to 3 times.
+async function skewFetch(url, opts) {
+  for (let i = 1; ; i++) {
+    const res = await fetch(url, opts);
+    if (res.status !== 401 || i > 3 || !/issued at future/i.test(await res.clone().text())) return res;
+    await new Promise(r => setTimeout(r, 1000 * i));
+  }
 }
 
 async function loadMe(user) {

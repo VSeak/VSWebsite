@@ -267,6 +267,13 @@ language sql stable security definer set search_path = '' as $$
   select public.can_coach_plan((select plan_id from public.sessions where id = s));
 $$;
 
+-- Other vsapps apps share this project's logins (Top Out: team_staff). Their schema replaces this to say whether an
+-- email is one of theirs, so the sign-up gate lets it in and Sit Start never deletes or signs out that login.
+create function public.login_in_other_app(p_email text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select false;
+$$;
+
 -- Called by the site after sign-in: links the account to its student row.
 create function public.claim_student() returns void
 language sql volatile security definer set search_path = '' as $$
@@ -307,7 +314,8 @@ begin
   -- Their login: the claimed one, or one made by an invite they never opened.
   delete from auth.users u
   where (u.id = s.user_id or (s.email is not null and lower(u.email) = s.email))
-    and not exists (select 1 from public.staff a where a.email = lower(u.email));
+    and not exists (select 1 from public.staff a where a.email = lower(u.email))
+    and not public.login_in_other_app(u.email);
 end;
 $$;
 
@@ -322,8 +330,10 @@ begin
     and ('coach' = any (roles) or 'admin' = any (roles)) and deactivated_at is null;
   if sender is null then raise exception 'Only a coach or an admin can send sign-in links.'; end if;
   -- A normal sign-in link clears email_changed_to (prepare_email_change), so it gets the usual wording again.
+  -- app and staff switch the shared email templates back to Sit Start wording (Top Out's team_stamp_sender sets them too).
   update auth.users set raw_user_meta_data = (coalesce(raw_user_meta_data, '{}'::jsonb) - 'email_changed_to')
-    || jsonb_build_object('sent_by', sender)
+    || jsonb_build_object('sent_by', sender, 'app', 'sitstart',
+         'staff', exists (select 1 from public.staff where email = lower(trim(p_email))))
   where lower(email) = lower(trim(p_email));
 end;
 $$;
@@ -482,14 +492,15 @@ create policy "staff: everything" on public.exercise_purposes for all to authent
   using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
 
 -- 4. Sign-up gate ---------------------------------------------------------------
--- Only emails on the student list (or the active staff list) can create an account.
--- Anyone else gets an error, so an open sign-up can't be abused.
+-- Only emails on the student list (or the active staff list, or another app's list: login_in_other_app) can
+-- create an account. Anyone else gets an error, so an open sign-up can't be abused.
 
 create function public.gate_signup() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   if not exists (select 1 from public.students where email = lower(new.email))
-     and not exists (select 1 from public.staff where email = lower(new.email) and deactivated_at is null) then
+     and not exists (select 1 from public.staff where email = lower(new.email) and deactivated_at is null)
+     and not public.login_in_other_app(new.email) then
     raise exception 'This email has not been invited.';
   end if;
   return new;
@@ -562,7 +573,8 @@ begin
   update public.students set coach_id = null where coach_id = new.id;
   delete from auth.sessions s using auth.users u
   where s.user_id = u.id and lower(u.email) = new.email
-    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = new.email);
+    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = new.email)
+    and not public.login_in_other_app(new.email);
   return null;
 end;
 $$;
@@ -604,7 +616,8 @@ begin
   if s.id is null then return; end if;
   delete from auth.users u
   where lower(u.email) = s.email
-    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = s.email);
+    and not exists (select 1 from public.students st where st.user_id = u.id or st.email = s.email)
+    and not public.login_in_other_app(s.email);
 end;
 $$;
 
@@ -809,6 +822,7 @@ revoke execute on function public.coaches_of(uuid), public.my_staff_id(), public
 revoke execute on function public.is_self(uuid), public.can_coach(uuid), public.can_coach_plan(uuid),
   public.can_coach_session(uuid) from public, anon;
 revoke execute on function public.stamp_sender(text) from public, anon;
+revoke execute on function public.login_in_other_app(text) from public, anon, authenticated;
 revoke execute on function public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
   public.coaches_of(uuid), public.my_staff_id(), public.coach_list(), public.update_my_pronouns(text), public.stamp_sender(text),

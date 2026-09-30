@@ -38,6 +38,6 @@ Coaching for the gym's Adult Team, a group instead of one student at a time. Sta
 ## Conventions
 
 - Look: "Chalk & Rope": chalk-white page, deep navy ink, rope-orange accent; Space Grotesk headings, Figtree body. Tokens on `:root` with dark mode. The user's fallback if they go off it: "Granite & Sky" (cool grays, slate-blue accent).
-- Logo: a boulder with a flag on top (inline SVG in the header and on the root home card; `icon.svg` is the favicon).
+- Logo: a boulder with a flag on top (inline SVG in the header and on the root home card; `icon.svg` is the favicon). `apple-touch-icon.png` (180px, chalk mountain and orange flag on navy) is for phone home screens, drawn with PowerShell System.Drawing from the same points as the SVG, so redraw it if the mark changes.
 - Works at ~400px wide. Title case for buttons, headings and labels; sentence case for hints and messages.
 - Dialogs use `ask()` (`wide` for big forms, `extra` for a Delete/Remove button, `onOpen` to wire fields).

@@ -33,12 +33,12 @@ function exFromForm(f) {
 }
 // Students Log (Training Log): what students fill in when they log this exercise. Quick picks tick a set of fields.
 // Also the plan editor's Change dialog, for one exercise in one plan.
-const trackFieldsHTML = (picked = [], hint = 'What students fill in when they log this. Plans copy it, and you can change it in a plan. Notes are always there.') =>
+const trackFieldsHTML = (picked = [], hint = 'What students fill in when they log this. Plans copy it, and you can change it in a plan. Notes are always there. Add your own in the Log Fields card.') =>
   `<fieldset class="picks track-picks"><legend>Students Log</legend>
     <span class="hint field-hint">${hint}</span>
     <div class="track-presets"><span class="muted">Quick Pick:</span>${LOG_PRESETS.map(([name, keys]) =>
       `<button type="button" class="small" data-preset="${keys.join(',')}">${name}</button>`).join('')}</div>
-    <div class="pick-row">${LOG_KEYS.map(k => `<label><input type="checkbox" name="track" value="${k}"${(picked ?? []).includes(k) ? ' checked' : ''}>${LOG_FIELDS[k].label}</label>`).join('')}</div>
+    <div class="pick-row">${LOG_KEYS.map(k => `<label><input type="checkbox" name="track" value="${k}"${(picked ?? []).includes(k) ? ' checked' : ''}>${esc(LOG_FIELDS[k].label)}</label>`).join('')}</div>
   </fieldset>`;
 // A quick pick ticks exactly its fields (in the Add form, the Edit dialog or the plan's Change dialog).
 document.addEventListener('click', e => {
@@ -48,6 +48,31 @@ document.addEventListener('click', e => {
   box.querySelectorAll('input[name="track"]').forEach(c => { c.checked = keys.includes(c.value); });
   box.querySelector('input[name="track"]').dispatchEvent(new Event('input', { bubbles: true }));
 });
+// Log fields: coaches' own Training Log fields (log_fields), beside the built-in LOG_FIELDS. A number (with an
+// optional unit) or a pick from 2 to 12 choices. The type never changes once added, so old logs still read right.
+const LF_PAGE = 5;
+const lfDupError = e => e.code === '23505' ? new Error('There is already a log field with that name.') : e;
+const lfFieldsHTML = (r = null) => `<label>Name<input name="label" value="${esc(r?.label)}" maxlength="30" required
+    data-need="Name the field." placeholder="E.g. Moves" autocomplete="off"></label>
+  ${r ? `<p class="hint">${r.kind === 'pick' ? 'Choices' : 'A number'}. The type can't change, so past logs still read right.</p>`
+    : `<label>Type<select name="kind" data-lf-kind><option value="number">Number (− and + buttons)</option><option value="pick">Choices (tap one)</option></select></label>`}
+  <label data-lf-for="number"${r?.kind === 'pick' ? ' hidden' : ''}>Unit (Optional)<input name="unit" value="${esc(r?.unit)}" maxlength="20" placeholder="E.g. moves" autocomplete="off"></label>
+  <label data-lf-for="pick"${r?.kind === 'pick' ? '' : ' hidden'}>Choices<input name="opts" value="${esc(r?.opts?.join(', '))}" placeholder="E.g. Left, Right, Both" autocomplete="off">
+    <span class="hint field-hint">Separate them with commas, 2 to 12.</span></label>`;
+// Shows Unit for a number or Choices for a pick, as the Type changes.
+document.addEventListener('change', e => {
+  if (!e.target.matches?.('[data-lf-kind]')) return;
+  e.target.form.querySelectorAll('[data-lf-for]').forEach(l => { l.hidden = l.dataset.lfFor !== e.target.value; });
+});
+function lfFromForm(f, kind) {
+  const label = f.get('label').trim();
+  if (LOG_BUILT_IN.some(k => exKey(LOG_FIELDS[k].label) === exKey(label))) throw new Error(`${label} is already a built-in field.`);
+  if (kind !== 'pick') return { label, unit: (f.get('unit') || '').trim() };
+  const opts = [...new Set(String(f.get('opts') || '').split(',').map(s => s.trim().slice(0, 30)).filter(Boolean))];
+  if (opts.length < 2 || opts.length > 12) throw new Error('Give 2 to 12 choices, separated by commas.');
+  return { label, opts };
+}
+const lfDescribe = r => r.kind === 'pick' ? `Choices: ${r.opts.join(', ')}` : `Number${r.unit ? ` in ${r.unit}` : ''}`;
 const purDupError = e => e.code === '23505' ? new Error('That purpose is already on the list.') : e;
 const purFieldHTML = (name = '') => `<label>Name<input name="name" value="${esc(name)}" maxlength="40" required
     data-need="Name the purpose." placeholder="E.g. Balance" autocomplete="off"></label>`;
@@ -57,7 +82,8 @@ async function adminExercises() {
   view(loading);
   let [list, purposes] = await Promise.all([
     sb.from('exercises').select('*').order('name_key').then(must),
-    sb.from('exercise_purposes').select('*').order('name_key').then(must)]);
+    sb.from('exercise_purposes').select('*').order('name_key').then(must),
+    sb.from('log_fields').select('*').then(r => setLogFields(r.data ?? []))]);
   if (t !== navToken) return;
   const purNames = () => purposes.map(p => p.name);
   const usedBy = name => list.filter(x => x.purposes.includes(name)).length;
@@ -83,6 +109,13 @@ async function adminExercises() {
         <form id="purAdd" class="stack" data-save>${purFieldHTML()}<button class="primary">+ Add Purpose</button></form>
         <ul class="list" id="purList"></ul>
         <div id="purPager"></div>
+      </section>
+      <section class="card" data-fold="logfields" data-fold-start><h2>Log Fields (<span id="lfCount"></span>)</h2>
+        <p class="hint">Your own fields for students to fill in when they log, beside the built-in ones. Tick them under Students Log on an exercise.</p>
+        <form id="lfAdd" class="stack" data-save>${lfFieldsHTML()}<button class="primary">+ Add Log Field</button></form>
+        <ul class="list" id="lfList"></ul>
+        <div id="lfPager"></div>
+        <p class="hint">Built in: ${LOG_BUILT_IN.map(k => LOG_FIELDS[k].label).join(', ')}.</p>
       </section></div>
     </aside>
   </div>`);
@@ -146,6 +179,53 @@ async function adminExercises() {
     row.querySelectorAll('input').forEach(i => { i.checked = ticked.includes(i.value); });
   }
   const sortPurposes = () => purposes.sort((a, b) => a.name_key.localeCompare(b.name_key));
+  // Log Fields: the coaches' own fields (logFieldRows, kept in step with LOG_FIELDS by setLogFields).
+  let lfPage = 1;
+  const lfUsedBy = key => list.filter(x => x.track?.includes(key)).length;
+  const lfPageWith = r => { const i = logFieldRows.indexOf(r); if (i >= 0) lfPage = Math.floor(i / LF_PAGE) + 1; };
+  function renderLogFields() {
+    const [items, pg] = pageOf(logFieldRows, lfPage, LF_PAGE);
+    lfPage = pg;
+    $('#lfCount').textContent = logFieldRows.length;
+    $('#lfPager').innerHTML = pagerHTML(lfPage, logFieldRows.length, LF_PAGE, ['Previous', 'Next']);
+    bindPager($('#lfPager'), n => { lfPage = n; renderLogFields(); });
+    $('#lfList').innerHTML = items.map(r => { const n = lfUsedBy(r.key);
+      return `<li class="goal"><div class="goal-text"><strong>${esc(r.label)}</strong>
+        <span class="item-sub">${esc(lfDescribe(r))} · ${n ? `${n} exercise${n === 1 ? '' : 's'}` : 'Not used yet'}</span></div>
+        <div class="row ex-actions"><button type="button" class="small ghost" data-act="lf-edit" data-lfid="${r.id}">Edit</button>
+        <button type="button" class="small ghost danger" data-act="lf-delete" data-lfid="${r.id}">Delete</button></div></li>`;
+    }).join('') || `<li><p class="muted" style="margin:.6rem 0">None yet. Add one when the built-in fields don't cover it.</p></li>`;
+  }
+  // Redraws the Add form's Students Log ticks after the fields change, keeping what's ticked (as properties, like redrawPicks).
+  function redrawTrack() {
+    const row = $('#exAdd .track-picks .pick-row');
+    const ticked = [...row.querySelectorAll('input:checked')].map(i => i.value);
+    row.innerHTML = LOG_KEYS.map(k => `<label><input type="checkbox" name="track" value="${k}">${esc(LOG_FIELDS[k].label)}</label>`).join('');
+    row.querySelectorAll('input').forEach(i => { i.checked = ticked.includes(i.value); });
+  }
+  const lfChanged = () => { setLogFields(logFieldRows); renderLogFields(); redrawTrack(); renderList(); };
+  async function logFieldClick(b, r) {
+    const n = lfUsedBy(r.key), them = `${n} exercise${n === 1 ? '' : 's'}`;
+    if (b.dataset.act === 'lf-edit') {
+      const f = await ask({ title: 'Edit Log Field', ok: 'Save Log Field', body: `<div class="stack">${lfFieldsHTML(r)}</div>
+        <p class="hint">Past logs keep their values under the new name.</p>` });
+      if (f) busy(b, async () => {
+        const { data, error } = await sb.from('log_fields').update(lfFromForm(f, r.kind)).eq('id', r.id).select().single();
+        if (error) throw lfDupError(error);
+        Object.assign(r, data); lfChanged(); lfPageWith(r); renderLogFields();
+        flash('Log field saved.');
+      });
+    }
+    if (b.dataset.act === 'lf-delete' && await ask({ title: `Delete ${r.label}?`, warn: true, ok: 'Delete',
+      body: `<p>${n ? `It comes off the ${them} that ${n === 1 ? 'has' : 'have'} it. ` : ''}Plans stop asking for it, and past logs stop showing it.</p>` }))
+      busy(b, async () => {
+        must(await sb.from('log_fields').delete().eq('id', r.id));
+        logFieldRows = logFieldRows.filter(q => q !== r);
+        list.forEach(x => { x.track = (x.track ?? []).filter(k => k !== r.key); });
+        lfChanged();
+        flash('Log field deleted.');
+      });
+  }
   // Goes to the page that holds x, if the search shows it.
   const pageWith = x => { const i = matches().indexOf(x); if (i >= 0) page = Math.floor(i / EX_PAGE) + 1; };
   function renderList() {
@@ -169,6 +249,7 @@ async function adminExercises() {
   const sortList = () => list.sort((a, b) => a.name_key.localeCompare(b.name_key));
   renderList();
   renderPurposes();
+  renderLogFields();
   search.oninput = () => { page = 1; renderList(); };
 
   $('#exAdd').onsubmit = e => {
@@ -202,6 +283,20 @@ async function adminExercises() {
     });
   };
 
+  $('#lfAdd').onsubmit = e => {
+    e.preventDefault();
+    const form = new FormData(e.target), kind = form.get('kind');
+    busy(e.submitter, async () => {
+      const { data, error } = await sb.from('log_fields').insert({ ...lfFromForm(form, kind), kind }).select().single();
+      if (error) throw lfDupError(error);
+      logFieldRows.push(data); lfChanged(); lfPageWith(data); renderLogFields();
+      e.target.reset();
+      e.target.querySelectorAll('[data-lf-for]').forEach(l => { l.hidden = l.dataset.lfFor !== 'number'; });
+      e.target.elements.label.focus();
+      flash(`${data.label} added. Tick it under Students Log on an exercise.`);
+    });
+  };
+
   // The trigger on exercise_purposes changes the exercises in the database; this mirrors it in the page.
   async function purposeClick(b, p) {
     const n = usedBy(p.name), them = `${n} exercise${n === 1 ? '' : 's'}`;
@@ -232,6 +327,8 @@ async function adminExercises() {
     const b = e.target.closest('[data-act]');
     const p = b?.dataset.pur && purposes.find(q => q.id === b.dataset.pur);
     if (p) return purposeClick(b, p);
+    const r = b?.dataset.lfid && logFieldRows.find(q => q.id === b.dataset.lfid);
+    if (r) return logFieldClick(b, r);
     const x = b && list.find(y => y.id === b.dataset.ex);
     if (!x) return;
     if (b.dataset.act === 'ex-edit') {

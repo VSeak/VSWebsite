@@ -48,6 +48,8 @@ async function loadMe(user) {
       .then(() => sb.from('students').select('*').eq('user_id', user.id).maybeSingle().then(must)),
     sb.from('staff').select('id, first_name, name, deactivated_at').eq('email', user.email.toLowerCase()).maybeSingle()
       .then(r => r.data),
+    // Coaches' own Training Log fields (none until migration log-fields has run).
+    sb.from('log_fields').select('*').then(r => setLogFields(r.data ?? [])),
   ]);
   // Falls back to the first name from their invite.
   const staffRow = roles && ownStaff;

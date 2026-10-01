@@ -156,6 +156,12 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, fill = 
     f.addEventListener('submit', e => resolve(e.submitter?.value === 'ok' ? new FormData(f) : null), { once: true });
     d.addEventListener('cancel', () => resolve(null), { once: true });
     d.showModal();
+    // On a touch screen, opening on a text box pops the keyboard up over the dialog (Edit Exercise did): focus the
+    // dialog instead, and the keyboard waits until a box is tapped.
+    if (matchMedia('(pointer: coarse)').matches && document.activeElement?.matches('input:not([type="checkbox"], [type="radio"]), textarea')) {
+      d.tabIndex = -1;
+      d.focus();
+    }
   });
 }
 

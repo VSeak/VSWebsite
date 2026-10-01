@@ -15,7 +15,23 @@ const LOG_FIELDS = {
   grip: { label: 'Grip', kind: 'pick', opts: ['Half Crimp', 'Open Hand', 'Full Crimp', '3 Finger Drag'] },
   sent: { label: 'Sent', kind: 'pick', opts: ['Sent', 'Not Yet'] },
 };
-const LOG_KEYS = Object.keys(LOG_FIELDS);   // matches the check on exercises.track
+const LOG_BUILT_IN = Object.keys(LOG_FIELDS);
+// Built-in steppers, custom numbers, built-in picks, then custom picks: the order of the sheet and the coach's ticks.
+const LOG_KEYS = [...LOG_BUILT_IN];
+// Coaches' own fields (log_fields rows, loaded at sign-in by loadMe and changed in the Log Fields card): a number
+// with an optional unit, or a pick. Values are kept under the row's key, so renaming keeps the history.
+let logFieldRows = [];
+function setLogFields(rows) {
+  logFieldRows = rows.sort((a, b) => a.label_key.localeCompare(b.label_key));
+  for (const k of Object.keys(LOG_FIELDS)) if (LOG_FIELDS[k].custom) delete LOG_FIELDS[k];
+  for (const r of rows) LOG_FIELDS[r.key] = r.kind === 'pick' ? { label: r.label, kind: 'pick', opts: r.opts, custom: true }
+    : { label: r.label, kind: 'step', step: 1, min: 0, max: 99999, start: 1, sub: r.unit, unit: r.unit, dec: true, custom: true };
+  const all = Object.keys(LOG_FIELDS), pick = k => LOG_FIELDS[k].kind === 'pick';
+  LOG_KEYS.splice(0, LOG_KEYS.length, ...all.filter(k => !pick(k) && !LOG_FIELDS[k].custom), ...all.filter(k => !pick(k) && LOG_FIELDS[k].custom),
+    ...all.filter(k => pick(k) && !LOG_FIELDS[k].custom), ...all.filter(k => pick(k) && LOG_FIELDS[k].custom));
+}
+// A custom number on its own: "12 moves", or "Holds 12" with no unit.
+const customNum = (F, n) => F.unit ? `${n} ${F.unit}` : `${F.label} ${n}`;
 // Quick picks for the coach (Exercises & Drills, and per plan).
 const LOG_PRESETS = [['Hangs', ['weight', 'edge', 'time', 'grip', 'sets']], ['Strength', ['sets', 'reps', 'weight']],
   ['Timed', ['time', 'sets']], ['Climbing', ['grade', 'attempts', 'sent']]];
@@ -41,7 +57,9 @@ function logSummary(v = {}) {
   return [both && `${v.sets} × ${v.reps}`, has('weight') && fmtWeight(v.weight, v.unit), has('edge') && `${v.edge} mm`,
     has('time') && `${v.time}s`, has('grade') && v.grade, has('attempts') && `${v.attempts} ${v.attempts === 1 ? 'try' : 'tries'}`,
     has('grip') && v.grip, has('sent') && (v.sent ? 'Sent' : 'Not Yet'),
-    !both && has('sets') && `${v.sets} set${v.sets === 1 ? '' : 's'}`, !both && has('reps') && `${v.reps} reps`].filter(Boolean).join(' · ');
+    !both && has('sets') && `${v.sets} set${v.sets === 1 ? '' : 's'}`, !both && has('reps') && `${v.reps} reps`,
+    ...LOG_KEYS.filter(k => LOG_FIELDS[k].custom && has(k)).map(k => LOG_FIELDS[k].kind === 'pick' ? String(v[k]) : customNum(LOG_FIELDS[k], v[k]))]
+    .filter(Boolean).join(' · ');
 }
 // A log with no values (a notes-only exercise) shows its note, first line, instead.
 const noteLine = s => { const t = String(s ?? '').replace(/\*\*/g, '').split('\n').find(l => l.trim())?.trim() ?? ''; return t.length > 80 ? t.slice(0, 79) + '…' : t; };
@@ -79,6 +97,8 @@ function logMetric(list) {
     reps: { label: 'Reps', val: l => l.vals.reps ?? null, show: n => `${n} reps` },
     sets: { label: 'Sets', val: l => l.vals.sets ?? null, show: n => `${n} sets` },
   };
+  for (const k of LOG_KEYS) if (LOG_FIELDS[k].custom && LOG_FIELDS[k].kind === 'step')
+    M[k] = { label: LOG_FIELDS[k].label, val: l => typeof l.vals[k] === 'number' ? l.vals[k] : null, show: n => customNum(LOG_FIELDS[k], n) };
   for (const key of Object.keys(M)) if (list.some(l => M[key].val(l) != null)) return { key, ...M[key] };
   return null;
 }
@@ -113,7 +133,8 @@ function trendText(list, m) {
   const d = m.val(b) - m.val(a), since = `since ${logDay(a.logged_on)}`;
   if (!d) return `Same as ${logDay(a.logged_on)}`;
   const amt = m.key === 'weight' ? `${+Math.abs(d).toFixed(1)} ${list.find(l => l.vals.unit)?.vals.unit || 'lb'}`
-    : m.key === 'grade' ? `${Math.abs(d)} grade${Math.abs(d) === 1 ? '' : 's'}` : m.key === 'time' ? `${Math.abs(d)}s` : `${Math.abs(d)} ${m.key}`;
+    : m.key === 'grade' ? `${Math.abs(d)} grade${Math.abs(d) === 1 ? '' : 's'}` : m.key === 'time' ? `${Math.abs(d)}s`
+    : LOG_FIELDS[m.key]?.custom ? `${+Math.abs(d).toFixed(2)}${LOG_FIELDS[m.key].unit ? ` ${LOG_FIELDS[m.key].unit}` : ''}` : `${Math.abs(d)} ${m.key}`;
   return `${d > 0 ? 'Up' : 'Down'} ${amt} ${since}`;
 }
 
@@ -159,12 +180,15 @@ logSheet.setAttribute('aria-labelledby', 'logSheetTitle');
 document.body.append(logSheet);
 let ls = null;   // { key, sid, x, fields, vals, notes, editing, last }
 
-// Starts at today's log (editing it), else last time's values, else what the plan says (sets, reps, a time like "10s").
-function openLogSheet(key, sid) {
+// date: the day being logged (today, or an earlier day picked in the Day field). Starts at that day's log (editing
+// it), else the values of the last log before it, else what the plan says (sets, reps, a time like "10s").
+function openLogSheet(key, sid, date = todayISO()) {
   const [s, x] = planExercise(logCtx.sessions, key, sid);
   if (!x || !logCtx.canLog) return;
   sid = s.id;
-  const list = logsOf(logCtx.logs, key), today = list[0]?.logged_on === todayISO() ? list[0] : null, last = today ? list[1] : list[0];
+  const all = logsOf(logCtx.logs, key), list = all.filter(l => l.logged_on <= date);
+  const today = list[0]?.logged_on === date ? list[0] : null, last = today ? list[1] : list[0];
+  const isToday = date === todayISO(), onDay = isToday ? 'today' : `on ${logDay(date)}`;
   const fields = trackOf(x), from = today ?? last, unit = logUnit();
   const vals = {};
   for (const k of fields) if (from?.vals[k] != null) vals[k] = from.vals[k];
@@ -175,25 +199,35 @@ function openLogSheet(key, sid) {
     if (fields.includes('reps') && int(x.reps) != null) vals.reps = int(x.reps);
     if (fields.includes('time') && secs) vals.time = +secs[1];
   }
-  ls = { key, sid, x, fields, vals, unit, notes: today?.notes ?? '', editing: today, last, before: list.filter(l => l !== today) };
+  ls = { key, sid, x, fields, vals, unit, date, notes: today?.notes ?? '', editing: today, last, before: list.filter(l => l !== today) };
   logSheet.innerHTML = `<div class="exb-head"><div><h2 id="logSheetTitle">Log ${esc(x.name.trim())}</h2>
-      <p class="hint">${today ? 'Logged today. Change what you need.' : last ? `Starts at last time's numbers (${logDay(last.logged_on)}). Tap what changed.` : logDay(todayISO(), true)}</p></div>
+      <p class="hint">${today ? `Logged ${onDay}. Change what you need.` : last ? `Starts at last time's numbers (${logDay(last.logged_on)}). Tap what changed.` : 'Not logged yet.'}</p></div>
     <button type="button" class="exb-close" data-close aria-label="Close">${EXB_ICON.close}</button></div>
-    <div class="log-body">${fields.map(logFieldHTML).join('')}
+    <div class="log-body"><div class="log-step log-date"><div class="log-lab"><b id="lf-date">Day</b><span class="hint">${isToday ? 'Today. Pick an earlier day for a past session.' : logDay(date, true)}</span></div>
+        <input type="date" data-date aria-labelledby="lf-date" value="${date}" max="${todayISO()}" required></div>
+      ${fields.map(logFieldHTML).join('')}
       <label class="log-notes">Notes<textarea data-lf="notes" rows="2" data-grow maxlength="2000" placeholder="How did it feel?">${esc(ls.notes)}</textarea></label>
       ${today ? '<button type="button" class="small ghost danger log-del" data-del>Delete Log</button>' : ''}</div>
     <div class="exb-foot"><span class="log-diff" aria-live="polite"></span><button type="button" class="exb-add" data-save>Save Log</button></div>`;
   logDiff();
-  logSheet.showModal();
-  logSheet.querySelector('.log-body').scrollTop = 0;
+  if (!logSheet.open) { logSheet.showModal(); logSheet.querySelector('.log-body').scrollTop = 0; }
 }
+// Picking another day redraws the sheet for it (its log, if it has one). Never a day after today.
+logSheet.addEventListener('change', e => {
+  if (!('date' in e.target.dataset)) return;
+  const d = e.target.value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > todayISO()) { e.target.value = ls.date; return; }
+  if (d === ls.date) return;
+  openLogSheet(ls.key, ls.sid, d);
+  logSheet.querySelector('[data-date]').focus();
+});
 
 function logFieldHTML(k) {
   const F = LOG_FIELDS[k], id = 'lf-' + k;
   if (F.kind === 'pick') {
     const v = ls.vals[k], opts = F.opts, isOther = k === 'edge' && v != null && !opts.includes(v);
     const val = o => k === 'sent' ? o === 'Sent' : o, on = o => k === 'sent' ? v === (o === 'Sent') : v === o;
-    return `<fieldset class="log-pick" data-pick="${k}" data-field="${k}"><legend>${F.label}</legend><div class="log-chips">${opts.map(o =>
+    return `<fieldset class="log-pick" data-pick="${k}" data-field="${k}"><legend>${esc(F.label)}</legend><div class="log-chips">${opts.map(o =>
       `<button type="button" data-chip="${esc(JSON.stringify(val(o)))}" aria-pressed="${on(o)}">${esc(k === 'edge' ? `${o} mm` : o)}</button>`).join('')}${
       F.other ? `<button type="button" data-chip="other" aria-pressed="${isOther || ls.otherEdge === true}">Other</button>` : ''}</div>${
       F.other && (isOther || ls.otherEdge) ? `<label class="log-other">Edge in mm<input data-lf="edge" inputmode="decimal" value="${isOther ? v : ''}" autocomplete="off"></label>` : ''}</fieldset>`;
@@ -201,11 +235,11 @@ function logFieldHTML(k) {
   const sub = k === 'weight' ? `${ls.unit} · <button type="button" class="link" data-unit>Switch to ${ls.unit === 'lb' ? 'kg' : 'lb'}</button>`
     : k === 'sets' && /^\s*\d+\s*$/.test(ls.x.sets ?? '') ? `Plan says ${ls.x.sets.trim()}` : esc(F.sub ?? '');
   const v = ls.vals[k];
-  return `<div class="log-step" data-field="${k}"><div class="log-lab"><b id="${id}">${F.label}</b>${sub ? `<span class="hint">${sub}</span>` : ''}</div>
-    <div class="log-sp"><button type="button" data-step="-1" data-f="${k}" aria-label="Less ${F.label.toLowerCase()}">−</button>
-      <input data-lf="${k}" aria-labelledby="${id}" ${F.kind === 'grade' ? 'readonly' : `inputmode="${k === 'weight' ? 'decimal' : 'numeric'}"`}
+  return `<div class="log-step" data-field="${k}"><div class="log-lab"><b id="${id}">${esc(F.label)}</b>${sub ? `<span class="hint">${sub}</span>` : ''}</div>
+    <div class="log-sp"><button type="button" data-step="-1" data-f="${k}" aria-label="Less ${esc(F.label.toLowerCase())}">−</button>
+      <input data-lf="${k}" aria-labelledby="${id}" ${F.kind === 'grade' ? 'readonly' : `inputmode="${k === 'weight' || F.dec ? 'decimal' : 'numeric'}"`}
         value="${v == null ? '' : k === 'weight' ? signed(v) : esc(v)}" placeholder="—" autocomplete="off">
-      <button type="button" data-step="1" data-f="${k}" aria-label="More ${F.label.toLowerCase()}">+</button></div></div>`;
+      <button type="button" data-step="1" data-f="${k}" aria-label="More ${esc(F.label.toLowerCase())}">+</button></div></div>`;
 }
 
 // Steppers: weight by 5 lb (2.5 kg) and can go below zero (an assisted hang); grade along GRADES.
@@ -244,7 +278,7 @@ logSheet.addEventListener('input', e => {
   if (k === 'notes') ls.notes = e.target.value;
   else {
     const n = num(e.target.value);
-    ls.vals[k] = n == null ? null : k === 'weight' ? n : Math.max(0, k === 'edge' ? n : Math.round(n));
+    ls.vals[k] = n == null ? null : k === 'weight' ? n : Math.max(0, k === 'edge' || LOG_FIELDS[k]?.dec ? n : Math.round(n));
     logDiff();
   }
 });
@@ -274,7 +308,8 @@ logSheet.addEventListener('click', async e => {
     return;
   }
   if ('del' in d) {
-    if (!await ask({ title: 'Delete This Log?', warn: true, ok: 'Delete', body: `<p>Today's log for ${esc(ls.x.name.trim())} will be deleted.</p>` })) return;
+    const whose = ls.date === todayISO() ? "Today's log" : `The log from ${logDay(ls.date)}`;
+    if (!await ask({ title: 'Delete This Log?', warn: true, ok: 'Delete', body: `<p>${whose} for ${esc(ls.x.name.trim())} will be deleted.</p>` })) return;
     return busy(b, async () => {
       must(await sb.from('exercise_logs').delete().eq('id', ls.editing.id));
       logCtx.logs = logCtx.logs.filter(l => l !== ls.editing);
@@ -293,13 +328,14 @@ function saveLog(btn) {
   if (!Object.keys(vals).length && !notes) { flash(ls.fields.length ? 'Fill in at least one value, or a note.' : 'Write a note to log it.', 'error'); return; }
   return busy(btn, async () => {
     const row = { student_id: me.student.id, session_id: ls.sid, exercise_key: ls.key, exercise_name: ls.x.name.trim().slice(0, 200),
-      logged_on: todayISO(), vals, notes };
+      logged_on: ls.date, vals, notes };
     const saved = await sb.from('exercise_logs').upsert(row, { onConflict: 'student_id,exercise_key,logged_on' }).select().single().then(must);
-    const wasBest = isNewBest([saved, ...logsOf(logCtx.logs, ls.key).filter(l => l.id !== saved.id)]);
     logCtx.logs = sortLogs([saved, ...logCtx.logs.filter(l => l.id !== saved.id)]);
+    const mine = logsOf(logCtx.logs, ls.key), wasBest = mine[0] === saved && isNewBest(mine);
     logSheet.close();
     redrawLogs();
-    flash(wasBest ? 'Logged. That\'s a new best!' : 'Logged.');
+    const when = ls.date === todayISO() ? '' : ` for ${logDay(ls.date)}`;
+    flash(wasBest ? `Logged${when}. That's a new best!` : `Logged${when}.`);
   });
 }
 
@@ -334,8 +370,8 @@ function drawLogHistory() {
       <span class="tag best">${logDay(best.logged_on)}</span></div>
     <p class="hist-big">${esc(logLine(best))}</p>${spark}${spark ? `<p class="hist-cap">${esc(trendText(list, m))}</p>` : ''}</div>` : '';
   const [shown, page] = pageOf(list, lh.page, LOG_PAGE);
+  const canEdit = lh.opts.mine && logCtx?.canLog && planExercise(logCtx.sessions, lh.key).length > 0;   // only for an exercise in the current plan
   lh.page = page;
-  const today = todayISO();
   logHist.innerHTML = `<div class="exb-head"><div><span class="eyebrow">${lh.opts.who ? `${esc(lh.opts.who)} · ` : ''}History</span>
       <h2 id="logHistTitle">${esc(name)}</h2><p class="hint">${all.length} log${all.length === 1 ? '' : 's'} since ${logDay(all.at(-1).logged_on)}</p></div>
     <button type="button" class="exb-close" data-close aria-label="Close">${EXB_ICON.close}</button></div>
@@ -343,7 +379,7 @@ function drawLogHistory() {
       <ul class="hist-list">${shown.map(l => `<li><div><span class="hist-d">${logDay(l.logged_on, true)}</span>
         <span class="hist-s">${esc(logLine(l))}${l === best && list.length > 1 ? ' <span class="tag best">Best</span>' : ''}</span>
         ${l.notes && logSummary(l.vals) ? `<span class="hist-n">${para(l.notes)}</span>` : ''}</div>${
-        lh.opts.mine && l.logged_on === today && logCtx?.canLog ? `<button type="button" class="small" data-edit>Edit</button>` : ''}</li>`).join('')}</ul>
+        canEdit ? `<button type="button" class="small" data-edit="${l.logged_on}">Edit</button>` : ''}</li>`).join('')}</ul>
       <div class="hist-pager">${pagerHTML(page, list.length, LOG_PAGE)}</div></div>`;
   bindPager(logHist.querySelector('.hist-pager'), n => { lh.page = n; drawLogHistory(); });
 }
@@ -353,9 +389,9 @@ logHist.addEventListener('click', e => {
   if ('close' in b.dataset) return logHist.close();
   if (b.dataset.edge) { lh.edge = b.dataset.edge === 'all' ? null : +b.dataset.edge; lh.page = 1; drawLogHistory(); logHist.querySelector(`[data-edge="${b.dataset.edge}"]`)?.focus(); }
   if ('edit' in b.dataset) {
-    const l = logsOf(logCtx.logs, lh.key)[0];
+    const l = logsOf(logCtx.logs, lh.key).find(l => l.logged_on === b.dataset.edit);
     logHist.close();
-    openLogSheet(lh.key, l.session_id);
+    if (l) openLogSheet(lh.key, l.session_id, l.logged_on);
   }
 });
 

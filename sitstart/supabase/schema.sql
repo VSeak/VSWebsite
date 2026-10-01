@@ -161,8 +161,8 @@ create table public.exercises (
   notes text not null default '',
   purposes text[] not null default '{}' check (cardinality(purposes) <= 12),
   -- The fields students fill in when they log it (Training Log). Plans copy it into each exercise as "track".
-  track text[] not null default '{}'
-    check (track <@ array['weight', 'edge', 'time', 'grip', 'sets', 'reps', 'grade', 'attempts', 'sent']),
+  -- Built-in keys (weight, edge, time, grip, sets, reps, grade, attempts, sent) or a log_fields key.
+  track text[] not null default '{}' check (cardinality(track) <= 30),
   created_at timestamptz not null default now()
 );
 
@@ -193,6 +193,20 @@ create table public.exercise_logs (
   unique (student_id, exercise_key, logged_on)
 );
 
+-- Log fields coaches add beside the built-in ones (the Log Fields card on Exercises & Drills): a number (with an
+-- optional unit) or a pick from a few choices. Exercises, plans and logs use its key, so renaming keeps the history.
+create table public.log_fields (
+  id uuid primary key default gen_random_uuid(),
+  key text not null unique default ('c' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)),
+  label text not null check (length(trim(label)) between 1 and 30),
+  label_key text generated always as (lower(trim(label))) stored unique,
+  kind text not null check (kind in ('number', 'pick')),
+  unit text not null default '' check (length(unit) <= 20),
+  opts text[] not null default '{}' check (cardinality(opts) <= 12),
+  created_at timestamptz not null default now(),
+  check (kind = 'number' or cardinality(opts) >= 2)
+);
+
 create function public.sync_exercise_purpose() returns trigger
 language plpgsql set search_path = '' as $$
 begin
@@ -208,6 +222,24 @@ end;
 $$;
 create trigger sync_exercise_purpose after update of name or delete on public.exercise_purposes
   for each row execute function public.sync_exercise_purpose();
+
+-- A log field's key and kind never change (logs keep values under the key); deleting one takes it off every exercise.
+create function public.sync_log_field() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'DELETE' then
+    update public.exercises set track = array_remove(track, old.key) where old.key = any(track);
+    return old;
+  end if;
+  new.key := old.key;
+  new.kind := old.kind;
+  return new;
+end;
+$$;
+create trigger keep_log_field_key before update on public.log_fields
+  for each row execute function public.sync_log_field();
+create trigger sync_log_field after delete on public.log_fields
+  for each row execute function public.sync_log_field();
 
 -- 2. Helpers (security definer so the rules below don't loop on themselves) --
 
@@ -472,10 +504,11 @@ alter table public.session_history enable row level security;
 alter table public.exercises enable row level security;
 alter table public.exercise_purposes enable row level security;
 alter table public.exercise_logs enable row level security;
+alter table public.log_fields enable row level security;
 
 grant select, insert, update, delete
   on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.session_history,
-     public.exercises, public.exercise_purposes, public.exercise_logs
+     public.exercises, public.exercise_purposes, public.exercise_logs, public.log_fields
   to authenticated;
 
 -- Helpers that don't depend on the row are wrapped in (select ...), so Postgres runs them once per query instead of
@@ -557,6 +590,15 @@ create policy "staff: everything" on public.exercises for all to authenticated
   using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
 create policy "staff: everything" on public.exercise_purposes for all to authenticated
   using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
+
+-- Log fields: everyone signed in reads them (students need them to log); coaches and admins change them.
+create policy "everyone: read" on public.log_fields for select to authenticated using (true);
+create policy "staff: change" on public.log_fields for insert to authenticated
+  with check ((select public.is_coach()) or (select public.is_admin()));
+create policy "staff: update" on public.log_fields for update to authenticated
+  using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
+create policy "staff: delete" on public.log_fields for delete to authenticated
+  using ((select public.is_coach()) or (select public.is_admin()));
 
 -- Training Log: only the student adds, changes or deletes their logs; every coach reads them (like plans).
 create policy "student: own logs" on public.exercise_logs for select to authenticated

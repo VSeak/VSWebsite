@@ -9,12 +9,12 @@
 // (and Grip's choices). Values are kept under the row's key, so renaming keeps the history.
 const LOG_STANDARD = {
   weight: { label: 'Added Weight', kind: 'weight' },
-  time: { label: 'Time', kind: 'step', step: 1, min: 0, max: 3600, start: 10, sub: 'seconds' },
+  time: { label: 'Time', kind: 'step', step: 1, min: 0, max: 3600, start: 7, sub: 'seconds' },
   sets: { label: 'Sets Done', kind: 'step', step: 1, min: 0, max: 99, start: 1 },
   reps: { label: 'Reps', kind: 'step', step: 1, min: 0, max: 999, start: 1 },
   grade: { label: 'Grade', kind: 'grade' },
   attempts: { label: 'Attempts', kind: 'step', step: 1, min: 0, max: 99, start: 1 },
-  edge: { label: 'Edge', kind: 'pick', opts: [10, 15, 18, 20, 25], other: true },
+  edge: { label: 'Edge', kind: 'pick', opts: [6, 8, 10, 12, 15, 18, 20, 25, 30], other: true },
   grip: { label: 'Grip', kind: 'pick', opts: ['Half Crimp', 'Open Hand', 'Full Crimp', '3 Finger Drag'] },
   sent: { label: 'Sent', kind: 'pick', opts: ['Sent', 'Not Yet'] },
 };
@@ -48,9 +48,10 @@ const LOG_PAGE = 3;   // logs (or days, or exercises) per page
 const trackOf = x => LOG_KEYS.filter(k => (x?.track ?? []).includes(k));
 const trackNames = list => list.length ? list.map(k => LOG_FIELDS[k].label).join(' · ') : 'Notes only';
 
-// Weight: lb unless the student picked kg (kept on this device). Steps are 5 lb or 2.5 kg.
+// Weight: lb unless the student picked kg (kept on this device). Steps are 2.5 lb or 1.25 kg (small plates).
 const KG = 2.20462;
 function logUnit() { try { return localStorage.getItem('sitstart.unit') === 'kg' ? 'kg' : 'lb'; } catch { return 'lb'; } }
+const wStep = u => u === 'kg' ? 1.25 : 2.5;
 function setLogUnit(u) { try { localStorage.setItem('sitstart.unit', u); } catch {} }
 const num = v => { const n = parseFloat(String(v ?? '').replace(',', '.').replace('−', '-')); return Number.isFinite(n) ? n : null; };
 const round = (n, step) => Math.round(n / step) * step;
@@ -200,7 +201,7 @@ function openLogSheet(key, sid, date = todayISO()) {
   const fields = trackOf(x), from = today ?? last, unit = logUnit();
   const vals = {};
   for (const k of fields) if (from?.vals[k] != null) vals[k] = from.vals[k];
-  if (vals.weight != null && (from.vals.unit || 'lb') !== unit) vals.weight = round(unit === 'kg' ? vals.weight / KG : vals.weight * KG, unit === 'kg' ? 2.5 : 5);
+  if (vals.weight != null && (from.vals.unit || 'lb') !== unit) vals.weight = round(unit === 'kg' ? vals.weight / KG : vals.weight * KG, wStep(unit));
   if (!from) {
     const int = s => /^\s*\d+\s*$/.test(s ?? '') ? parseInt(s, 10) : null, secs = /^\s*(\d+)\s*(s|sec|secs|seconds)\b/i.exec(x.reps ?? '');
     if (fields.includes('sets') && int(x.sets) != null) vals.sets = int(x.sets);
@@ -250,14 +251,14 @@ function logFieldHTML(k) {
       <button type="button" data-step="1" data-f="${k}" aria-label="More ${esc(F.label.toLowerCase())}">+</button></div></div>`;
 }
 
-// Steppers: weight by 5 lb (2.5 kg) and can go below zero (an assisted hang); grade along GRADES.
+// Steppers: weight by 2.5 lb (1.25 kg) and can go below zero (an assisted hang); grade along GRADES.
 function stepLog(k, dir) {
   const F = LOG_FIELDS[k], v = ls.vals[k];
   if (F.kind === 'grade') {
     const i = GRADES.indexOf(v);
     ls.vals[k] = GRADES[i < 0 ? 1 : Math.min(GRADES.length - 1, Math.max(0, i + dir))];
   } else if (F.kind === 'weight') {
-    const st = ls.unit === 'kg' ? 2.5 : 5;
+    const st = wStep(ls.unit);
     ls.vals[k] = v == null ? (dir > 0 ? st : 0) : Math.max(-500, Math.min(1000, round(v, st) + dir * st));
   } else ls.vals[k] = v == null ? F.start : Math.max(F.min, Math.min(F.max, v + dir * F.step));
   const input = logSheet.querySelector(`input[data-lf="${k}"]`);
@@ -298,7 +299,7 @@ logSheet.addEventListener('click', async e => {
   if (d.step) return stepLog(d.f, +d.step);
   if ('unit' in d) {
     const to = ls.unit === 'lb' ? 'kg' : 'lb';
-    if (ls.vals.weight != null) ls.vals.weight = round(to === 'kg' ? ls.vals.weight / KG : ls.vals.weight * KG, to === 'kg' ? 2.5 : 5);
+    if (ls.vals.weight != null) ls.vals.weight = round(to === 'kg' ? ls.vals.weight / KG : ls.vals.weight * KG, wStep(to));
     ls.unit = to; setLogUnit(to);
     redrawField('weight');
     logSheet.querySelector('[data-unit]')?.focus();

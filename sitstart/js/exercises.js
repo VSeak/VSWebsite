@@ -89,7 +89,7 @@ function lfFromForm(f, kind, r = null) {
 }
 // What a field asks for, under its name in the Log Fields card.
 const LF_STANDARD_DESC = { weight: 'Number in lb or kg, can go below zero', time: 'Number in seconds', sets: 'Number', reps: 'Number',
-  grade: 'Grade, VB to V17', attempts: 'Number', edge: 'Choices: 10, 15, 18, 20, 25 mm or another size', sent: 'Choices: Sent, Not Yet' };
+  grade: 'Grade, VB to V17', attempts: 'Number', edge: 'Choices: 6 to 30 mm or another size', sent: 'Choices: Sent, Not Yet' };
 const lfDescribe = r => lfHasOpts(r.kind, r) ? `Choices: ${r.opts.join(', ')}`
   : r.kind === 'standard' ? LF_STANDARD_DESC[r.key] : `Number${r.unit ? ` in ${r.unit}` : ''}`;
 const purDupError = e => e.code === '23505' ? new Error('That purpose is already on the list.') : e;

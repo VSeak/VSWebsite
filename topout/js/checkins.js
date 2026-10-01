@@ -19,6 +19,10 @@ const RATERS = [['ratings', 'Them', 'r_'], ['coach_ratings', 'Coach', 'c_']];
 const guideFor = (a, i) => a.guide?.[i - 1]?.trim() ? esc(a.guide[i - 1]) : RATING_GUIDE[i - 1];
 // Areas in Physical, Skill, Mental order (then the admin's order), for tag chips and the Team Summary.
 const byGroup = areas => Object.keys(AREA_GROUPS).flatMap(g => areas.filter(a => a.area_group === g));
+// Area chips to tick (checkboxes called `name`), in a row per group. Used for check-in tags and Team Focus.
+const areaChips = (name, list, picked, label) => `<div class="tag-pick" role="group" aria-label="${esc(label)}">
+  ${Object.entries(AREA_GROUPS).map(([g, gl]) => { const inG = list.filter(a => a.area_group === g); return inG.length ? `<div class="tag-group"><small>${gl}</small>
+    ${inG.map(a => `<label class="chip-check"><input type="checkbox" name="${name}" value="${a.id}"${picked.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</div>`;
 
 const canChangeCheckin = c => me.isAdmin || c.author_id === me.user.id;
 
@@ -107,9 +111,7 @@ async function checkinForm(c, { m, checkins, circuits, areas, questions }) {
   const tagAreas = q => byGroup(areas.filter(a => a.active || (v.tags[q.id] || []).includes(a.id)));
   const shownAreas = areas.filter(a => (a.rated && a.active) || v.ratings[a.id] != null || v.coach_ratings[a.id] != null);
   const guides = Object.fromEntries(shownAreas.map(a => [a.id, [1, 2, 3, 4, 5].map(i => guideFor(a, i))]));
-  const tagPick = q => { const list = tagAreas(q); return `<div class="tag-pick" role="group" aria-label="Areas for ${esc(q.prompt)}">
-    ${Object.entries(AREA_GROUPS).map(([g, label]) => { const inG = list.filter(a => a.area_group === g); return inG.length ? `<div class="tag-group"><small>${label}</small>
-      ${inG.map(a => `<label class="chip-check"><input type="checkbox" name="t_${q.id}" value="${a.id}"${(v.tags[q.id] || []).includes(a.id) ? ' checked' : ''}><span>${esc(a.name)}</span></label>`).join('')}</div>` : ''; }).join('')}</div>`; };
+  const tagPick = q => areaChips('t_' + q.id, tagAreas(q), v.tags[q.id] || [], `Areas for ${q.prompt}`);
   const pick = (a, [key, label, prefix]) => `<div class="rate-row" data-rater="${label}"><span>${label}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}: ${label}">
     ${[1, 2, 3, 4, 5].map(i => `<label><input type="radio" name="${prefix}${a.id}" value="${i}"${v[key][a.id] === i ? ' checked' : ''}><span>${i}</span></label>`).join('')}</span></div>`;
   const f = await ask({ title: c ? 'Edit Check-In' : `Check-In: ${m.first_name}`, ok: c ? 'Save Check-In' : 'Add Check-In', wide: true,

@@ -357,3 +357,30 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 #flash { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); z-index: 30; padding: .7rem 1.1rem; border-radius: 14px;
   background: var(--navy); color: var(--navy-ink); font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); max-width: calc(100vw - 32px); }
 #flash.error { background: var(--danger); color: #fff; }
+
+/* Team Summary (a location's Summary tab) */
+.focus-strip { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin: -.3rem 0 1rem; padding: .55rem .85rem; border-radius: 14px;
+  background: var(--accent-soft); color: var(--ink); text-decoration: none; border-left: 4px solid var(--accent); }
+.focus-strip b { color: var(--accent-text); font-family: "Space Grotesk", sans-serif; }
+.focus-strip span { flex: 1 1 12rem; }
+.focus-strip small { color: var(--muted); }
+.focus-card { border-top: 4px solid var(--accent); }
+.focus-card .chips { margin: .5rem 0 .2rem; }
+.glance { margin: 0 0 .9rem; padding-left: 1.1rem; font-size: .92rem; }
+.glance li { margin-bottom: .2rem; }
+.area-table { display: grid; grid-template-columns: minmax(5.5rem, 1fr) repeat(var(--cols), minmax(3.2rem, auto)); gap: .35rem .8rem; align-items: center;
+  font-size: .92rem; margin-bottom: .8rem; }
+.area-table > small { color: var(--muted); font-size: .75rem; font-weight: 700; line-height: 1.2; }
+.area-table > h3 { grid-column: 1 / -1; margin: .5rem 0 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  border-top: 1px solid var(--line); padding-top: .5rem; }
+.area-table .tag-only { grid-column: span 2; }
+.avg { display: inline-flex; align-items: baseline; gap: .25rem; }
+.avg small { color: var(--muted); font-size: .72rem; }
+.gap { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 0 .3rem; }
+.tcount { display: flex; align-items: center; gap: .35rem; }
+.tbar { width: 2.6rem; height: .5rem; border-radius: 999px; background: var(--sunk); overflow: hidden; flex: none; }
+.tbar i { display: block; height: 100%; background: var(--accent); }
+.said { list-style: none; margin: 0 0 .6rem; padding: 0; }
+.said li { padding: .4rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.said li > b { margin-right: .25rem; }
+.said .chips { display: inline-flex; margin: .2rem 0 0; }

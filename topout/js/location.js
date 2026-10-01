@@ -1,4 +1,4 @@
-// ---------- A location: #/loc/<id> (Team) and #/loc/<id>/calendar. Every team member: #/members ----------
+// ---------- A location: #/loc/<id> (Team), #/loc/<id>/summary (summary.js) and #/loc/<id>/calendar. Every team member: #/members ----------
 // A member is on one team (location) or several (team_member_locations). A coach sees the members of their teams.
 
 let teamTab = 'active';     // Active or Former members, kept while moving around
@@ -9,23 +9,28 @@ let lastLoc = null;         // the list last shown (a location id, or 'members')
 async function locationPage(id, sub) {
   const t = ++navToken;
   view(loading);
-  const [loc, coaches] = await Promise.all([
+  const [loc, coaches, [focus]] = await Promise.all([
     sb.from('team_locations').select('id, name').eq('id', id).maybeSingle().then(must),
     sb.from('team_staff_locations').select('staff:team_staff(name, email, roles)').eq('location_id', id).then(must),
+    sb.from('team_focus').select('focus_date, body').eq('location_id', id)
+      .order('focus_date', { ascending: false }).order('created_at', { ascending: false }).limit(1).then(must),
   ]);
   if (t !== navToken) return;
   if (!loc) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Location Not Found</h2>
     <p class="muted">It may have been removed, or you aren't assigned to it.</p></section>`);
   lastLoc = loc.id;
-  const cal = sub === 'calendar';
+  const tab = ['calendar', 'summary'].includes(sub) ? sub : 'team';
   const names = coaches.map(c => c.staff).filter(s => s?.roles.includes('coach')).map(s => s.name || s.email).sort();
+  const tabLink = (key, label, href) => `<a href="${href}" class="${tab === key ? 'on' : ''}" ${tab === key ? 'aria-current="page"' : ''}>${label}</a>`;
+  // The current Team Focus (summary.js) shows under the name, except on the Summary tab, which shows it in full.
   const head = `${crumbs([['Home', '#/'], [loc.name]])}
     <div class="page-head"><div><h1 class="big">${esc(loc.name)}</h1>
       <p class="muted">${names.length ? `Coaches: ${names.map(esc).join(', ')}` : 'No coaches assigned yet.'}</p></div></div>
-    <nav class="tabs" aria-label="Location">
-      <a href="#/loc/${id}" class="${cal ? '' : 'on'}" ${cal ? '' : 'aria-current="page"'}>Team</a>
-      <a href="#/loc/${id}/calendar" class="${cal ? 'on' : ''}" ${cal ? 'aria-current="page"' : ''}>Calendar</a></nav>`;
-  return cal ? calendarTab(loc, head, t) : teamTabView(loc, head, t);
+    ${focus && tab !== 'summary' ? `<a class="focus-strip" href="#/loc/${id}/summary"><b>Team Focus</b><span>${esc(firstLine(focus.body))}</span>
+      <small>${fmtShort(focus.focus_date)}</small></a>` : ''}
+    <nav class="tabs" aria-label="Location">${tabLink('team', 'Team', `#/loc/${id}`)}${tabLink('summary', 'Summary', `#/loc/${id}/summary`)}
+      ${tabLink('calendar', 'Calendar', `#/loc/${id}/calendar`)}</nav>`;
+  return tab === 'calendar' ? calendarTab(loc, head, t) : tab === 'summary' ? summaryTab(loc, head, t) : teamTabView(loc, head, t);
 }
 
 // Every member this person can see, each with `teams` (location ids), plus the latest check-in per member and the

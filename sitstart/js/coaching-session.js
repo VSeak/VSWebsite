@@ -203,7 +203,7 @@ function csCardHTML() {
       : '<p class="muted">No exercises yet. Add some, or copy them from the training plan.</p>'}
     <div class="cs-adds"><button type="button" class="add-ex" data-cs="add">+ Add Exercises</button>
       ${cs.plan ? '<button type="button" class="add-ex" data-cs="copy">Copy From Training Plan</button>' : ''}</div>
-    <label class="cs-notes">Session Notes${rich(`<textarea rows="3" data-grow data-css="notes" maxlength="4000" placeholder="Goals for today, how it went, what to work on next">${esc(c.notes)}</textarea>`)}</label>
+    <label class="cs-notes">Session Notes${rich(`<textarea rows="3" data-grow data-css="notes" maxlength="4000" placeholder="Goals for this session, how it went, what to work on next time, and other notes about the session">${esc(c.notes)}</textarea>`)}</label>
     <div class="cs-submit" id="csSubmit"></div>
     <button type="button" class="small ghost danger cs-del" data-cs="delete">Delete This Coaching Session</button>
     ${csPastHTML()}`;

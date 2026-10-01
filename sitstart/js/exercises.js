@@ -163,7 +163,7 @@ async function adminExercises() {
     if (!b) return;
     if ('more' in b.dataset) allPurposes = true;
     else if ('fewer' in b.dataset) allPurposes = false;
-    else { purpose = b.dataset.purpose; page = 1; }
+    else { purpose = b.dataset.purpose === purpose ? '' : b.dataset.purpose; page = 1; }   // the picked one again: back to All
     renderList();
   };
   // On a phone the Add Exercises & Drills card waits behind the button at the top, and opens there.
@@ -604,7 +604,7 @@ exSheet.addEventListener('click', e => {
   if ('addpicked' in d) { const names = [...exb.picked.values()]; exSheet.close(); return exSource().add(exb.sid, names); }
   // Redraws replace the buttons, so the focus goes back to the same one.
   let again = null;
-  if (d.purpose != null) { exb.purpose = d.purpose; again = `[data-purpose="${CSS.escape(d.purpose)}"]`; }
+  if (d.purpose != null) { exb.purpose = d.purpose === exb.purpose ? '' : d.purpose; again = `[data-purpose="${CSS.escape(d.purpose)}"]`; }
   else if (d.chips) { exb.allChips = d.chips === 'all'; again = '.more-chips'; }
   else if (d.key) {
     const x = exSource().library.find(y => y.name_key === d.key);
@@ -635,7 +635,7 @@ function renderExPanel() {
 function exPanelClick(e) {
   const b = e.target.closest('button'), d = b?.dataset;
   if (!b) return;
-  if (d.purpose != null) { exb.purpose = d.purpose; renderExPanel(); $(`#exPanel [data-purpose="${CSS.escape(d.purpose)}"]`)?.focus(); }
+  if (d.purpose != null) { exb.purpose = d.purpose === exb.purpose ? '' : d.purpose; renderExPanel(); $(`#exPanel [data-purpose="${CSS.escape(d.purpose)}"]`)?.focus(); }
   else if (d.chips) { exb.allChips = d.chips === 'all'; renderExPanel(); $('#exPanel .more-chips')?.focus(); }
   else if (d.add) addExercises(exb.sid, [draft.library.find(y => y.name_key === d.add).name]);
   else if ('new' in d) { const t = exb.q.trim().slice(0, 200); exb.q = ''; addExercises(exb.sid, [t]); }

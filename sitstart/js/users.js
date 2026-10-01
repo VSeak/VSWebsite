@@ -64,7 +64,7 @@ async function adminUsers() {
   search.oninput = renderList;
   $('#userTabs').onclick = e => {
     const b = e.target.closest('[data-tab]');
-    if (b) { usersTab = b.dataset.tab; renderList(); }
+    if (b) { usersTab = b.dataset.tab === usersTab ? '' : b.dataset.tab; renderList(); }   // the open tab again: back to Everyone
   };
   $('#addUser').onclick = e => addUserDialog(e.target);
 }

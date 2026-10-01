@@ -217,6 +217,12 @@ async function adminStudent(id, again = false) {
       });
     };
     card.querySelector('.seg')?.addEventListener('change', e => { Object.assign(cnoteAt, { filter: e.target.value, page: 1, spot: null }); renderCoachNotes(); });
+    // The picked one again (no change event): back to All. A click on a new one comes before its change, so filter is still the old one.
+    card.querySelector('.seg')?.addEventListener('click', e => {
+      if (e.target.matches('input') && e.target.value === cnoteAt.filter && cnoteAt.filter !== 'all') {
+        Object.assign(cnoteAt, { filter: 'all', page: 1, spot: null }); renderCoachNotes();
+      }
+    });
   }
   renderCoachNotes();
   // The Coaching Session card, between the plan and Student Notes (coaching-session.js).

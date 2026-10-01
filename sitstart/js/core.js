@@ -159,6 +159,12 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, fill = 
       if (bad) { e.preventDefault(); const el = f.elements[bad[0]]; fieldError(el, bad[1]); el.focus(); return; }
       resolve(okd ? new FormData(f) : null);
     });
+    // Enter in a field means OK. (The browser would press the first button in the form, which is Cancel.)
+    f.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.isComposing || !e.target.matches('input:not([type="button"], [type="submit"])')) return;
+      e.preventDefault();
+      f.requestSubmit(f.querySelector('button[value="ok"]'));
+    });
     d.addEventListener('cancel', () => resolve(null), { once: true });
     d.showModal();
     // On a touch screen, opening on a text box pops the keyboard up over the dialog (Edit Exercise did): focus the

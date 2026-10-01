@@ -161,7 +161,7 @@ create table public.exercises (
   notes text not null default '',
   purposes text[] not null default '{}' check (cardinality(purposes) <= 12),
   -- The fields students fill in when they log it (Training Log). Plans copy it into each exercise as "track".
-  -- Built-in keys (weight, edge, time, grip, sets, reps, grade, attempts, sent) or a log_fields key.
+  -- log_fields keys (the standard ones are weight, edge, time, grip, sets, reps, grade, attempts, sent).
   track text[] not null default '{}' check (cardinality(track) <= 30),
   created_at timestamptz not null default now()
 );
@@ -193,19 +193,27 @@ create table public.exercise_logs (
   unique (student_id, exercise_key, logged_on)
 );
 
--- Log fields coaches add beside the built-in ones (the Log Fields card on Exercises & Drills): a number (with an
--- optional unit) or a pick from a few choices. Exercises, plans and logs use its key, so renaming keeps the history.
+-- Log fields (the Log Fields card on Exercises & Drills): the standard ones (kind 'standard', key = the field the Log
+-- sheet knows, which works them) and coaches' own: a number (with an optional unit) or a pick from a few choices.
+-- Exercises, plans and logs use its key, so renaming keeps the history. Names are unique ignoring case (label_key).
 create table public.log_fields (
   id uuid primary key default gen_random_uuid(),
   key text not null unique default ('c' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)),
   label text not null check (length(trim(label)) between 1 and 30),
   label_key text generated always as (lower(trim(label))) stored unique,
-  kind text not null check (kind in ('number', 'pick')),
+  kind text not null constraint log_fields_kind_check check (kind in ('number', 'pick', 'standard')),
   unit text not null default '' check (length(unit) <= 20),
   opts text[] not null default '{}' check (cardinality(opts) <= 12),
   created_at timestamptz not null default now(),
-  check (kind = 'number' or cardinality(opts) >= 2)
+  constraint log_fields_pick_opts check (kind <> 'pick' or cardinality(opts) >= 2),
+  constraint log_fields_standard_key check (kind <> 'standard'
+    or key in ('weight', 'time', 'sets', 'reps', 'grade', 'attempts', 'edge', 'grip', 'sent'))
 );
+insert into public.log_fields (key, label, kind, opts) values
+  ('weight', 'Added Weight', 'standard', '{}'), ('time', 'Time', 'standard', '{}'), ('sets', 'Sets Done', 'standard', '{}'),
+  ('reps', 'Reps', 'standard', '{}'), ('grade', 'Grade', 'standard', '{}'), ('attempts', 'Attempts', 'standard', '{}'),
+  ('edge', 'Edge', 'standard', '{}'), ('grip', 'Grip', 'standard', '{Half Crimp,Open Hand,Full Crimp,3 Finger Drag}'),
+  ('sent', 'Sent', 'standard', '{}');
 
 create function public.sync_exercise_purpose() returns trigger
 language plpgsql set search_path = '' as $$

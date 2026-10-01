@@ -4,7 +4,10 @@
 
 // What an exercise asks for when it's logged: exercises.track (the default), copied into a plan's exercise as "track",
 // which the coach can change per plan. Notes are always there. Steppers come first in the sheet, then the picks.
-const LOG_FIELDS = {
+// Every field is a log_fields row (the Log Fields card on Exercises & Drills), where coaches rename or delete any of
+// them and add their own. The standard ones (kind 'standard') work as LOG_STANDARD says; the row gives the name
+// (and Grip's choices). Values are kept under the row's key, so renaming keeps the history.
+const LOG_STANDARD = {
   weight: { label: 'Added Weight', kind: 'weight' },
   time: { label: 'Time', kind: 'step', step: 1, min: 0, max: 3600, start: 10, sub: 'seconds' },
   sets: { label: 'Sets Done', kind: 'step', step: 1, min: 0, max: 99, start: 1 },
@@ -15,20 +18,25 @@ const LOG_FIELDS = {
   grip: { label: 'Grip', kind: 'pick', opts: ['Half Crimp', 'Open Hand', 'Full Crimp', '3 Finger Drag'] },
   sent: { label: 'Sent', kind: 'pick', opts: ['Sent', 'Not Yet'] },
 };
-const LOG_BUILT_IN = Object.keys(LOG_FIELDS);
-// Built-in steppers, custom numbers, built-in picks, then custom picks: the order of the sheet and the coach's ticks.
-const LOG_KEYS = [...LOG_BUILT_IN];
-// Coaches' own fields (log_fields rows, loaded at sign-in by loadMe and changed in the Log Fields card): a number
-// with an optional unit, or a pick. Values are kept under the row's key, so renaming keeps the history.
+const LOG_FIELDS = { ...LOG_STANDARD };   // the fields there are now (setLogFields)
+// Standard steppers, custom numbers, standard picks, then custom picks: the order of the sheet and the coach's ticks.
+const LOG_KEYS = Object.keys(LOG_FIELDS);
 let logFieldRows = [];
+// rows: every log_fields row (loadMe at sign-in, and the Exercises page), or null when they couldn't be read: then
+// the standard fields as they come.
 function setLogFields(rows) {
-  logFieldRows = rows.sort((a, b) => a.label_key.localeCompare(b.label_key));
-  for (const k of Object.keys(LOG_FIELDS)) if (LOG_FIELDS[k].custom) delete LOG_FIELDS[k];
-  for (const r of rows) LOG_FIELDS[r.key] = r.kind === 'pick' ? { label: r.label, kind: 'pick', opts: r.opts, custom: true }
-    : { label: r.label, kind: 'step', step: 1, min: 0, max: 99999, start: 1, sub: r.unit, unit: r.unit, dec: true, custom: true };
-  const all = Object.keys(LOG_FIELDS), pick = k => LOG_FIELDS[k].kind === 'pick';
-  LOG_KEYS.splice(0, LOG_KEYS.length, ...all.filter(k => !pick(k) && !LOG_FIELDS[k].custom), ...all.filter(k => !pick(k) && LOG_FIELDS[k].custom),
-    ...all.filter(k => pick(k) && !LOG_FIELDS[k].custom), ...all.filter(k => pick(k) && LOG_FIELDS[k].custom));
+  if (rows) logFieldRows = rows.sort((a, b) => a.label_key.localeCompare(b.label_key));
+  for (const k of Object.keys(LOG_FIELDS)) delete LOG_FIELDS[k];
+  if (!rows) Object.assign(LOG_FIELDS, LOG_STANDARD);
+  else for (const r of logFieldRows) {
+    const S = LOG_STANDARD[r.key];
+    if (r.kind === 'standard') { if (S) LOG_FIELDS[r.key] = { ...S, label: r.label, ...(r.key === 'grip' && r.opts?.length && { opts: r.opts }) }; }
+    else LOG_FIELDS[r.key] = r.kind === 'pick' ? { label: r.label, kind: 'pick', opts: r.opts, custom: true }
+      : { label: r.label, kind: 'step', step: 1, min: 0, max: 99999, start: 1, sub: r.unit, unit: r.unit, dec: true, custom: true };
+  }
+  const std = Object.keys(LOG_STANDARD).filter(k => LOG_FIELDS[k] && !LOG_FIELDS[k].custom);
+  const own = logFieldRows.map(r => r.key).filter(k => LOG_FIELDS[k]?.custom), pick = k => LOG_FIELDS[k].kind === 'pick';
+  LOG_KEYS.splice(0, LOG_KEYS.length, ...std.filter(k => !pick(k)), ...own.filter(k => !pick(k)), ...std.filter(pick), ...own.filter(pick));
 }
 // A custom number on its own: "12 moves", or "Holds 12" with no unit.
 const customNum = (F, n) => F.unit ? `${n} ${F.unit}` : `${F.label} ${n}`;

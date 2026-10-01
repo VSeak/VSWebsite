@@ -36,7 +36,7 @@ function exFromForm(f) {
 const trackFieldsHTML = (picked = [], hint = 'What students fill in when they log this. Plans copy it, and you can change it in a plan. Notes are always there. Add your own in the Log Fields card.') =>
   `<fieldset class="picks track-picks"><legend>Students Log</legend>
     <span class="hint field-hint">${hint}</span>
-    <div class="track-presets"><span class="muted">Quick Pick:</span>${LOG_PRESETS.map(([name, keys]) =>
+    <div class="track-presets"><span class="muted">Quick Pick:</span>${LOG_PRESETS.map(([name, keys]) => [name, keys.filter(k => LOG_FIELDS[k])]).filter(([, keys]) => keys.length).map(([name, keys]) =>
       `<button type="button" class="small" data-preset="${keys.join(',')}">${name}</button>`).join('')}</div>
     <div class="pick-row">${LOG_KEYS.map(k => `<label><input type="checkbox" name="track" value="${k}"${(picked ?? []).includes(k) ? ' checked' : ''}>${esc(LOG_FIELDS[k].label)}</label>`).join('')}</div>
   </fieldset>`;
@@ -48,35 +48,50 @@ document.addEventListener('click', e => {
   box.querySelectorAll('input[name="track"]').forEach(c => { c.checked = keys.includes(c.value); });
   box.querySelector('input[name="track"]').dispatchEvent(new Event('input', { bubbles: true }));
 });
-// Log fields: coaches' own Training Log fields (log_fields), beside the standard LOG_FIELDS. A number (with an
-// optional unit) or a pick from 2 to 12 choices. The type never changes once added, so old logs still read right.
+// Log fields: every Training Log field (log_fields rows): the standard ones (kind 'standard', worked by LOG_STANDARD)
+// and coaches' own, a number (with an optional unit) or a pick from 2 to 12 choices. Any of them can be renamed or
+// deleted; how a field is filled in never changes, so old logs still read right. Names are unique ignoring case (label_key).
 const LF_PAGE = 5;
 const lfDupError = e => e.code === '23505' ? new Error('There is already a log field with that name.') : e;
-const lfFieldsHTML = (r = null) => `<label>Name<input name="label" value="${esc(r?.label)}" maxlength="30" required
+// Choices: a pick's, and Grip's (the one standard field whose choices can change).
+const lfHasOpts = (kind, r) => kind === 'pick' || r?.key === 'grip';
+// r: the field being edited (null to add one). Unit for a number, Choices for a pick.
+const lfFieldsHTML = (r = null) => {
+  const unit = !r || r.kind === 'number', opts = !r || lfHasOpts(r.kind, r);
+  return `<label>Name<input name="label" value="${esc(r?.label)}" maxlength="30" required
     data-need="Name the field." placeholder="E.g. Moves" autocomplete="off"></label>
-  ${r ? `<p class="hint">${r.kind === 'pick' ? 'Choices' : 'A number'}. The type can't change, so past logs still read right.</p>`
+  ${r ? `<p class="hint">${esc(lfDescribe(r))}. How it's filled in can't change, so past logs still read right.</p>`
     : `<label>Type<select name="kind" data-lf-kind><option value="number">Number (− and + buttons)</option><option value="pick">Choices (tap one)</option></select></label>`}
-  <label data-lf-for="number"${r?.kind === 'pick' ? ' hidden' : ''}>Unit (Optional)<input name="unit" value="${esc(r?.unit)}" maxlength="20" placeholder="E.g. moves" autocomplete="off"></label>
-  <label data-lf-for="pick"${r?.kind === 'pick' ? '' : ' hidden'}>Choices<input name="opts" value="${esc(r?.opts?.join(', '))}" placeholder="E.g. Left, Right, Both" autocomplete="off">
-    <span class="hint field-hint">Separate them with commas, 2 to 12.</span></label>`;
+  ${unit ? `<label data-lf-for="number">Unit (Optional)<input name="unit" value="${esc(r?.unit)}" maxlength="20" placeholder="E.g. moves" autocomplete="off"></label>` : ''}
+  ${opts ? `<label data-lf-for="pick"${r ? '' : ' hidden'}>Choices<input name="opts" value="${esc(r?.opts?.join(', '))}" placeholder="E.g. Left, Right, Both" autocomplete="off">
+    <span class="hint field-hint">Separate them with commas, 2 to 12.</span></label>` : ''}`;
+};
 // Shows Unit for a number or Choices for a pick, as the Type changes.
 document.addEventListener('change', e => {
   if (!e.target.matches?.('[data-lf-kind]')) return;
   e.target.form.querySelectorAll('[data-lf-for]').forEach(l => { l.hidden = l.dataset.lfFor !== e.target.value; });
 });
-function lfFromForm(f, kind) {
+const lfOpts = f => String(f.get('opts') || '').split(',').map(s => s.trim().slice(0, 30)).filter(Boolean);
+// What's wrong before saving, as [field name, message], or null: a name another field has (ignoring case and
+// spaces), or choices that repeat or aren't 2 to 12. r: the field being edited.
+function lfProblem(f, kind, r = null) {
+  if (logFieldRows.some(q => q !== r && q.label_key === exKey(f.get('label')))) return ['label', 'There is already a log field with that name.'];
+  if (!lfHasOpts(kind, r)) return null;
+  const opts = lfOpts(f);
+  if (new Set(opts.map(exKey)).size < opts.length) return ['opts', 'Each choice can only be listed once.'];
+  if (opts.length < 2 || opts.length > 12) return ['opts', 'Give 2 to 12 choices, separated by commas.'];
+  return null;
+}
+function lfFromForm(f, kind, r = null) {
   const label = f.get('label').trim();
-  if (LOG_BUILT_IN.some(k => exKey(LOG_FIELDS[k].label) === exKey(label))) throw new Error('There is already a log field with that name.');
-  if (kind !== 'pick') return { label, unit: (f.get('unit') || '').trim() };
-  const opts = [...new Set(String(f.get('opts') || '').split(',').map(s => s.trim().slice(0, 30)).filter(Boolean))];
-  if (opts.length < 2 || opts.length > 12) throw new Error('Give 2 to 12 choices, separated by commas.');
-  return { label, opts };
+  if (lfHasOpts(kind, r)) return { label, opts: lfOpts(f) };
+  return kind === 'number' ? { label, unit: (f.get('unit') || '').trim() } : { label };
 }
 // What a field asks for, under its name in the Log Fields card.
-const LF_FIXED_DESC = { weight: 'Number in lb or kg, can go below zero', time: 'Number in seconds', sets: 'Number', reps: 'Number',
-  grade: 'Grade, VB to V17', attempts: 'Number', edge: 'Choices: 10, 15, 18, 20, 25 mm or another size', grip: 'Choices',
-  sent: 'Choices: Sent, Not Yet' };
-const lfDescribe = r => r.fixed ? (r.key === 'grip' ? `Choices: ${LOG_FIELDS.grip.opts.join(', ')}` : LF_FIXED_DESC[r.key]) : r.kind === 'pick' ? `Choices: ${r.opts.join(', ')}` : `Number${r.unit ? ` in ${r.unit}` : ''}`;
+const LF_STANDARD_DESC = { weight: 'Number in lb or kg, can go below zero', time: 'Number in seconds', sets: 'Number', reps: 'Number',
+  grade: 'Grade, VB to V17', attempts: 'Number', edge: 'Choices: 10, 15, 18, 20, 25 mm or another size', sent: 'Choices: Sent, Not Yet' };
+const lfDescribe = r => lfHasOpts(r.kind, r) ? `Choices: ${r.opts.join(', ')}`
+  : r.kind === 'standard' ? LF_STANDARD_DESC[r.key] : `Number${r.unit ? ` in ${r.unit}` : ''}`;
 const purDupError = e => e.code === '23505' ? new Error('That purpose is already on the list.') : e;
 const purFieldHTML = (name = '') => `<label>Name<input name="name" value="${esc(name)}" maxlength="40" required
     data-need="Name the purpose." placeholder="E.g. Balance" autocomplete="off"></label>`;
@@ -87,7 +102,7 @@ async function adminExercises() {
   let [list, purposes] = await Promise.all([
     sb.from('exercises').select('*').order('name_key').then(must),
     sb.from('exercise_purposes').select('*').order('name_key').then(must),
-    sb.from('log_fields').select('*').then(r => setLogFields(r.data ?? []))]);
+    sb.from('log_fields').select('*').then(r => setLogFields(r.data ?? null))]);
   if (t !== navToken) return;
   const purNames = () => purposes.map(p => p.name);
   const usedBy = name => list.filter(x => x.purposes.includes(name)).length;
@@ -182,26 +197,22 @@ async function adminExercises() {
     row.querySelectorAll('input').forEach(i => { i.checked = ticked.includes(i.value); });
   }
   const sortPurposes = () => purposes.sort((a, b) => a.name_key.localeCompare(b.name_key));
-  // Log Fields: the coaches' own fields (logFieldRows, kept in step with LOG_FIELDS by setLogFields).
+  // Log Fields: every field, A to Z (logFieldRows, sorted and kept in step with LOG_FIELDS by setLogFields).
   let lfPage = 1;
   const lfUsedBy = key => list.filter(x => x.track?.includes(key)).length;
-  // Every field, A to Z: the ones every exercise can use (no Edit or Delete: the Log sheet treats them specially,
-  // e.g. weight's lb/kg and grade's steps) and the coaches' own.
-  const lfAll = () => [...LOG_BUILT_IN.map(key => ({ key, label: LOG_FIELDS[key].label, fixed: true })), ...logFieldRows]
-    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
-  const lfPageWith = r => { const i = lfAll().findIndex(q => q.key === r.key); if (i >= 0) lfPage = Math.floor(i / LF_PAGE) + 1; };
+  const lfPageWith = r => { const i = logFieldRows.indexOf(r); if (i >= 0) lfPage = Math.floor(i / LF_PAGE) + 1; };
   function renderLogFields() {
-    const all = lfAll(), [items, pg] = pageOf(all, lfPage, LF_PAGE);
+    const [items, pg] = pageOf(logFieldRows, lfPage, LF_PAGE);
     lfPage = pg;
-    $('#lfCount').textContent = all.length;
-    $('#lfPager').innerHTML = pagerHTML(lfPage, all.length, LF_PAGE, ['Previous', 'Next']);
+    $('#lfCount').textContent = logFieldRows.length;
+    $('#lfPager').innerHTML = pagerHTML(lfPage, logFieldRows.length, LF_PAGE, ['Previous', 'Next']);
     bindPager($('#lfPager'), n => { lfPage = n; renderLogFields(); });
     $('#lfList').innerHTML = items.map(r => { const n = lfUsedBy(r.key);
       return `<li class="goal"><div class="goal-text"><strong>${esc(r.label)}</strong>
         <span class="item-sub">${esc(lfDescribe(r))} · ${n ? `${n} exercise${n === 1 ? '' : 's'}` : 'Not used yet'}</span></div>
-        ${r.fixed ? '' : `<div class="row ex-actions"><button type="button" class="small ghost" data-act="lf-edit" data-lfid="${r.id}">Edit</button>
-        <button type="button" class="small ghost danger" data-act="lf-delete" data-lfid="${r.id}">Delete</button></div>`}</li>`;
-    }).join('');
+        <div class="row ex-actions"><button type="button" class="small ghost" data-act="lf-edit" data-lfid="${r.id}">Edit</button>
+        <button type="button" class="small ghost danger" data-act="lf-delete" data-lfid="${r.id}">Delete</button></div></li>`;
+    }).join('') || `<li><p class="muted" style="margin:.6rem 0">No log fields. Add one for students to fill in.</p></li>`;
   }
   // Redraws the Add form's Students Log ticks after the fields change, keeping what's ticked (as properties, like redrawPicks).
   function redrawTrack() {
@@ -215,16 +226,17 @@ async function adminExercises() {
     const n = lfUsedBy(r.key), them = `${n} exercise${n === 1 ? '' : 's'}`;
     if (b.dataset.act === 'lf-edit') {
       const f = await ask({ title: 'Edit Log Field', ok: 'Save Log Field', body: `<div class="stack">${lfFieldsHTML(r)}</div>
-        <p class="hint">Past logs keep their values under the new name.</p>` });
+        <p class="hint">Past logs keep their values under the new name.</p>`, check: f => lfProblem(f, r.kind, r) });
       if (f) busy(b, async () => {
-        const { data, error } = await sb.from('log_fields').update(lfFromForm(f, r.kind)).eq('id', r.id).select().single();
+        const { data, error } = await sb.from('log_fields').update(lfFromForm(f, r.kind, r)).eq('id', r.id).select().single();
         if (error) throw lfDupError(error);
         Object.assign(r, data); lfChanged(); lfPageWith(r); renderLogFields();
         flash('Log field saved.');
       });
     }
     if (b.dataset.act === 'lf-delete' && await ask({ title: `Delete ${r.label}?`, warn: true, ok: 'Delete',
-      body: `<p>${n ? `It comes off the ${them} that ${n === 1 ? 'has' : 'have'} it. ` : ''}Plans stop asking for it, and past logs stop showing it.</p>` }))
+      body: `<p>${n ? `It comes off the ${them} that ${n === 1 ? 'has' : 'have'} it. ` : ''}Plans stop asking for it${r.kind === 'standard'
+        ? '. It can\'t be added back from here' : ', and past logs stop showing it'}.</p>` }))
       busy(b, async () => {
         must(await sb.from('log_fields').delete().eq('id', r.id));
         logFieldRows = logFieldRows.filter(q => q !== r);
@@ -292,7 +304,8 @@ async function adminExercises() {
 
   $('#lfAdd').onsubmit = e => {
     e.preventDefault();
-    const form = new FormData(e.target), kind = form.get('kind');
+    const form = new FormData(e.target), kind = form.get('kind'), bad = lfProblem(form, kind);
+    if (bad) { const el = e.target.elements[bad[0]]; fieldError(el, bad[1]); el.focus(); return; }
     busy(e.submitter, async () => {
       const { data, error } = await sb.from('log_fields').insert({ ...lfFromForm(form, kind), kind }).select().single();
       if (error) throw lfDupError(error);

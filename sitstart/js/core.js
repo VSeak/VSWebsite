@@ -146,14 +146,19 @@ document.addEventListener('input', e => {
 // Returns the form's FormData when confirmed, or null. Settles on submit, not close.
 // cancel: false for a notice with just the OK button.
 // fill: the OK button is always filled (Reset Password on the sign-in page, which has no unsaved-form cue).
-function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, fill = false }) {
+// check(FormData): [field name, message] to keep the dialog open with that field's error, or null to settle.
+function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, fill = false, check = null }) {
   const d = $('#dlg');
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
     <div class="row end">${cancel ? '<button value="cancel" formnovalidate class="ghost">Cancel</button>' : ''}
     <button value="ok" class="${fill ? 'fill' : 'primary'}${warn ? ' danger' : ''}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
-    f.addEventListener('submit', e => resolve(e.submitter?.value === 'ok' ? new FormData(f) : null), { once: true });
+    f.addEventListener('submit', e => {
+      const okd = e.submitter?.value === 'ok', bad = okd && check?.(new FormData(f));
+      if (bad) { e.preventDefault(); const el = f.elements[bad[0]]; fieldError(el, bad[1]); el.focus(); return; }
+      resolve(okd ? new FormData(f) : null);
+    });
     d.addEventListener('cancel', () => resolve(null), { once: true });
     d.showModal();
     // On a touch screen, opening on a text box pops the keyboard up over the dialog (Edit Exercise did): focus the

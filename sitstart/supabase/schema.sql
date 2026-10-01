@@ -160,6 +160,9 @@ create table public.exercises (
   rest text not null default '',
   notes text not null default '',
   purposes text[] not null default '{}' check (cardinality(purposes) <= 12),
+  -- The fields students fill in when they log it (Training Log). Plans copy it into each exercise as "track".
+  track text[] not null default '{}'
+    check (track <@ array['weight', 'edge', 'time', 'grip', 'sets', 'reps', 'grade', 'attempts', 'sent']),
   created_at timestamptz not null default now()
 );
 
@@ -173,6 +176,22 @@ create table public.exercise_purposes (
 );
 insert into public.exercise_purposes (name) values ('Mobility'), ('Injury Prevention'), ('Strength Training'),
   ('Finger Strength'), ('Power'), ('Core'), ('Endurance'), ('Technique'), ('Warm-Up'), ('Recovery');
+
+-- Training Log: what a student did for an exercise in their plan, one row per exercise a day. Keyed by the
+-- exercise's name (exercise_key = lower(trim(name))), so its history follows it from plan to plan.
+-- vals: the logged values, e.g. {"weight": 40, "unit": "lb", "edge": 20, "time": 10, "grip": "Half Crimp"}.
+create table public.exercise_logs (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  session_id uuid references public.sessions (id) on delete set null,
+  exercise_key text not null check (length(exercise_key) between 1 and 200),
+  exercise_name text not null check (length(trim(exercise_name)) between 1 and 200),
+  logged_on date not null,
+  vals jsonb not null default '{}' check (jsonb_typeof(vals) = 'object' and length(vals::text) <= 2000),
+  notes text not null default '' check (length(notes) <= 2000),
+  created_at timestamptz not null default now(),
+  unique (student_id, exercise_key, logged_on)
+);
 
 create function public.sync_exercise_purpose() returns trigger
 language plpgsql set search_path = '' as $$
@@ -232,6 +251,17 @@ language sql stable security definer set search_path = '' as $$
     select 1 from public.sessions ss
     join public.plans p on p.id = ss.plan_id
     where ss.id = s and p.student_id = public.my_student_id()
+  );
+$$;
+
+-- True when s is one of the signed-in student's sessions and has an exercise named k, so students only log their plans' exercises.
+create function public.my_session_has(s uuid, k text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.sessions ss
+    join public.plans p on p.id = ss.plan_id
+    cross join lateral jsonb_array_elements(ss.exercises) e
+    where ss.id = s and p.student_id = public.my_student_id() and lower(trim(e ->> 'name')) = k
   );
 $$;
 
@@ -441,10 +471,11 @@ alter table public.coach_notes enable row level security;
 alter table public.session_history enable row level security;
 alter table public.exercises enable row level security;
 alter table public.exercise_purposes enable row level security;
+alter table public.exercise_logs enable row level security;
 
 grant select, insert, update, delete
   on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.session_history,
-     public.exercises, public.exercise_purposes
+     public.exercises, public.exercise_purposes, public.exercise_logs
   to authenticated;
 
 -- Helpers that don't depend on the row are wrapped in (select ...), so Postgres runs them once per query instead of
@@ -526,6 +557,19 @@ create policy "staff: everything" on public.exercises for all to authenticated
   using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
 create policy "staff: everything" on public.exercise_purposes for all to authenticated
   using ((select public.is_coach()) or (select public.is_admin())) with check ((select public.is_coach()) or (select public.is_admin()));
+
+-- Training Log: only the student adds, changes or deletes their logs; every coach reads them (like plans).
+create policy "student: own logs" on public.exercise_logs for select to authenticated
+  using (student_id = (select public.my_student_id()));
+create policy "student: add" on public.exercise_logs for insert to authenticated
+  with check (student_id = (select public.my_student_id()) and public.my_session_has(session_id, exercise_key));
+create policy "student: change" on public.exercise_logs for update to authenticated
+  using (student_id = (select public.my_student_id()))
+  with check (student_id = (select public.my_student_id()) and (session_id is null or public.my_session_has(session_id, exercise_key)));
+create policy "student: delete" on public.exercise_logs for delete to authenticated
+  using (student_id = (select public.my_student_id()));
+create policy "coach: read" on public.exercise_logs for select to authenticated
+  using ((select public.is_coach()));
 
 -- 4. Sign-up gate ---------------------------------------------------------------
 -- Only emails on the student list (or the active staff list, or another app's list: login_in_other_app) can

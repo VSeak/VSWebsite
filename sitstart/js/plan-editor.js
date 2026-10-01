@@ -10,7 +10,8 @@ async function adminPlan(id, sid) {
   const t = ++navToken;
   view(loading);
   const [plan, sessions, library, notes, recent] = await Promise.all([
-    sb.from('plans').select('*, student:students(id,name,pronouns,email,coach_id)').eq('id', id).maybeSingle().then(must),
+    // With the student's Training Log, for "Last" on each exercise and its History.
+    sb.from('plans').select('*, student:students(id,name,first_name,pronouns,email,coach_id,exercise_logs(*))').eq('id', id).maybeSingle().then(must),
     sb.from('sessions').select('*').eq('plan_id', id).order('week').order('position').then(must),
     sb.from('exercises').select('*').then(must),
     planNotes(id),
@@ -40,8 +41,9 @@ async function adminPlan(id, sid) {
   // tab: the picked session in each week (from a note in a feed: that session's).
   // openEx: the one exercise shown as its full card (the rest are rows); details: sessions showing an empty Details box.
   const from = sid && sessions.find(s => s.id === sid);
+  // logs: the student's Training Log, newest first.
   draft = { plan, sessions, library, recent, savedIds: new Set(sessions.map(s => s.id)), preview: false, tab: from ? { [from.week]: sid } : {},
-    openEx: null, details: new Set() };
+    openEx: null, details: new Set(), logs: sortLogs(plan.student.exercise_logs ?? []) };
   Object.assign(exb, { q: '', purpose: '', sid: from?.id ?? null });
   dirty = false;
   renderEditor();
@@ -91,11 +93,14 @@ const gripHTML = (s, i, e) => s.exercises.length > 1 ? `<span class="grip" data-
 
 function exRowHTML(s, i, e) {
   const x = s.exercises[e], sum = exSummary(x);
-  const note = String(x.notes ?? '').replace(/\*\*/g, '').split('\n').find(l => l.trim()) ?? '';
+  const note = String(x.notes ?? '').replace(/\*\*/g, '').split('\n').find(l => l.trim()) ?? '', last = lastLogOf(x);
   return `<div class="ex-row" data-ex>${gripHTML(s, i, e)}<button type="button" class="ex-open" data-act="open-ex" data-s="${i}" data-e="${e}">
     <span class="ex-main"><span class="ex-rname">${esc(x.name.trim() || 'Unnamed Exercise')}</span>${sum ? `<span class="ex-val">${esc(sum)}</span>` : ''}${
-      note ? `<span class="ex-rnote">${esc(note)}</span>` : ''}</span>${CHEVRON}</button></div>`;
+      note ? `<span class="ex-rnote">${esc(note)}</span>` : ''}${
+      last ? `<span class="ex-rnote">Last: ${esc(logLine(last))} · ${logDay(last.logged_on)}</span>` : ''}</span>${CHEVRON}</button></div>`;
 }
+// The student's latest log of this exercise (from any plan), or undefined.
+const lastLogOf = x => exKey(x.name) && draft.logs.find(l => l.exercise_key === exKey(x.name));
 
 // The open exercise: its name (the master list picker), Sets / Reps/Time / Rest, notes, then Move Up and Move Down
 // (only where there's somewhere to go) and Remove.
@@ -106,11 +111,18 @@ function exEditHTML(s, i, e) {
   const n = s.exercises.length, btn = (act, label) => `<button type="button" class="small" data-act="${act}" data-s="${i}" data-e="${e}">${label}</button>`;
   // Notes grow downward as the coach types, and can have new lines and bold words.
   const notes = `<label class="ex-notes">Notes${rich(`<textarea rows="1" data-grow data-s="${i}" data-e="${e}" data-f="notes" placeholder="Notes">${esc(s.exercises[e].notes)}</textarea>`)}</label>`;
+  // What the student fills in when they log it (Change: for this plan only), and what they logged last.
+  const x = s.exercises[e], last = lastLogOf(x), who = esc(draft.plan.student.first_name || draft.plan.student.name);
+  const logBoxes = `<div class="ex-box"><div><span class="eyebrow">Students Log</span><span class="ex-box-v">${esc(trackNames(trackOf(x)))}</span></div>
+      ${btn('ex-track', 'Change')}</div>
+    ${last ? `<div class="ex-box logged"><div><span class="eyebrow">${who} ${last.logged_on === todayISO() ? 'Logged Today' : `Last Logged, ${logDay(last.logged_on)}`}</span>
+      <span class="ex-box-v">${esc(logLine(last))}</span></div>${btn('ex-hist', 'History')}</div>` : ''}`;
   return `<div class="ex-edit" data-ex><div class="ex-top-row"><span class="row">${gripHTML(s, i, e)}<span class="ex-count">Exercise ${e + 1} of ${n}</span></span>
       <button type="button" class="small fill" data-act="close-ex">Done</button></div>
     ${f('name', 'Exercise', 'Exercise/Purpose')}
     <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
     ${notes}
+    ${logBoxes}
     <div class="ex-acts"><span class="row">${e > 0 ? btn('ex-up', 'Move Up') : ''}${e < n - 1 ? btn('ex-down', 'Move Down') : ''}</span>
       <button type="button" class="small ghost danger" data-act="del-ex" data-s="${i}" data-e="${e}">Remove</button></div></div>`;
 }
@@ -280,6 +292,16 @@ function renderEditor() {
         return;
       }
       case 'browse': return openExBrowser(S[i].id);
+      case 'ex-hist': return openLogHistory(exKey(S[i].exercises[x].name), { logs: draft.logs, who: draft.plan.student.name });
+      case 'ex-track': {
+        const ex = S[i].exercises[x];
+        const f = await ask({ title: `Students Log: ${ex.name.trim() || 'Exercise'}`, ok: 'Save',
+          body: trackFieldsHTML(trackOf(ex), 'What students fill in when they log this, in this plan only. Exercises & Drills keeps its own. Notes are always there.') });
+        if (!f) return;
+        ex.track = f.getAll('track');
+        markDirty(); renderEditor();
+        return;
+      }
     }
     const pick = s => { draft.tab[s.week] = s.id; };   // a new or copied session opens on its tab
     let copied = null;
@@ -372,7 +394,7 @@ function addExercises(sid, names) {
   let open = null;
   for (const name of names) {
     const m = draft.library.find(y => y.name_key === exKey(name));
-    const x = m ? { name: m.name, ...Object.fromEntries(EX_FIELDS.map(([f]) => [f, m[f] ?? ''])) } : { ...blankEx(), name };
+    const x = m ? { name: m.name, ...Object.fromEntries(EX_FIELDS.map(([f]) => [f, m[f] ?? ''])), track: [...(m.track ?? [])] } : { ...blankEx(), name };
     if (m) filledFrom.set(x, m.name_key); else open ||= x;
     s.exercises.push(x);
   }
@@ -465,6 +487,9 @@ function setExName(x, input) {
   filledFrom.set(x, m.name_key);
   const row = input.closest('.ex-edit');
   for (const [f] of EX_FIELDS) row.querySelector(`[data-f="${f}"]`).value = x[f] = m[f];
+  x.track = [...(m.track ?? [])];
+  const v = row.querySelector('.ex-box-v');
+  if (v) v.textContent = trackNames(trackOf(x));
   row.querySelectorAll('textarea').forEach(grow);
 }
 

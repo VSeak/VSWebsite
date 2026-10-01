@@ -6,7 +6,7 @@ async function adminStudent(id, again = false) {
   const t = ++navToken;
   const restore = again && keepEdits(again);
   if (!again) view(loading);
-  const [s, coaches, notes, cnotes, log] = await Promise.all([
+  const [s, coaches, notes, cnotes, log, logs] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,repeats,blocks,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
@@ -14,6 +14,7 @@ async function adminStudent(id, again = false) {
       .eq('from_coach', false).eq('session.plan.student_id', id).order('created_at', { ascending: false }).then(must),
     sb.from('coach_notes').select('*').eq('student_id', id).then(must),
     sb.from('session_history').select('*').eq('student_id', id).then(must),
+    sb.from('exercise_logs').select('*').eq('student_id', id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).then(must),
   ]);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/students'; return; }
@@ -64,6 +65,7 @@ async function adminStudent(id, again = false) {
     <aside>
       ${nextCardHTML(s, edit)}
       <section class="card goals-card" id="goalsCard"></section>
+      ${coachLogCardHTML(s, logs)}
       <div class="card-group">
       ${historyCardHTML(s)}
       ${trainingCardHTML(s, coaches, edit)}
@@ -107,6 +109,7 @@ async function adminStudent(id, again = false) {
   const hist = { log, page: 1, readOnly: !edit, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
     addNotes: startCoachNote, changed: () => renderCoachNotes() };
   bindSessions(id, s, hist);
+  bindCoachLogCard();
 
   if (edit) $('#stuForm').onsubmit = e => {
     e.preventDefault();

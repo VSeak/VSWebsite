@@ -5,6 +5,7 @@
   --deep: #2C2620; --deep-ink: #ECE5DB; --deep-muted: #CFC6B9; --deep-accent: #A4BA8F; --deep-line: transparent;
   --deep-danger: #F09A92;
   --goal: #A4BA8F; --goal-ink: #17220D; --chip: #E6E0D6; --ink-2: #4A4138; --blank: #B5AB9E;
+  --best: #E3AE5A; --best-ink: #2C1A00;
   --radius: 10px;
   color-scheme: light;
 }
@@ -69,6 +70,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
   .grid2.phone-order { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
   .phone-order > div, .phone-order > aside { display: contents; }
   #nextCard { order: 1; } #goalsCard { order: 2; } #planCard { order: 3; } #snotesCard { order: 4; } #coachNotesCard { order: 5; }
+  #logCard { order: 3; }
   .phone-order .card-group { order: 6; }
 }
 .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
@@ -392,6 +394,7 @@ a.card.group-link:hover h2 { color: var(--accent); }
   .stu-main .plan-read { margin: 16px 0 4px; }
   .stu-grid .next-card { order: 1; } .stu-grid .goal-card { order: 2; } .stu-grid .plan-read { order: 3; }
   .stu-grid .past-plans { order: 4; } .stu-grid .achieved { order: 5; } #historyCard { order: 6; }
+  .stu-grid #logCard { order: 4; }
   .stu-grid .your-coach { order: 7; } #myDetails { order: 8; }
 }
 
@@ -700,3 +703,77 @@ dialog { border: 1px solid var(--line); border-radius: 22px; background: var(--c
   padding: 1.2rem; width: min(440px, calc(100% - 32px)); }
 dialog::backdrop { background: rgba(0,0,0,.4); }
 dialog .row { margin-top: 1rem; }
+
+/* ---------- Training Log (training-log.js) ---------- */
+.tag.best { border: 0; background: var(--best); color: var(--best-ink); font-weight: 700; }
+/* On the student's exercise cards: last time (or today's log), then Log and History */
+.log-last { margin: 8px 0 0 2px; font-size: .85rem; color: var(--muted); }
+.log-done { margin-top: 10px; background: var(--soft); border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.log-done > div { min-width: 0; }
+.log-t { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.log-s { display: block; font: 800 1rem/1.25 "Bricolage Grotesque", sans-serif; overflow-wrap: anywhere; }
+.log-btns { display: flex; gap: 8px; margin-top: 10px; }
+.log-btns:empty { display: none; }
+.log-btns button { flex: 1; min-height: 44px; }
+/* The Log and History sheets: the exercise browser's sheet, only as tall as it needs */
+/* fit-content, not auto: a modal dialog is pinned top and bottom, so auto would fill the screen */
+dialog.log-sheet { height: fit-content; max-height: calc(100dvh - 40px); }
+@media (min-width: 700px) { dialog.log-sheet { height: fit-content; max-height: min(760px, calc(100dvh - 48px)); } }
+.log-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+.log-step { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.log-lab { flex: 1; min-width: 0; }
+.log-lab b { display: block; font: 800 1rem "Bricolage Grotesque", sans-serif; }
+.log-lab .hint { margin: 0; }
+.log-sp { flex: none; display: flex; align-items: center; gap: 6px; }
+.log-sp button { width: 48px; height: 48px; padding: 0; border-radius: 14px; background: var(--bg); font-size: 1.4rem; line-height: 1; }
+.log-sp input { width: 4.6rem; margin: 0; padding: 6px 2px; text-align: center; font: 800 1.35rem "Bricolage Grotesque", sans-serif; border-color: transparent; background: transparent; }
+.log-sp input:focus { border-color: var(--line); background: var(--field); }
+.log-pick { border: 0; margin: 0; padding: 10px 0 4px; min-width: 0; }
+.log-pick legend { padding: 0; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.log-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.log-chips button { border-radius: 999px; min-height: 40px; padding: 0 13px; font-size: .85rem; }
+.log-chips button:is([aria-pressed="true"], [aria-selected="true"]) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.log-chips .count { margin-left: .35rem; opacity: .7; font-weight: 500; }
+.log-other { margin-top: 8px; max-width: 12rem; }
+.log-notes { margin-top: 10px; }
+.log-del { align-self: flex-start; margin-top: 6px; }
+.log-diff { font-size: .85rem; color: var(--deep-muted); }
+/* History: the best and its trend on a dark card, edge chips, then the logs */
+.hist-best { background: var(--deep); color: var(--deep-ink); border-radius: 18px; padding: 14px 16px; margin-top: 6px; }
+.hist-best .eyebrow { color: var(--deep-accent); }
+.hist-big { margin: 6px 0 0; font: 800 1.4rem/1.15 "Bricolage Grotesque", sans-serif; overflow-wrap: anywhere; }
+.spark { display: block; width: 100%; height: 70px; margin-top: 8px; color: var(--deep-accent); }
+.hist-cap { margin: 4px 0 0; font-size: .8rem; color: var(--deep-muted); }
+.hist-chips { margin-top: 10px; }
+.hist-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.hist-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.hist-list li > div { min-width: 0; }
+.hist-d { display: block; font-size: .78rem; color: var(--muted); }
+.hist-s { display: block; font: 800 1rem/1.3 "Bricolage Grotesque", sans-serif; overflow-wrap: anywhere; }
+.hist-n { display: block; font-size: .85rem; color: var(--ink-2); margin-top: 2px; }
+/* Training Log cards: the student's home (latest per exercise) and the coach's student page */
+.log-card .big-count { font: 800 2.5rem/1 "Bricolage Grotesque", sans-serif; color: var(--accent); }
+.log-card .hint { margin-top: .3rem; }
+.log-rows { list-style: none; margin: 6px 0 0; padding: 0; }
+button.log-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 2px; border: 0; border-top: 1px solid var(--line); border-radius: 0;
+  background: none; text-align: left; font-weight: 400; font-size: inherit; min-height: 56px; }
+.log-rows li:first-child button.log-row { border-top: 0; }
+button.log-row:hover { background: color-mix(in srgb, var(--soft) 50%, transparent); }
+button.log-row > svg:last-child { flex: none; color: var(--muted); }
+.log-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.log-name { font: 800 1rem/1.25 "Bricolage Grotesque", sans-serif; overflow-wrap: anywhere; }
+.log-name .tag { font-size: .68rem; vertical-align: 2px; margin-left: 4px; }
+.log-sub { font-size: .82rem; color: var(--muted); }
+.log-note { font-size: .82rem; color: var(--ink-2); }
+.spark-sm { flex: none; width: 84px; height: 34px; color: var(--accent); }
+.log-day { margin: 14px 0 0; font: 700 .75rem "DM Sans", sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.log-seg { margin-top: 10px; }
+/* Exercises & Drills and the plan editor: what students log */
+.ex-track { margin: 8px 0 0 2px; font-size: .82rem; font-weight: 700; color: var(--accent); }
+.track-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .85rem; }
+.ex-box { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--card); border-radius: 12px; padding: 10px 12px; }
+.ex-box > div { min-width: 0; }
+.ex-box .eyebrow { font-size: .68rem; }
+.ex-box-v { display: block; font-weight: 700; font-size: .9rem; overflow-wrap: anywhere; }
+.ex-box.logged { background: var(--soft); }
+.ex-box button { flex: none; }

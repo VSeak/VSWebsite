@@ -24,12 +24,30 @@ const exFieldsHTML = (x = {}, choices = []) => `<label>Name<input name="name" va
   <fieldset class="picks"><legend>Purpose</legend>
     <span class="hint field-hint">What the exercise is for. This also helps coaches search and filter through exercises. Students don't see these on their training plans. Add more in the Purposes card.</span>
     <div class="pick-row">${exPicksHTML(choices, x.purposes)}</div>
-  </fieldset>`;
+  </fieldset>
+  ${trackFieldsHTML(x.track)}`;
 function exFromForm(f) {
   const purposes = f.getAll('purposes');
   if (purposes.length > EX_PURPOSES_MAX) throw new Error(`Pick at most ${EX_PURPOSES_MAX} purposes.`);
-  return { ...Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()])), purposes };
+  return { ...Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()])), purposes, track: f.getAll('track') };
 }
+// Students Log (Training Log): what students fill in when they log this exercise. Quick picks tick a set of fields.
+// Also the plan editor's Change dialog, for one exercise in one plan.
+const trackFieldsHTML = (picked = [], hint = 'What students fill in when they log this. Plans copy it, and you can change it in a plan. Notes are always there.') =>
+  `<fieldset class="picks track-picks"><legend>Students Log</legend>
+    <span class="hint field-hint">${hint}</span>
+    <div class="track-presets"><span class="muted">Quick Pick:</span>${LOG_PRESETS.map(([name, keys]) =>
+      `<button type="button" class="small" data-preset="${keys.join(',')}">${name}</button>`).join('')}</div>
+    <div class="pick-row">${LOG_KEYS.map(k => `<label><input type="checkbox" name="track" value="${k}"${(picked ?? []).includes(k) ? ' checked' : ''}>${LOG_FIELDS[k].label}</label>`).join('')}</div>
+  </fieldset>`;
+// A quick pick ticks exactly its fields (in the Add form, the Edit dialog or the plan's Change dialog).
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-preset]'), box = b?.closest('fieldset');
+  if (!box) return;
+  const keys = b.dataset.preset.split(',');
+  box.querySelectorAll('input[name="track"]').forEach(c => { c.checked = keys.includes(c.value); });
+  box.querySelector('input[name="track"]').dispatchEvent(new Event('input', { bubbles: true }));
+});
 const purDupError = e => e.code === '23505' ? new Error('That purpose is already on the list.') : e;
 const purFieldHTML = (name = '') => `<label>Name<input name="name" value="${esc(name)}" maxlength="40" required
     data-need="Name the purpose." placeholder="E.g. Balance" autocomplete="off"></label>`;
@@ -144,7 +162,7 @@ async function adminExercises() {
         <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></span></div>
         <div class="stats">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
           `<div class="stat"><span class="stat-l">${l}</span><span class="stat-v${x[f] ? '' : ' none'}">${x[f] ? esc(x[f]) : '—'}</span></div>`).join('')}</div>
-        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${x.purposes.length ? exPurposeTags(x.purposes)
+        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${x.track?.length ? `<p class="ex-track">Students log: ${esc(trackNames(trackOf(x)))}</p>` : ''}${x.purposes.length ? exPurposeTags(x.purposes)
           : '<span class="ex-purposes"><span class="tag warn">Needs a Purpose</span></span>'}</article>`).join('')
       || `<p class="muted">${list.length ? 'No exercise matches that search or purpose.' : 'No exercises yet. Add your first one.'}</p>`;
   }
@@ -247,7 +265,7 @@ async function addToMasterList(rows) {
   for (const x of rows.flatMap(r => r.exercises)) {
     const k = exKey(x.name);
     if (k && !known.has(k) && !add.has(k))
-      add.set(k, { name: x.name.trim().slice(0, 200), ...Object.fromEntries(EX_FIELDS.map(([f]) => [f, String(x[f] ?? '').trim()])) });
+      add.set(k, { name: x.name.trim().slice(0, 200), ...Object.fromEntries(EX_FIELDS.map(([f]) => [f, String(x[f] ?? '').trim()])), track: trackOf(x) });
   }
   if (!add.size) return 0;
   const added = await sb.from('exercises').upsert([...add.values()], { onConflict: 'name_key', ignoreDuplicates: true })

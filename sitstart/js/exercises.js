@@ -48,7 +48,7 @@ document.addEventListener('click', e => {
   box.querySelectorAll('input[name="track"]').forEach(c => { c.checked = keys.includes(c.value); });
   box.querySelector('input[name="track"]').dispatchEvent(new Event('input', { bubbles: true }));
 });
-// Log fields: coaches' own Training Log fields (log_fields), beside the built-in LOG_FIELDS. A number (with an
+// Log fields: coaches' own Training Log fields (log_fields), beside the standard LOG_FIELDS. A number (with an
 // optional unit) or a pick from 2 to 12 choices. The type never changes once added, so old logs still read right.
 const LF_PAGE = 5;
 const lfDupError = e => e.code === '23505' ? new Error('There is already a log field with that name.') : e;
@@ -66,13 +66,17 @@ document.addEventListener('change', e => {
 });
 function lfFromForm(f, kind) {
   const label = f.get('label').trim();
-  if (LOG_BUILT_IN.some(k => exKey(LOG_FIELDS[k].label) === exKey(label))) throw new Error(`${label} is already a built-in field.`);
+  if (LOG_BUILT_IN.some(k => exKey(LOG_FIELDS[k].label) === exKey(label))) throw new Error('There is already a log field with that name.');
   if (kind !== 'pick') return { label, unit: (f.get('unit') || '').trim() };
   const opts = [...new Set(String(f.get('opts') || '').split(',').map(s => s.trim().slice(0, 30)).filter(Boolean))];
   if (opts.length < 2 || opts.length > 12) throw new Error('Give 2 to 12 choices, separated by commas.');
   return { label, opts };
 }
-const lfDescribe = r => r.kind === 'pick' ? `Choices: ${r.opts.join(', ')}` : `Number${r.unit ? ` in ${r.unit}` : ''}`;
+// What a field asks for, under its name in the Log Fields card.
+const LF_FIXED_DESC = { weight: 'Number in lb or kg, can go below zero', time: 'Number in seconds', sets: 'Number', reps: 'Number',
+  grade: 'Grade, VB to V17', attempts: 'Number', edge: 'Choices: 10, 15, 18, 20, 25 mm or another size', grip: 'Choices',
+  sent: 'Choices: Sent, Not Yet' };
+const lfDescribe = r => r.fixed ? (r.key === 'grip' ? `Choices: ${LOG_FIELDS.grip.opts.join(', ')}` : LF_FIXED_DESC[r.key]) : r.kind === 'pick' ? `Choices: ${r.opts.join(', ')}` : `Number${r.unit ? ` in ${r.unit}` : ''}`;
 const purDupError = e => e.code === '23505' ? new Error('That purpose is already on the list.') : e;
 const purFieldHTML = (name = '') => `<label>Name<input name="name" value="${esc(name)}" maxlength="40" required
     data-need="Name the purpose." placeholder="E.g. Balance" autocomplete="off"></label>`;
@@ -111,11 +115,10 @@ async function adminExercises() {
         <div id="purPager"></div>
       </section>
       <section class="card" data-fold="logfields" data-fold-start><h2>Log Fields (<span id="lfCount"></span>)</h2>
-        <p class="hint">Your own fields for students to fill in when they log, beside the built-in ones. Tick them under Students Log on an exercise.</p>
+        <p class="hint">What students can fill in when they log. Tick them under Students Log on an exercise. Add your own when these don't cover it.</p>
         <form id="lfAdd" class="stack" data-save>${lfFieldsHTML()}<button class="primary">+ Add Log Field</button></form>
         <ul class="list" id="lfList"></ul>
         <div id="lfPager"></div>
-        <p class="hint">Built in: ${LOG_BUILT_IN.map(k => LOG_FIELDS[k].label).join(', ')}.</p>
       </section></div>
     </aside>
   </div>`);
@@ -182,19 +185,23 @@ async function adminExercises() {
   // Log Fields: the coaches' own fields (logFieldRows, kept in step with LOG_FIELDS by setLogFields).
   let lfPage = 1;
   const lfUsedBy = key => list.filter(x => x.track?.includes(key)).length;
-  const lfPageWith = r => { const i = logFieldRows.indexOf(r); if (i >= 0) lfPage = Math.floor(i / LF_PAGE) + 1; };
+  // Every field, A to Z: the ones every exercise can use (no Edit or Delete: the Log sheet treats them specially,
+  // e.g. weight's lb/kg and grade's steps) and the coaches' own.
+  const lfAll = () => [...LOG_BUILT_IN.map(key => ({ key, label: LOG_FIELDS[key].label, fixed: true })), ...logFieldRows]
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  const lfPageWith = r => { const i = lfAll().findIndex(q => q.key === r.key); if (i >= 0) lfPage = Math.floor(i / LF_PAGE) + 1; };
   function renderLogFields() {
-    const [items, pg] = pageOf(logFieldRows, lfPage, LF_PAGE);
+    const all = lfAll(), [items, pg] = pageOf(all, lfPage, LF_PAGE);
     lfPage = pg;
-    $('#lfCount').textContent = logFieldRows.length;
-    $('#lfPager').innerHTML = pagerHTML(lfPage, logFieldRows.length, LF_PAGE, ['Previous', 'Next']);
+    $('#lfCount').textContent = all.length;
+    $('#lfPager').innerHTML = pagerHTML(lfPage, all.length, LF_PAGE, ['Previous', 'Next']);
     bindPager($('#lfPager'), n => { lfPage = n; renderLogFields(); });
     $('#lfList').innerHTML = items.map(r => { const n = lfUsedBy(r.key);
       return `<li class="goal"><div class="goal-text"><strong>${esc(r.label)}</strong>
         <span class="item-sub">${esc(lfDescribe(r))} · ${n ? `${n} exercise${n === 1 ? '' : 's'}` : 'Not used yet'}</span></div>
-        <div class="row ex-actions"><button type="button" class="small ghost" data-act="lf-edit" data-lfid="${r.id}">Edit</button>
-        <button type="button" class="small ghost danger" data-act="lf-delete" data-lfid="${r.id}">Delete</button></div></li>`;
-    }).join('') || `<li><p class="muted" style="margin:.6rem 0">None yet. Add one when the built-in fields don't cover it.</p></li>`;
+        ${r.fixed ? '' : `<div class="row ex-actions"><button type="button" class="small ghost" data-act="lf-edit" data-lfid="${r.id}">Edit</button>
+        <button type="button" class="small ghost danger" data-act="lf-delete" data-lfid="${r.id}">Delete</button></div>`}</li>`;
+    }).join('');
   }
   // Redraws the Add form's Students Log ticks after the fields change, keeping what's ticked (as properties, like redrawPicks).
   function redrawTrack() {

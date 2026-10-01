@@ -164,7 +164,7 @@ function csExEditHTML(x, k, n) {
     ${f('name', 'Exercise')}
     <div class="ex-three">${f('sets', 'Sets')}${f('reps', 'Reps/Time')}${f('rest', 'Rest')}</div>
     ${csFromHTML(x)}
-    <label class="ex-notes">Notes${rich(`<textarea rows="2" data-grow data-csx="notes" maxlength="1000" placeholder="How it went">${esc(x.notes)}</textarea>`)}</label>
+    <label class="ex-notes">Notes${rich(`<textarea rows="2" data-grow data-csx="notes" maxlength="1000" placeholder="How did the exercise go?">${esc(x.notes)}</textarea>`)}</label>
     <div class="ex-acts"><span class="row">${k > 0 ? btn('up', 'Move Up') : ''}${k < n - 1 ? btn('down', 'Move Down') : ''}</span>
       <button type="button" class="small ghost danger" data-cs="remove" data-k="${k}">Remove</button></div></div>`;
 }
@@ -538,7 +538,7 @@ function renderCoachView() {
       <h2 class="cv-name">${esc(x.name.trim() || 'Unnamed Exercise')}</h2>
       <div class="stats cv-stats">${statHTML('Sets', x.sets)}${statHTML('Reps/Time', x.reps)}${statHTML('Rest', x.rest)}</div>
       ${String(x.plan_notes ?? '').trim() ? `<p class="cv-from">${x.from === 'list' ? 'From Exercises &amp; Drills' : 'From the plan'}: ${para(x.plan_notes)}</p>` : ''}
-      <label class="cv-l">Notes<textarea data-cv-f="notes" rows="4" data-grow maxlength="1000" placeholder="How it went">${esc(x.notes)}</textarea></label>`
+      <label class="cv-l">Notes<textarea data-cv-f="notes" rows="4" data-grow maxlength="1000" placeholder="How did the exercise go?">${esc(x.notes)}</textarea></label>`
       : `<p class="cv-empty">No exercises yet.</p><button type="button" class="cv-add cv-add-main" data-cv="add">+ Add Exercises</button>`}</main>
     <aside class="cv-side"><label class="cv-l">Session Notes<textarea data-cv-f="session" rows="3" data-grow maxlength="4000">${esc(c.notes)}</textarea></label>
       <div class="cv-submit" id="cvSubmit"></div></aside>

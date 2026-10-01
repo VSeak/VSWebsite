@@ -1,6 +1,6 @@
 // ---------- Check-ins (on the member page) ----------
 // A check-in is a snapshot on a day, as often as the coach likes: answers to the admin's questions (Proud Of, Want to
-// Improve with area tags, …), 1–5 ratings on the rated areas from the member (Them) and from the coach, and grades: the
+// Improve with area tags, …), 1–5 ratings on the rated areas from the member and from the coach, and grades: the
 // hardest circuit color, board grades with the angle, outdoor boulder and route grades. All optional. The newest one
 // shows in full with how each value changed since the check-in before; older ones fold into History.
 
@@ -13,8 +13,6 @@ const RATING_GUIDE = [
   '<b>A real strength.</b> Stands out on the team; could show others how.',
 ];
 const AREA_GROUPS = { physical: 'Physical', skill: 'Skill', mental: 'Mental' };
-// The two sets of ratings on a check-in: the member's own and the coach's.
-const RATERS = [['ratings', 'Them', 'r_'], ['coach_ratings', 'Coach', 'c_']];
 // What number i (1–5) means for an area: its own line, else the general guide.
 const guideFor = (a, i) => a.guide?.[i - 1]?.trim() ? esc(a.guide[i - 1]) : RATING_GUIDE[i - 1];
 // Areas in Physical, Skill, Mental order (then the admin's order), for tag chips and the Team Summary.
@@ -45,7 +43,7 @@ const delta = (now, before) => now == null || before == null || now === before ?
 const answered = (c, questions, areas) => questions.map(q => ({ q, text: (c.answers[q.id] || '').trim(),
   tags: byGroup(areas).filter(a => (c.tags[q.id] || []).includes(a.id)) })).filter(x => x.text || x.tags.length);
 
-function checkinDetailHTML(c, older, { circuits, areas, questions }) {
+function checkinDetailHTML(c, older, { m, circuits, areas, questions }) {
   const prevRank = key => { for (const o of older) { const p = gradeParts(o, circuits).find(x => x.key === key); if (p) return p.rank; } return null; };
   const prevRating = (key, id) => older.find(o => o[key][id] != null)?.[key][id] ?? null;
   const grades = gradeParts(c, circuits);
@@ -58,10 +56,10 @@ function checkinDetailHTML(c, older, { circuits, areas, questions }) {
   };
   return `${answers.length ? `<div class="answers">${answers.map(x => `<div class="answer"><small>${esc(x.q.prompt)}</small>
       ${x.text ? `<div>${para(x.text)}</div>` : ''}${x.tags.length ? `<span class="chips">${x.tags.map(a => `<span class="chip">${esc(a.name)}</span>`).join('')}</span>` : ''}</div>`).join('')}</div>` : ''}
-    ${rated.length ? `<div class="ratings"><span></span><small>Them</small><small>Coach</small>
-      ${rated.map(a => `<span>${esc(a.name)}</span>${cell('ratings', a.id)}${cell('coach_ratings', a.id)}`).join('')}</div>` : ''}
     ${grades.length ? `<div class="grades">${grades.map(p => `<div class="grade"><small>${p.label}</small>
       <b>${p.show}${delta(p.rank, prevRank(p.key))}</b>${p.sub ? `<small>${p.sub}</small>` : ''}</div>`).join('')}</div>` : ''}
+    ${rated.length ? `<div class="ratings"><span></span><small>${esc(m?.first_name || 'Member')}</small><small>Coach</small>
+      ${rated.map(a => `<span>${esc(a.name)}</span>${cell('ratings', a.id)}${cell('coach_ratings', a.id)}`).join('')}</div>` : ''}
     ${!answers.length && !grades.length && !rated.length ? '<p class="muted">No answers, ratings or grades recorded.</p>' : ''}
     ${c.notes ? `<div class="note-body">${para(c.notes)}</div>` : ''}
     <div class="row between wrap check-foot"><span class="hint">Check-in by ${esc(c.author_name || 'staff')}${c.edited_at ? ' · edited' : ''}</span>
@@ -110,30 +108,33 @@ async function checkinForm(c, { m, checkins, circuits, areas, questions }) {
   const tagsOn = q => q.tags || v.tags[q.id]?.length;
   const tagAreas = q => byGroup(areas.filter(a => a.active || (v.tags[q.id] || []).includes(a.id)));
   const shownAreas = areas.filter(a => (a.rated && a.active) || v.ratings[a.id] != null || v.coach_ratings[a.id] != null);
-  const guides = Object.fromEntries(shownAreas.map(a => [a.id, [1, 2, 3, 4, 5].map(i => guideFor(a, i))]));
   const tagPick = q => areaChips('t_' + q.id, tagAreas(q), v.tags[q.id] || [], `Areas for ${q.prompt}`);
-  const pick = (a, [key, label, prefix]) => `<div class="rate-row" data-rater="${label}"><span>${label}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}: ${label}">
+  // The two sets of ratings: the member's own (labeled with their first name) and the coach's.
+  const raters = [['ratings', m.first_name, 'r_'], ['coach_ratings', 'Coach', 'c_']];
+  const pick = (a, [key, label, prefix]) => `<div class="rate-row"><span>${esc(label)}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}: ${esc(label)}">
     ${[1, 2, 3, 4, 5].map(i => `<label><input type="radio" name="${prefix}${a.id}" value="${i}"${v[key][a.id] === i ? ' checked' : ''}><span>${i}</span></label>`).join('')}</span></div>`;
+  const pr = pronounWords(m.pronouns);
   const f = await ask({ title: c ? 'Edit Check-In' : `Check-In: ${m.first_name}`, ok: c ? 'Save Check-In' : 'Add Check-In', wide: true,
     body: `<label>Date<input type="date" name="checkin_date" required value="${v.checkin_date}" max="${today()}" data-need="Pick the date."
         data-range="A check-in can't be in the future."></label>
       <p class="hint">Record what's useful. Everything below is optional.${!c && last ? ` Ratings, grades and notes start from the last check-in (${fmtDate(last.checkin_date)}), so change what's new.` : ''}</p>
-      ${shownQs.length ? `<h3>Questions</h3>${shownQs.map(q => `<div class="q-block"><label>${esc(q.prompt)}<textarea name="a_${q.id}" rows="2"
+      ${shownQs.length ? `<h3 class="sec">Questions</h3>${shownQs.map(q => `<div class="q-block"><label>${esc(q.prompt)}<textarea name="a_${q.id}" rows="2"
         placeholder="${esc(q.hint)}">${esc(v.answers[q.id] || '')}</textarea></label>${tagsOn(q) ? tagPick(q) : ''}</div>`).join('')}` : ''}
-      ${shownAreas.length ? `<h3>Ratings</h3>
-        <p class="hint">Them: how ${esc(m.first_name)} rates themselves (you tap it for them). Coach: yours. Tap a number to see what it means; tap it again to clear it.</p>
-        ${shownAreas.map(a => `<div class="rate-area" data-area="${a.id}"><b>${esc(a.name)}</b>${RATERS.map(r => pick(a, r)).join('')}
-          <p class="rate-desc" aria-live="polite"></p></div>`).join('')}` : ''}
-      <h3>Grades</h3>
+      <h3 class="sec">Grades</h3>
       <label>Hardest Circuit<select name="circuit_id"><option value="">—</option>${circuits.map(x =>
         `<option value="${x.id}"${x.id === v.circuit_id ? ' selected' : ''}>${esc(x.name)}${circuitRange(x) ? ` (${circuitRange(x)})` : ''}</option>`).join('')}</select></label>
       <fieldset><legend>Tension Board 2</legend><div class="two"><label>Grade<select name="tb2_grade">${vOpts(v.tb2_grade)}</select></label>${angle('tb2_angle', v.tb2_angle)}</div></fieldset>
       <fieldset><legend>Kilter Board</legend><div class="two"><label>Grade<select name="kilter_grade">${vOpts(v.kilter_grade)}</select></label>${angle('kilter_angle', v.kilter_angle)}</div></fieldset>
       <div class="two"><label>Boulder (Outdoor/Other)<select name="boulder_grade">${vOpts(v.boulder_grade)}</select></label>
         <label>Route<select name="route_grade"><option value="">—</option>${ROUTE_GRADES.map(g => `<option${g === v.route_grade ? ' selected' : ''}>${g}</option>`).join('')}</select></label></div>
-      <label>Notes<textarea name="notes" rows="3" placeholder="E.g. Moved up a color since spring. Wants to try the Kilter at 45° next.">${esc(v.notes)}</textarea></label>`,
+      ${shownAreas.length ? `<h3 class="sec">Ratings</h3>
+        <p class="hint">${esc(m.first_name)}: how ${esc(m.first_name)} rates ${pr.self} (you tap it for ${pr.obj}).<br>Coach: your rating.</p>
+        ${shownAreas.map(a => `<div class="rate-area"><b>${esc(a.name)}</b>
+          <ol class="rate-lines">${[1, 2, 3, 4, 5].map(i => `<li><b>${i}</b><span>${guideFor(a, i)}</span></li>`).join('')}</ol>
+          ${raters.map(r => pick(a, r)).join('')}</div>`).join('')}` : ''}
+      <h3 class="sec">Notes</h3>
+      <textarea name="notes" rows="3" aria-label="Notes" placeholder="E.g. Moved up a color since spring. Wants to try the Kilter at 45° next.">${esc(v.notes)}</textarea>`,
     // Tapping the picked rating again clears it (a radio can't be unticked on its own); pointerdown notes whether it was already picked.
-    // A picked number shows what it means for that area under the area.
     onOpen: form => {
       let was = null;
       form.addEventListener('pointerdown', e => { const r = e.target.closest('.rate-pick label')?.querySelector('input'); was = r?.checked ? r : null; });
@@ -141,9 +142,6 @@ async function checkinForm(c, { m, checkins, circuits, areas, questions }) {
         if (!e.target.matches('.rate-pick input')) return;
         if (e.target === was) { e.target.checked = false; e.target.dispatchEvent(new Event('change', { bubbles: true })); }
         was = null;
-        const box = e.target.closest('.rate-area'), rater = e.target.closest('.rate-row').dataset.rater;
-        box.querySelector('.rate-desc').innerHTML = e.target.checked
-          ? `<span class="muted">${rater}:</span> <b>${e.target.value}</b> ${guides[box.dataset.area][e.target.value - 1]}` : '';
       });
     } });
   if (!f) return;

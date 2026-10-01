@@ -1,6 +1,6 @@
 // ---------- A location's Team Summary: #/loc/<id>/summary ----------
 // What the coach used to build in a spreadsheet: each active member's latest check-in (since a date, if one is picked),
-// the team's average Them and Coach rating per area, how many tagged each area (Want to Improve), and every answer, by
+// the team's average member and coach rating per area, how many tagged each area (Want to Improve), and every answer, by
 // question or by member. Team Focus is what the coaches decide from it: dated and signed, with earlier ones kept.
 // Copy Summary (text for an email or a message) and Copy Table (tab-separated: pastes into a spreadsheet as cells) are
 // for coaches who aren't on the app yet.
@@ -11,7 +11,7 @@ let sumBy = 'question';     // answers grouped by 'question' or by 'member'
 const avgText = x => x ? x.avg.toFixed(1) : '—';
 const firstLine = s => { const l = s.trim().split('\n')[0].replace(/\*\*/g, ''); return l.length > 90 ? l.slice(0, 88).trimEnd() + '…' : l; };
 
-// Per area: the average Them and Coach rating (with how many rated it) and, for each question with tags, how many tagged it.
+// Per area: the average member and coach rating (with how many rated it) and, for each question with tags, how many tagged it.
 function teamStats(rows, areas, questions) {
   const tagQs = questions.filter(q => q.tags || rows.some(r => r.c.tags[q.id]?.length));
   const avg = (key, id) => {
@@ -129,7 +129,7 @@ function areaCardHTML({ rows, s }) {
   return `<section class="card"><h2>By Area</h2>
     ${glance ? `<ul class="glance">${glance}</ul>` : ''}
     <div class="area-table" style="--cols:${2 + tagQs.length}">
-      <span></span><small>Them</small><small>Coach</small>${tagQs.map(q => `<small>${esc(q.prompt)}</small>`).join('')}
+      <span></span><small>Member</small><small>Coach</small>${tagQs.map(q => `<small>${esc(q.prompt)}</small>`).join('')}
       ${Object.entries(AREA_GROUPS).map(([g, label]) => { const inG = list.filter(x => x.a.area_group === g); return inG.length ? `<h3>${label}</h3>
         ${inG.map(x => `<span>${esc(x.a.name)}</span>${x.a.rated || x.them || x.coach ? `${val(x.them)}<span class="${x.gap ? 'gap' : ''}">${val(x.coach)}</span>`
           : '<span class="muted small-text tag-only">Tag only</span>'}${x.tagged.map(count).join('')}`).join('')}` : ''; }).join('')}
@@ -177,7 +177,7 @@ function summaryText({ loc, members, rows, areas, questions, focus, s }) {
     L.push(`TEAM FOCUS (${fmtDate(f.focus_date)}, ${f.author_name || 'staff'})`, plain(f.body.trim()), ...(names.length ? [`Areas: ${names.join(', ')}`] : []), '');
   }
   if (rows.length) {
-    L.push(`BY AREA (Them average / Coach average${s.tagQs.map(q => ` / ${q.prompt}`).join('')})`);
+    L.push(`BY AREA (Member average / Coach average${s.tagQs.map(q => ` / ${q.prompt}`).join('')})`);
     for (const [g, label] of Object.entries(AREA_GROUPS)) {
       const inG = s.list.filter(x => x.a.area_group === g);
       if (!inG.length) continue;
@@ -204,7 +204,7 @@ function summaryTable({ rows, areas, questions }) {
   const tagQs = qs.filter(q => q.tags || rows.some(r => r.c.tags[q.id]?.length));
   const rated = areas.filter(a => (a.rated && a.active) || rows.some(r => r.c.ratings[a.id] != null || r.c.coach_ratings[a.id] != null));
   const head = ['Member', 'Check-In', 'By', ...qs.flatMap(q => tagQs.includes(q) ? [q.prompt, `${q.prompt}: Areas`] : [q.prompt]),
-    ...rated.flatMap(a => [`${a.name} (Them)`, `${a.name} (Coach)`])];
+    ...rated.flatMap(a => [`${a.name} (Member)`, `${a.name} (Coach)`])];
   const line = ({ m, c }) => [m.name, c.checkin_date, c.author_name,
     ...qs.flatMap(q => [c.answers[q.id], ...(tagQs.includes(q) ? [byGroup(areas).filter(a => (c.tags[q.id] || []).includes(a.id)).map(a => a.name).join(', ')] : [])]),
     ...rated.flatMap(a => [c.ratings[a.id], c.coach_ratings[a.id]])];

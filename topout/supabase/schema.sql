@@ -435,20 +435,25 @@ $$;
 create trigger team_protect_owner before update or delete on public.team_staff
   for each row execute function public.team_protect_owner();
 
--- An area a check-in uses (either rating or a tag) can be hidden but not deleted. Same for a question with answers.
-create function public.team_area_in_use() returns trigger
+-- Deleting an area takes its ratings and tags off the check-ins that use it and takes it off any Team Focus (the user
+-- wanted every area deletable; hiding it keeps old ratings). A question with answers can be hidden but not deleted.
+create function public.team_area_cleanup() returns trigger
 language plpgsql security definer set search_path = '' as $$
+declare
+  k text := old.id::text;
 begin
-  if exists (select 1 from public.team_checkins c
-             where c.ratings ? old.id::text or c.coach_ratings ? old.id::text
-                or exists (select 1 from jsonb_each(c.tags) t where t.value ? old.id::text)) then
-    raise exception 'Check-ins use this area. Hide it instead.';
-  end if;
+  update public.team_checkins c set
+    ratings = c.ratings - k,
+    coach_ratings = c.coach_ratings - k,
+    tags = coalesce((select jsonb_object_agg(e.key, e.value - k) from jsonb_each(c.tags) e
+                     where jsonb_array_length(e.value - k) > 0), '{}')
+  where c.ratings ? k or c.coach_ratings ? k or exists (select 1 from jsonb_each(c.tags) e where e.value ? k);
+  update public.team_focus set area_ids = array_remove(area_ids, old.id) where old.id = any (area_ids);
   return old;
 end;
 $$;
-create trigger team_area_in_use before delete on public.team_rating_areas
-  for each row execute function public.team_area_in_use();
+create trigger team_area_cleanup before delete on public.team_rating_areas
+  for each row execute function public.team_area_cleanup();
 
 create function public.team_question_in_use() returns trigger
 language plpgsql security definer set search_path = '' as $$

@@ -184,6 +184,15 @@ function setPronouns(form, value) {
   if (other) form.elements.pronouns_other.value = value;
   sel.dispatchEvent(new Event('change', { bubbles: true }));
 }
+// Pronouns for a sentence about someone: { obj: 'her', self: 'herself' }. The first set of a pair (she/they) is used;
+// a typed one like ze/hir gives hir / hirself; none gives they.
+function pronounWords(p) {
+  const [a, b] = (p || '').toLowerCase().split('/').map(s => s.trim());
+  if (a === 'she') return { obj: 'her', self: 'herself' };
+  if (a === 'he') return { obj: 'him', self: 'himself' };
+  if (!a || a === 'they' || !b) return { obj: 'them', self: 'themselves' };
+  return { obj: esc(b), self: esc(b) + 'self' };
+}
 function readPronouns(f) {
   if (f.get('pronouns') !== 'other') return f.get('pronouns') || '';
   const typed = f.get('pronouns_other').trim();

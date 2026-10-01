@@ -135,7 +135,7 @@ async function settingsPage() {
   if (t !== navToken) return;
   const nMembers = id => members.filter(m => m.location_id === id).length;
   const circUsed = id => used.some(c => c.circuit_id === id);
-  const areaUsed = id => used.some(c => c.ratings[id] != null || c.coach_ratings[id] != null || Object.values(c.tags).some(t => t.includes(id)));
+  const areaUses = id => used.filter(c => c.ratings[id] != null || c.coach_ratings[id] != null || Object.values(c.tags).some(t => t.includes(id))).length;
   const questionUsed = id => used.some(c => c.answers[id] != null || c.tags[id] != null);
   const groupSelect = (val = 'skill') => `<select name="area_group" aria-label="Group">${Object.entries(AREA_GROUPS).map(([k, v]) =>
     `<option value="${k}"${k === val ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
@@ -146,6 +146,7 @@ async function settingsPage() {
   view(`${crumbs([['Home', '#/'], ['Settings']])}
     <div class="page-head"><h1 class="big">Settings</h1></div>
     <div class="settings-grid">
+      <div class="col">
       <section class="card"><h2>Locations</h2>
         <p class="hint">The Location Cards on the Home page display in this order. A location with members can't be deleted: take them off that team or delete them first.</p>
         ${locs.map((l, i) => `<form class="set-row" data-kind="loc" data-id="${l.id}" data-save>
@@ -156,39 +157,6 @@ async function settingsPage() {
           ${nMembers(l.id) ? '' : `<button type="button" class="small ghost danger" data-del="loc" data-id="${l.id}">Delete</button>`}</form>`).join('')}
         <form class="row add-row" data-kind="loc" data-save><input name="name" maxlength="60" required placeholder="New location" aria-label="New location" data-need="Name the location.">
           <button class="primary">+ Add</button></form>
-      </section>
-
-      <section class="card"><h2>Circuit Colors</h2>
-        <p class="hint">Easiest first. The V range helps compare progress. Leave the top empty for an open-ended range, like V11+.
-          A color used by a check-in can be renamed but not deleted.</p>
-        ${circuits.map((c, i) => `<form class="set-row circuit-row" data-kind="circuit" data-id="${c.id}" data-save>
-          <input type="color" name="color" value="${esc(c.color.toLowerCase())}" aria-label="Color">
-          <input name="name" maxlength="30" required value="${esc(c.name)}" aria-label="Name" data-need="Name the color.">
-          <span class="vrange">V<input type="number" name="v_min" min="0" max="17" value="${c.v_min ?? ''}" aria-label="Lowest V grade">–V<input type="number" name="v_max" min="0" max="17" value="${c.v_max ?? ''}" aria-label="Highest V grade"></span>
-          ${moveBtns('circuit', i, circuits.length, c.id)}
-          <button class="small primary">Save</button>
-          ${circUsed(c.id) ? '' : `<button type="button" class="small ghost danger" data-del="circuit" data-id="${c.id}">Delete</button>`}</form>`).join('')}
-        <form class="row add-row" data-kind="circuit" data-save><input type="color" name="color" value="#888888" aria-label="Color">
-          <input name="name" maxlength="30" required placeholder="New color" aria-label="New color" data-need="Name the color."><button class="primary">+ Add</button></form>
-      </section>
-
-      <section class="card"><h2>Areas</h2>
-        <p class="hint">Rated areas get 1–5 ratings on a check-in, from the member and from the coach. Every area can tag an answer
-          (like Want to Improve); Tag Only areas are just for that. The group sorts the Team Summary into Physical, Skill and Mental.
-          Hide one to leave it off new check-ins but keep old ratings.</p>
-        ${areas.map((a, i) => `<form class="set-row" data-kind="area" data-id="${a.id}" data-save>
-          <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the area.">
-          ${groupSelect(a.area_group)}
-          <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
-          <label class="check"><input type="checkbox" name="active"${a.active ? ' checked' : ''}> Shown</label>
-          ${moveBtns('area', i, areas.length, a.id)}
-          ${a.rated ? `<button type="button" class="small ghost" data-guide="${a.id}">${a.guide.some(g => g.trim()) ? 'What 1–5 Mean' : '+ What 1–5 Mean'}</button>` : ''}
-          <button class="small primary">Save</button>
-          ${areaUsed(a.id) ? '' : `<button type="button" class="small ghost danger" data-del="area" data-id="${a.id}">Delete</button>`}</form>`).join('')}
-        <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New area" aria-label="New area" data-need="Name the area.">
-          ${groupSelect()}<label class="check"><input type="checkbox" name="rated" checked> Rated</label>
-          <button class="primary">+ Add</button></form>
-        <p class="hint">What 1–5 Mean: a line for each number, shown when a coach taps it, so every coach (and member) rates the same way.</p>
       </section>
 
       <section class="card"><h2>Check-In Questions</h2>
@@ -205,6 +173,41 @@ async function settingsPage() {
         <form class="row add-row" data-kind="question" data-save><input name="name" maxlength="80" required placeholder="New question" aria-label="New question" data-need="Write the question.">
           <button class="primary">+ Add</button></form>
       </section>
+
+      <section class="card"><h2>Circuit Colors</h2>
+        <p class="hint">Easiest first. The V range helps compare progress. Leave the top empty for an open-ended range, like V11+.
+          A color used by a check-in can be renamed but not deleted.</p>
+        ${circuits.map((c, i) => `<form class="set-row circuit-row" data-kind="circuit" data-id="${c.id}" data-save>
+          <input type="color" name="color" value="${esc(c.color.toLowerCase())}" aria-label="Color">
+          <input name="name" maxlength="30" required value="${esc(c.name)}" aria-label="Name" data-need="Name the color.">
+          <span class="vrange">V<input type="number" name="v_min" min="0" max="17" value="${c.v_min ?? ''}" aria-label="Lowest V grade">–V<input type="number" name="v_max" min="0" max="17" value="${c.v_max ?? ''}" aria-label="Highest V grade"></span>
+          ${moveBtns('circuit', i, circuits.length, c.id)}
+          <button class="small primary">Save</button>
+          ${circUsed(c.id) ? '' : `<button type="button" class="small ghost danger" data-del="circuit" data-id="${c.id}">Delete</button>`}</form>`).join('')}
+        <form class="row add-row" data-kind="circuit" data-save><input type="color" name="color" value="#888888" aria-label="Color">
+          <input name="name" maxlength="30" required placeholder="New color" aria-label="New color" data-need="Name the color."><button class="primary">+ Add</button></form>
+      </section>
+      </div>
+      <div class="col">
+      <section class="card"><h2>Areas</h2>
+        <p class="hint">Rated areas get 1–5 ratings on a check-in, from the member and from the coach. Every area can tag an answer
+          (like Want to Improve); Tag Only areas are just for that. The group sorts the Team Summary into Physical, Skill and Mental.
+          Area Ratings: a line for each number, shown above the ratings on a check-in, so every coach (and member) rates the same way.
+          Hide one to leave it off new check-ins but keep old ratings.</p>
+        ${areas.map((a, i) => `<form class="set-row" data-kind="area" data-id="${a.id}" data-save>
+          <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the area.">
+          ${groupSelect(a.area_group)}
+          <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
+          <label class="check"><input type="checkbox" name="active"${a.active ? ' checked' : ''}> Shown</label>
+          ${moveBtns('area', i, areas.length, a.id)}
+          ${a.rated ? `<button type="button" class="small ghost" data-guide="${a.id}">${a.guide.some(g => g.trim()) ? 'Area Ratings' : '+ Area Ratings'}</button>` : ''}
+          <button class="small primary">Save</button>
+          <button type="button" class="small ghost danger" data-del="area" data-id="${a.id}">Delete</button></form>`).join('')}
+        <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New area" aria-label="New area" data-need="Name the area.">
+          ${groupSelect()}<label class="check"><input type="checkbox" name="rated" checked> Rated</label>
+          <button class="primary">+ Add</button></form>
+      </section>
+      </div>
     </div>`, { keepScroll: true });
 
   const TABLE = { loc: 'team_locations', circuit: 'team_circuits', area: 'team_rating_areas', question: 'team_checkin_questions' };
@@ -253,16 +256,17 @@ async function settingsPage() {
     }
     if (del) {
       const item = LIST[del.dataset.del].find(x => x.id === del.dataset.id);
-      if (!await confirmDelete(`Delete ${item.name || item.prompt}?`, 'It will be gone for good.')) return;
+      const n = del.dataset.del === 'area' ? areaUses(item.id) : 0;
+      if (!await confirmDelete(`Delete ${item.name || item.prompt}?`, n ? `${n} ${n === 1 ? 'check-in uses' : 'check-ins use'} it. Its ratings and tags come off ${n === 1 ? 'that check-in' : 'them'}, and it comes off any Team Focus. This can't be undone. To keep old ratings, untick Shown instead.` : 'It will be gone for good.')) return;
       busy(del, async () => { await sb.from(TABLE[del.dataset.del]).delete().eq('id', item.id).then(must); flash('Deleted.'); redraw(); });
     }
   };
 }
 
-// What each number 1–5 means for one area: shown in the check-in form when a coach taps a number. A blank line falls
+// Area Ratings: what each number 1–5 means for one area, listed above its ratings on a check-in. A blank line falls
 // back to the general guide (RATING_GUIDE).
 async function guideForm(a) {
-  const f = await ask({ title: `${a.name}: What 1–5 Mean`, ok: 'Save', wide: true,
+  const f = await ask({ title: `${a.name}: Area Ratings`, ok: 'Save', wide: true,
     body: `<p class="hint">Describe what a coach would see at each level, so two coaches would pick the same number.
       A blank line uses the general guide (shown as the example).</p>
       ${[0, 1, 2, 3, 4].map(i => `<label>${i + 1}<textarea name="g${i}" rows="2" maxlength="200"

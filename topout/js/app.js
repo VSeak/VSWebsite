@@ -220,6 +220,7 @@ const COMING_UP = 6;
 
 async function homePage() {
   const t = ++navToken;
+  teamTab = 'active';   // a location or Team Members opened from Home starts on Active
   view(loading);
   const [locs, members, events] = await Promise.all([
     sb.from('team_locations').select('id, name').order('position').order('name').then(must),
@@ -257,7 +258,7 @@ async function homePage() {
             : '<p class="none-up">Nothing coming up. Add competitions, practices and open houses on a location’s calendar.</p>'}
         </section>
         <div class="tiles">
-          <a class="card tile" href="#/members"><div><h2>Team Members</h2><p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'}, and which teams they're on.</p></div>${ICON_ARROW}</a>
+          <a class="card tile" href="#/members"><div><h2>Team Members</h2><p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'} and which teams they're on.</p></div>${ICON_ARROW}</a>
         ${me.isAdmin ? `
           <a class="card tile" href="#/staff"><div><h2>Staff</h2><p class="muted">Admins and coaches, and where they coach.</p></div>${ICON_ARROW}</a>
           <a class="card tile" href="#/settings"><div><h2>Settings</h2><p class="muted">Locations, circuit colors and rating areas.</p></div>${ICON_ARROW}</a>` : ''}

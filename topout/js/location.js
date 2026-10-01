@@ -4,7 +4,7 @@
 let teamTab = 'active';     // Active or Former members, kept while moving around
 let teamSearch = '';
 let membersTeam = '';       // the All Members page's team filter: '' (every team), a location id, or 'several'
-let lastLoc = null;         // the location page last shown, for the member page's breadcrumbs
+let lastLoc = null;         // the list last shown (a location id, or 'members'), for the member page's breadcrumbs
 
 async function locationPage(id, sub) {
   const t = ++navToken;
@@ -105,17 +105,18 @@ async function membersPage() {
   view(loading);
   const { members, latest, circuits, locs } = await loadMembers();
   if (t !== navToken) return;
+  lastLoc = 'members';
   if (membersTeam && membersTeam !== 'several' && !locs.some(l => l.id === membersTeam)) membersTeam = '';
   const list = members.filter(m => !membersTeam || (membersTeam === 'several' ? m.teams.length > 1 : m.teams.includes(membersTeam)));
   const teams = m => locs.filter(l => m.teams.includes(l.id)).map(l => `<span class="chip strong">${esc(l.name)}</span>`).join('')
     + (m.teams.some(id => !locs.some(l => l.id === id)) ? '<span class="chip soft">Another team</span>' : '');
   const head = `${crumbs([['Home', '#/'], ['Team Members']])}
     <div class="page-head"><div><h1 class="big">Team Members</h1>
-      <p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'}, and which teams they're on.</p></div></div>`;
+      <p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'} and which teams they're on.</p></div></div>`;
   membersView(head, list, { latest, circuits, teamChips: teams,
-    tools: locs.length > 1 ? `<select id="membersTeam" aria-label="Team" class="team-filter">
-      <option value="">Every Team</option>${locs.map(l => `<option value="${l.id}"${l.id === membersTeam ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
-      <option value="several"${membersTeam === 'several' ? ' selected' : ''}>On Several Teams</option></select>` : '',
+    tools: locs.length > 1 ? `<label class="inline">Location:<select id="membersTeam" class="team-filter">
+      <option value="">All Locations</option>${locs.map(l => `<option value="${l.id}"${l.id === membersTeam ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
+      <option value="several"${membersTeam === 'several' ? ' selected' : ''}>On Several Teams</option></select></label>` : '',
     empty: `<section class="card empty"><h2>No Team Members${membersTeam ? ' Here' : ' Yet'}</h2><p class="muted">${membersTeam ? 'Pick another team.'
       : 'Add members from a location’s Team tab.'}</p></section>` });
   $('#membersTeam')?.addEventListener('change', e => { membersTeam = e.target.value; redraw(); });

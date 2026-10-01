@@ -143,7 +143,7 @@ async function settingsPage() {
     <div class="page-head"><h1 class="big">Settings</h1></div>
     <div class="settings-grid">
       <section class="card"><h2>Locations</h2>
-        <p class="hint">The cards on Home, in this order. A location with members can't be deleted: take them off that team or delete them first.</p>
+        <p class="hint">The Location Cards on the Home page display in this order. A location with members can't be deleted: take them off that team or delete them first.</p>
         ${locs.map((l, i) => `<form class="set-row" data-kind="loc" data-id="${l.id}" data-save>
           <input name="name" maxlength="60" required value="${esc(l.name)}" aria-label="Location name" data-need="Name the location.">
           <span class="muted small-text">${nMembers(l.id)} ${nMembers(l.id) === 1 ? "member" : "members"}</span>

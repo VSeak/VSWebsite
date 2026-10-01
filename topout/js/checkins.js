@@ -3,6 +3,15 @@
 // outdoor boulder and route grades (all optional) and 1–5 ratings on the admin's rating areas. The newest one shows in
 // full with how each value changed since the check-in before; older ones fold into History.
 
+// How to rate an area 1 to 5, shown in the check-in form.
+const RATING_GUIDE = [
+  "<b>Just starting.</b> New to it; needs a coach's help every time.",
+  '<b>Developing.</b> Shows up sometimes, mostly on easier climbs.',
+  '<b>Solid.</b> Does it reliably on climbs at their level.',
+  '<b>Strong.</b> Holds up on harder climbs and when tired.',
+  '<b>A real strength.</b> Stands out on the team; could show others how.',
+];
+
 const canChangeCheckin = c => me.isAdmin || c.author_id === me.user.id;
 
 // Each grade: its label, how to read it for display, and a number to compare (higher = harder).
@@ -66,9 +75,9 @@ async function checkinAction(btn, ctx) {
 }
 
 async function checkinForm(c, { m, checkins, circuits, areas }) {
-  const last = checkins[0] || {};
-  // A new check-in starts with the last board angles (they rarely change); grades start empty.
-  const v = c || { checkin_date: today(), ratings: {}, notes: '', tb2_angle: last.tb2_angle ?? null, kilter_angle: last.kilter_angle ?? null };
+  // A new check-in starts as a copy of the latest one (grades, ratings and notes), dated today, to change what's new.
+  const last = checkins[0];
+  const v = c || (last ? { ...last, checkin_date: today() } : { checkin_date: today(), ratings: {}, notes: '' });
   const vOpts = sel => `<option value="">—</option>${V_GRADES.map(g => `<option value="${g}"${g === sel ? ' selected' : ''}>V${g}</option>`).join('')}`;
   const angle = (name, val) => `<label>Angle<input type="number" name="${name}" min="0" max="70" step="5" inputmode="numeric" value="${val ?? ''}"
     placeholder="E.g. 40" data-range="Use an angle from 0° to 70°."></label>`;
@@ -76,7 +85,7 @@ async function checkinForm(c, { m, checkins, circuits, areas }) {
   const f = await ask({ title: c ? 'Edit Check-In' : `Check-In: ${m.first_name}`, ok: c ? 'Save Check-In' : 'Add Check-In', wide: true,
     body: `<label>Date<input type="date" name="checkin_date" required value="${v.checkin_date}" max="${today()}" data-need="Pick the date."
         data-range="A check-in can't be in the future."></label>
-      <p class="hint">Record what's useful. Everything below is optional.</p>
+      <p class="hint">Record what's useful. Everything below is optional.${!c && last ? ` It starts from the last check-in (${fmtDate(last.checkin_date)}), so change what's new.` : ''}</p>
       <h3>Grades</h3>
       <label>Hardest Circuit<select name="circuit_id"><option value="">—</option>${circuits.map(x =>
         `<option value="${x.id}"${x.id === v.circuit_id ? ' selected' : ''}>${esc(x.name)}${circuitRange(x) ? ` (${circuitRange(x)})` : ''}</option>`).join('')}</select></label>
@@ -84,8 +93,8 @@ async function checkinForm(c, { m, checkins, circuits, areas }) {
       <fieldset><legend>Kilter Board</legend><div class="two"><label>Grade<select name="kilter_grade">${vOpts(v.kilter_grade)}</select></label>${angle('kilter_angle', v.kilter_angle)}</div></fieldset>
       <div class="two"><label>Boulder (Outdoor/Other)<select name="boulder_grade">${vOpts(v.boulder_grade)}</select></label>
         <label>Route<select name="route_grade"><option value="">—</option>${ROUTE_GRADES.map(g => `<option${g === v.route_grade ? ' selected' : ''}>${g}</option>`).join('')}</select></label></div>
-      ${shownAreas.length ? `<h3>Ratings <span class="muted">(1 = just starting, 5 = a real strength)</span></h3>
-        <p class="hint">Tap a picked number again to clear it.</p>
+      ${shownAreas.length ? `<h3>Ratings</h3>
+        <dl class="rate-guide">${RATING_GUIDE.map((g, i) => `<dt>${i + 1}</dt><dd>${g}</dd>`).join('')}</dl>
         ${shownAreas.map(a => `<div class="rate-row"><span>${esc(a.name)}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}">
           ${[1, 2, 3, 4, 5].map(i => `<label><input type="radio" name="r_${a.id}" value="${i}"${v.ratings[a.id] === i ? ' checked' : ''}><span>${i}</span></label>`).join('')}</span></div>`).join('')}` : ''}
       <label>Notes<textarea name="notes" rows="3" placeholder="E.g. Moved up a color since spring. Wants to try the Kilter at 45° next.">${esc(v.notes)}</textarea></label>`,

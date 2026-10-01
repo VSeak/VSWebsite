@@ -120,7 +120,7 @@ fieldset > .field-error, .two + .field-error { margin-top: -.3rem; }
 label.check { display: flex; flex-direction: row; align-items: center; gap: .55rem; font-weight: 500; }
 label.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); flex: none; margin: 0; }
 label.inline { display: flex; flex-direction: row; align-items: center; gap: .5rem; }
-label.inline input { width: auto; margin: 0; }
+label.inline :is(input, select) { width: auto; margin: 0; }
 .days { display: flex; flex-wrap: wrap; gap: .3rem .9rem; }
 fieldset { border: 1px solid var(--line); border-radius: 14px; padding: .7rem .9rem .8rem; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
 legend { font-weight: 700; font-size: .92rem; padding: 0 .3rem; }
@@ -292,6 +292,10 @@ details > summary { cursor: pointer; font-weight: 700; margin-top: .8rem; }
 details.history { border-top: 1px solid var(--line); padding: .15rem 0; }
 details.history > summary { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-weight: 400; margin: .5rem 0; list-style-position: outside; }
 details.history[open] { padding-bottom: .6rem; }
+.rate-guide { display: grid; grid-template-columns: auto 1fr; gap: .2rem .6rem; margin: -.2rem 0 .3rem; font-size: .88rem; color: var(--muted); }
+.rate-guide dt { font-weight: 800; color: var(--accent-text); }
+.rate-guide dd { margin: 0; }
+.rate-guide b { color: var(--ink-2); }
 .rate-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; padding: .2rem 0; font-weight: 600; font-size: .92rem; }
 .rate-pick { display: flex; gap: .25rem; align-items: center; }
 .rate-pick label { display: block; }

@@ -23,14 +23,14 @@ async function memberPage(id) {
   if (!m) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Member Not Found</h2>
     <p class="muted">They may have been deleted, or they're at a location you aren't assigned to.</p></section>`);
   m.teams = m.teams.map(x => x.location_id);
-  // Breadcrumbs go back to the location page they came from, else their first team.
+  // Breadcrumbs go back to the list they came from: Team Members, or a location they're on (else their first team).
   const mine = locs.filter(l => m.teams.includes(l.id));
   const loc = mine.find(l => l.id === lastLoc) || mine[0];
-  m.backTo = loc ? `#/loc/${loc.id}` : '#/members';
+  m.backTo = loc && lastLoc !== 'members' ? `#/loc/${loc.id}` : '#/members';
   const ctx = { m, goals, notes, checkins, circuits, areas, locs };
   const status = [mine.map(l => l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
     .filter(Boolean).map(esc).join(' · ');
-  view(`${crumbs([['Home', '#/'], loc ? [loc.name, m.backTo] : ['Team Members', '#/members'], [m.name]])}
+  view(`${crumbs([['Home', '#/'], m.backTo === '#/members' ? ['Team Members', m.backTo] : [loc.name, m.backTo], [m.name]])}
     <div class="page-head"><span class="ini big-ini">${esc(initials(m.name))}</span>
       <div><h1 class="big">${esc(m.name)}${pronounsTag(m.pronouns)}${m.left_on ? ' <span class="tag">Former</span>' : ''}</h1>
       <p class="muted">${status}</p></div></div>

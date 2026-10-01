@@ -32,7 +32,7 @@ async function locationPage(id, sub) {
 // circuits and locations to show them with.
 async function loadMembers() {
   const [members, checkins, circuits, locs] = await Promise.all([
-    sb.from('team_members').select('id, first_name, name, pronouns, joined_on, left_on, intake_why, intake_wants, teams:team_member_locations(location_id)')
+    sb.from('team_members').select('id, first_name, name, pronouns, joined_on, left_on, email, intake_why, intake_wants, teams:team_member_locations(location_id)')
       .order('first_name').order('last_name').then(must),
     sb.from('team_checkins').select('member_id, checkin_date, circuit_id').order('checkin_date', { ascending: false }).then(must),
     sb.from('team_circuits').select('id, name, color').then(must),
@@ -45,7 +45,12 @@ async function loadMembers() {
 }
 
 // Active / Former, a search box and the member cards. teamChips(m) adds chips for the teams they're on.
+// Two members with the same name get a line telling them apart: when they joined, and their email if there is one.
 function membersView(head, list, { latest, circuits, teamChips, tools = '', empty }) {
+  const named = {};
+  for (const m of list) named[m.name.toLowerCase()] = (named[m.name.toLowerCase()] || 0) + 1;
+  const tellApart = m => named[m.name.toLowerCase()] < 2 ? ''
+    : `<span class="person-sub">${esc([m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.email || ''].filter(Boolean).join(' · ') || 'Same name as another member')}</span>`;
   const active = list.filter(m => !m.left_on), former = list.filter(m => m.left_on);
   if (teamTab === 'former' && !former.length) teamTab = 'active';
   const card = m => {
@@ -58,7 +63,7 @@ function membersView(head, list, { latest, circuits, teamChips, tools = '', empt
       m.left_on ? `<span class="chip soft">Left ${fmtShort(m.left_on)}</span>` : '',
     ].join('');
     return `<a class="person" href="#/member/${m.id}" data-name="${esc(m.name.toLowerCase())}"><span class="ini">${esc(initials(m.name))}</span>
-      <span class="person-main"><b>${esc(m.name)}${pronounsTag(m.pronouns)}</b><span class="chips">${chips}</span></span></a>`;
+      <span class="person-main"><b>${esc(m.name)}${pronounsTag(m.pronouns)}</b>${tellApart(m)}<span class="chips">${chips}</span></span></a>`;
   };
   const shown = teamTab === 'former' ? former : active;
   view(`${head}
@@ -131,6 +136,7 @@ async function addMember(loc) {
       <label>Joined the Team<input type="date" name="joined_on" value="${today()}" required data-need="Pick the day they joined."></label>
       <p class="hint">On another team too? Add it under Details on their page.</p>` });
   if (!f) return;
+  if (!await notADuplicate(f.get('first_name').trim(), f.get('last_name').trim())) return;
   await busy(null, async () => {
     const id = await sb.rpc('team_add_member', {
       p_first: f.get('first_name').trim(), p_last: f.get('last_name').trim(), p_pronouns: readPronouns(f),
@@ -139,4 +145,23 @@ async function addMember(loc) {
     flash('Member added. Fill in their intake next.');
     goTo('#/member/' + id);
   });
+}
+
+// Before adding a member: is someone with this name already here (among the members this person can see)?
+// They may be the same person, who should be put on this team instead (Details, Teams) rather than added twice.
+async function notADuplicate(first, last) {
+  const like = s => s.replace(/[\\%_]/g, '\\$&');
+  const [same, locs] = await Promise.all([
+    sb.from('team_members').select('id, name, joined_on, left_on, teams:team_member_locations(location_id)')
+      .ilike('first_name', like(first)).ilike('last_name', like(last)).then(must),
+    sb.from('team_locations').select('id, name').then(must),
+  ]);
+  if (!same.length) return true;
+  const where = m => [m.teams.map(t => locs.find(l => l.id === t.location_id)?.name).filter(Boolean).join(', '),
+    m.joined_on ? `joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? 'left the team' : ''].filter(Boolean).join(', ');
+  return !!await ask({ title: 'Same Name Already Here', ok: 'Add Anyway',
+    body: `<p>${same.length === 1 ? 'There is already a team member' : `There are already ${same.length} team members`} with this name:</p>
+      <ul class="dupes">${same.map(m => `<li><a href="#/member/${m.id}">${esc(m.name)}</a>${where(m) ? ` <span class="muted">(${esc(where(m))})</span>` : ''}</li>`).join('')}</ul>
+      <p class="hint">If it's the same person, open them and tick this team under Details instead. Add Anyway if it's someone else.</p>`,
+    onOpen: form => form.addEventListener('click', e => { if (e.target.closest('a')) $('#dlg').close(); }) });
 }

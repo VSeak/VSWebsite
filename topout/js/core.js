@@ -145,6 +145,7 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = 
       else resolve(null);
     }, { once: true });
     d.addEventListener('cancel', () => resolve(null), { once: true });
+    d.addEventListener('close', () => resolve(null), { once: true });   // closed another way (a link in it); after OK this does nothing
     d.showModal();
     onOpen?.(f);
   });

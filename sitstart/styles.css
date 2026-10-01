@@ -6,6 +6,7 @@
   --deep-danger: #F09A92;
   --goal: #A4BA8F; --goal-ink: #17220D; --chip: #E6E0D6; --ink-2: #4A4138; --blank: #B5AB9E;
   --best: #E3AE5A; --best-ink: #2C1A00;
+  --live: #B3261E;   /* Live strip and Submit Session, with white text in both themes */
   --radius: 10px;
   color-scheme: light;
 }
@@ -70,7 +71,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
   .grid2.phone-order { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
   .phone-order > div, .phone-order > aside { display: contents; }
   #nextCard { order: 1; } #goalsCard { order: 2; } #planCard { order: 3; } #snotesCard { order: 4; } #coachNotesCard { order: 5; }
-  #logCard { order: 3; }
+  #logCard, #csCard { order: 3; }
   .phone-order .card-group { order: 6; }
 }
 .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
@@ -784,3 +785,132 @@ button.log-row > svg:last-child { flex: none; color: var(--muted); }
 .ex-box-v { display: block; font-weight: 700; font-size: .9rem; overflow-wrap: anywhere; }
 .ex-box.logged { background: var(--soft); }
 .ex-box button { flex: none; }
+
+/* ---------- Coaching Session card (coaching-session.js): between the plan and Student Notes; red Live strip on top
+   while the session is on, red Submit grayed out until it has ended ---------- */
+.cs-card { display: flex; flex-direction: column; gap: 12px; }
+.cs-card[hidden] { display: none; }
+.cs-card > .row:first-child { margin-bottom: 0; }
+.cs-card.live { border-color: var(--live); box-shadow: 0 0 0 1px var(--live); }
+.cs-strip { order: -1; margin: -18px -18px 0; padding: 10px 18px; border-radius: 21px 21px 0 0; background: var(--live); color: #fff;
+  display: flex; justify-content: space-between; align-items: center; gap: .3rem 1rem; flex-wrap: wrap; font-weight: 700; font-size: .9rem; }
+.cs-strip[hidden] { display: none; }
+.cs-strip span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+.cs-strip b { text-transform: uppercase; letter-spacing: .06em; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: live-dot 1.6s ease-in-out infinite; }
+@keyframes live-dot { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+.cs-saved { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.cs-saved.ing { color: var(--muted); }
+.cs-saved.warn { color: var(--warn); }
+.cs-when { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.cs-when > div:first-child { flex: 1; min-width: 0; }
+.cs-day { margin: 0; font: 800 1.9rem/1 "Bricolage Grotesque", sans-serif; letter-spacing: -.02em; }
+.cs-meta { margin: 6px 0 0; }
+.cs-when .warn-box { flex: 1 1 100%; margin: 0; }
+.cs-when .fill { min-height: 46px; }
+@media (max-width: 599px) { .cs-when .fill { flex: 1 1 100%; } }
+.cs-next { background: var(--bg); border-radius: 14px; padding: 12px 14px; }
+.cs-next-day { margin: 4px 0 2px; font: 800 1.25rem "Bricolage Grotesque", sans-serif; }
+.cs-next .muted { margin: 0; }
+.cs-big { min-height: 48px; }
+.cs-card .ex-head { margin-top: 4px; }
+.cs-rnote { color: var(--ink-2); }
+.cs-add-note { font-style: italic; }
+.cs-from { grid-column: 1 / -1; margin: 0; font-size: .88rem; color: var(--muted); background: var(--card); border-radius: 10px; padding: 8px 10px; }
+.cs-from strong { color: var(--ink-2); }
+.cs-adds { display: flex; flex-wrap: wrap; gap: 8px; }
+.cs-adds .add-ex { flex: 1 1 200px; }
+.cs-submit { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.cs-submit .hint { margin: 0; text-align: center; }
+button.cs-submit-btn { width: 100%; min-height: 50px; border-radius: 14px; border: 1px solid var(--live); background: var(--live); color: #fff; font-size: 1rem; font-weight: 800; }
+button.cs-submit-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--live) 85%, #000); border-color: var(--live); }
+button.cs-submit-btn:disabled { opacity: 1; cursor: not-allowed; background: var(--chip); border-color: var(--chip); color: var(--muted); }
+.cs-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.cs-foot .cs-past { flex: 1; min-width: 0; margin: 0; }
+.cs-foot > button { margin-left: auto; }
+.cs-read-h { margin: 1rem 0 .3rem; font-size: 1.05rem; font-weight: 800; }
+/* Copy From Training Plan (an ask() dialog): session tabs, then the exercises to tick */
+.cs-copy-tabs { margin-top: .6rem; }
+.cs-picks { display: flex; flex-direction: column; gap: 6px; margin-top: .6rem; }
+.cs-picks[hidden] { display: none; }
+label.cs-pick { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--bg); min-height: 52px; font-weight: 400; }
+label.cs-pick input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: none; }
+.cs-pick b { display: block; font: 800 1rem "Bricolage Grotesque", sans-serif; }
+.cs-pick span span { font-size: .82rem; font-weight: 700; color: var(--accent); }
+dialog .cs-to-note { margin-top: 1rem; }
+
+/* Coach View: the open session full screen and dark, big type. A phone shows one exercise, its notes and the session
+   notes, with Previous / Next held at the bottom; a wide screen lists the exercises on the left and puts the session
+   notes and Submit on the right. */
+dialog.cs-view { position: fixed; inset: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0;
+  border: 0; border-radius: 0; overflow: auto; background: var(--deep); color: var(--deep-ink);
+  --cv-box: color-mix(in srgb, var(--deep-ink) 9%, var(--deep)); --cv-line: color-mix(in srgb, var(--deep-ink) 18%, transparent); }
+dialog.cs-view[open] { display: flex; flex-direction: column; }
+.cs-view .eyebrow { color: var(--deep-accent); }
+.cs-view button { background: transparent; color: var(--deep-ink); border: 1px solid var(--cv-line); }
+.cv-top { position: sticky; top: 0; z-index: 2; background: var(--deep); display: flex; justify-content: space-between; align-items: center;
+  gap: 8px 12px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--cv-line); }
+.cv-top-l, .cv-top-r { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.cv-who { display: none; color: var(--deep-accent); font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.cv-clock { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; }
+.live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 99px; background: var(--live); color: #fff;
+  font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cs-view .cs-saved { color: var(--deep-accent); }
+.cs-view .cs-saved.ing { color: var(--deep-muted); }
+.cs-view .cs-saved.warn { color: var(--best); }
+.cv-body { flex: 1; display: grid; gap: 14px; padding: 18px 16px 0; grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "side" "nav";
+  align-content: start; }
+.cv-list { grid-area: list; display: none; }
+.cv-main { grid-area: main; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.cv-side { grid-area: side; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--cv-line); padding-top: 12px; }
+.cv-nav { grid-area: nav; display: flex; gap: 10px; position: sticky; bottom: 0; background: var(--deep);
+  padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--cv-line); }
+.cv-nav button { flex: 1; min-height: 56px; font-size: 1rem; }
+.cs-view button.cv-next:not(:disabled) { background: var(--deep-accent); border-color: var(--deep-accent); color: var(--goal-ink); }
+.cv-bar { display: flex; gap: 4px; }
+.cv-bar i { flex: 1; height: 5px; border-radius: 3px; background: var(--cv-line); }
+.cv-bar i.done { background: var(--deep-accent); }
+.cv-bar i.on { background: var(--deep-ink); }
+.cv-name { margin: 2px 0 0; font: 800 2.4rem/1.05 "Bricolage Grotesque", sans-serif; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.cv-stats .stat { background: var(--cv-box); padding: 12px 10px; }
+.cv-stats .stat-l { color: var(--deep-muted); }
+.cv-stats .stat-v { font-size: 1.35rem; color: var(--deep-ink); }
+.cv-stats .stat-v.none { color: color-mix(in srgb, var(--deep-ink) 35%, transparent); }
+.cv-from { margin: 0; color: var(--deep-muted); font-size: 1rem; }
+.cv-l { color: var(--deep-muted); font-size: .9rem; font-weight: 600; }
+.cs-view textarea { background: var(--cv-box); border-color: var(--cv-line); color: var(--deep-ink); font-size: 1.1rem; }
+.cs-view .cv-main textarea[data-grow] { min-height: 7rem; }
+.cs-view .cv-side textarea[data-grow] { min-height: 5.5rem; font-size: 1rem; }
+.cv-empty { margin: 0; color: var(--deep-muted); font-size: 1.1rem; }
+.cs-view button.cv-add { border-style: dashed; color: var(--deep-accent); min-height: 46px; }
+.cv-submit { display: none; }
+.cs-view button.cs-submit-btn:disabled { background: var(--cv-box); border-color: var(--cv-box); color: var(--deep-muted); }
+.cs-view button.cs-submit-btn:not(:disabled) { background: var(--live); border-color: var(--live); color: #fff; }
+.cv-submit .hint { margin: 0; text-align: center; color: var(--deep-muted); }
+@media (min-width: 1000px) {
+  .cv-top { padding: 14px 32px; }
+  .cv-who { display: inline; }
+  .cv-body { grid-template-columns: 280px minmax(0, 1fr) 340px; grid-template-rows: 1fr auto; grid-template-areas: "list main side" "list nav side";
+    gap: 24px 28px; padding: 24px 32px; }
+  .cv-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .cv-list ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .cv-list ol button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; border-radius: 14px; padding: 10px 12px;
+    min-height: 60px; font-weight: 400; }
+  .cs-view .cv-list button.done { background: var(--cv-box); border-color: transparent; }
+  .cs-view .cv-list button.on { background: var(--deep-ink); border-color: var(--deep-ink); color: var(--deep); }
+  .cv-n { flex: none; width: 18px; font: 800 1.1rem "Bricolage Grotesque", sans-serif; color: var(--deep-muted); }
+  .cv-list .on .cv-n { color: inherit; opacity: .6; }
+  .cv-li { min-width: 0; display: flex; flex-direction: column; }
+  .cv-li b { font: 800 1rem/1.2 "Bricolage Grotesque", sans-serif; overflow-wrap: anywhere; }
+  .cv-li small { font-size: .8rem; font-weight: 700; color: var(--deep-accent); }
+  .cv-list .on small { color: inherit; opacity: .75; }
+  .cv-name { font-size: clamp(2.4rem, 3.4vw, 3.4rem); }
+  .cv-stats .stat-v { font-size: 2.2rem; }
+  .cv-side { border-top: 0; padding-top: 0; }
+  .cs-view .cv-side textarea[data-grow] { min-height: 240px; }
+  .cs-view .cv-main textarea[data-grow] { min-height: 10rem; }
+  .cv-submit { display: flex; flex-direction: column; gap: 6px; }
+  .cv-nav { position: static; padding: 0; border-top: 0; }
+  .cs-view button.cv-add-main { display: none; }
+}

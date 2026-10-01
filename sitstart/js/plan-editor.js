@@ -45,6 +45,7 @@ async function adminPlan(id, sid) {
   draft = { plan, sessions, library, recent, savedIds: new Set(sessions.map(s => s.id)), preview: false, tab: from ? { [from.week]: sid } : {},
     openEx: null, details: new Set(), logs: sortLogs(plan.student.exercise_logs ?? []) };
   Object.assign(exb, { q: '', purpose: '', sid: from?.id ?? null });
+  exCtx = null;   // the browser and name picker work on this draft
   dirty = false;
   renderEditor();
   window.scrollTo(0, 0);

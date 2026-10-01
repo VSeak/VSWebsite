@@ -127,7 +127,7 @@ create table public.coach_notes (
   author_id uuid default auth.uid() references auth.users (id) on delete set null,
   author_name text not null default '',   -- stamp_coach_note, kept if the coach is removed
   session_date date,
-  body text not null check (length(trim(body)) between 1 and 4000),
+  body text not null check (length(trim(body)) between 1 and 30000),
   created_at timestamptz not null default now(),
   edited_at timestamptz                    -- stamp_coach_note, on a change to the text or date
 );
@@ -145,6 +145,35 @@ create table public.session_history (
   created_at timestamptz not null default now(),
   unique (student_id, session_date, start_time)
 );
+
+-- Coaching Sessions: what a coach plans for a student's next session and the notes they take during it (coaches only).
+-- While open it follows the student's Next Session (the page keeps the date, times and place in step until that time
+-- has passed). Submitting it (submit_coaching_session) puts its notes into one Coach Note for that day, logs the session
+-- in Session History and makes it a past coaching session, read only for good. At most one open per student.
+-- exercises: [{id, name, sets, reps, rest, plan_notes, notes}]. plan_notes: the notes copied from the plan or the
+-- exercise list (the student's instructions), shown but never put in the Coach Note; notes: the coach's notes.
+create table public.coaching_sessions (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  session_date date,
+  start_time time,
+  end_time time,
+  location text check (length(location) <= 200),
+  exercises jsonb not null default '[]' check (jsonb_typeof(exercises) = 'array' and length(exercises::text) <= 60000),
+  notes text not null default '' check (length(notes) <= 4000),
+  submitted_at timestamptz,
+  author_id uuid default auth.uid() references auth.users (id) on delete set null,
+  author_name text not null default '',   -- stamp_coaching_session, kept if the coach is removed
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  -- The day, times and place are all set (the end after the start), or none (no next session to follow yet).
+  constraint coaching_session_time check (
+    (session_date is null and start_time is null and end_time is null and location is null)
+    or (session_date is not null and start_time is not null and end_time > start_time and length(trim(location)) > 0)),
+  constraint coaching_session_submitted check (submitted_at is null or session_date is not null)
+);
+create unique index coaching_sessions_one_open on public.coaching_sessions (student_id) where submitted_at is null;
+create index on public.coaching_sessions (student_id);
 
 -- The master exercise list: defaults a plan copies when the coach picks an
 -- exercise. Plans keep their own copy, so editing either never changes the other.
@@ -489,6 +518,29 @@ $$;
 create trigger stamp_coach_note before insert or update on public.coach_notes
   for each row execute function public.stamp_coach_note();
 
+-- A coaching session keeps who made it (nobody can change that); a submitted one never changes.
+create function public.stamp_coaching_session() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' then
+    if old.submitted_at is not null then raise exception 'A submitted coaching session can''t be changed.'; end if;
+    new.student_id := old.student_id;
+    new.author_id := old.author_id;
+    new.author_name := old.author_name;
+    new.created_at := old.created_at;
+  else
+    new.author_id := auth.uid();
+    new.author_name := coalesce((select name from public.staff where email = lower(auth.jwt() ->> 'email')), '');
+    new.submitted_at := null;
+    new.created_at := now();
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+create trigger stamp_coaching_session before insert or update on public.coaching_sessions
+  for each row execute function public.stamp_coaching_session();
+
 -- 3. Access rules -------------------------------------------------------------
 -- Every coach can read every student, plan, session, note and goal. Only a student's current coach (or any
 -- coach, for a student with no coach: can_coach()) changes them or replies to notes. Any coach adds Coach Notes
@@ -499,6 +551,7 @@ create trigger stamp_coach_note before insert or update on public.coach_notes
 -- achieved goals (not archived ones), read notes on their sessions, and add or
 -- delete their own notes.
 -- Coach notes are for coaches only: students and admin-only staff can't see them.
+-- So are coaching sessions; only the student's coach changes an open one, and a submitted one never changes.
 -- Coaches and admins can do everything with the master exercise list. Students
 -- can't see it at all. The same goes for its purposes.
 
@@ -514,10 +567,11 @@ alter table public.exercises enable row level security;
 alter table public.exercise_purposes enable row level security;
 alter table public.exercise_logs enable row level security;
 alter table public.log_fields enable row level security;
+alter table public.coaching_sessions enable row level security;
 
 grant select, insert, update, delete
   on public.staff, public.students, public.plans, public.sessions, public.notes, public.goals, public.coach_notes, public.session_history,
-     public.exercises, public.exercise_purposes, public.exercise_logs, public.log_fields
+     public.exercises, public.exercise_purposes, public.exercise_logs, public.log_fields, public.coaching_sessions
   to authenticated;
 
 -- Helpers that don't depend on the row are wrapped in (select ...), so Postgres runs them once per query instead of
@@ -621,6 +675,16 @@ create policy "student: delete" on public.exercise_logs for delete to authentica
   using (student_id = (select public.my_student_id()));
 create policy "coach: read" on public.exercise_logs for select to authenticated
   using ((select public.is_coach()));
+
+-- Coaching Sessions: every coach reads them (not about themselves); only the student's coach adds, changes or deletes an open one.
+create policy "coach: read" on public.coaching_sessions for select to authenticated
+  using ((select public.is_coach()) and not public.is_self(student_id));
+create policy "coach: add" on public.coaching_sessions for insert to authenticated
+  with check (public.can_coach(student_id) and submitted_at is null);
+create policy "coach: change" on public.coaching_sessions for update to authenticated
+  using (public.can_coach(student_id) and submitted_at is null) with check (public.can_coach(student_id));
+create policy "coach: delete" on public.coaching_sessions for delete to authenticated
+  using (public.can_coach(student_id) and submitted_at is null);
 
 -- 4. Sign-up gate ---------------------------------------------------------------
 -- Only emails on the student list (or the active staff list, or another app's list: login_in_other_app) can
@@ -942,6 +1006,26 @@ language sql stable security definer set search_path = '' as $$
   order by 3 desc, coalesce(c.ended_at, c.started_at) desc;
 $$;
 
+
+-- Submit a coaching session: the Coach Note (p_note, written by the page), the Session History row and submitted_at,
+-- all or nothing. Runs as the caller, so the access rules still decide. The page only offers it once the session has
+-- ended (local time).
+create function public.submit_coaching_session(p_id uuid, p_note text) returns void
+language plpgsql set search_path = '' as $$
+declare
+  c public.coaching_sessions;
+begin
+  select * into c from public.coaching_sessions where id = p_id and submitted_at is null for update;
+  if not found then raise exception 'This coaching session was already submitted or deleted.'; end if;
+  if c.session_date is null then raise exception 'This coaching session has no date. Set the next session first.'; end if;
+  insert into public.coach_notes (student_id, session_date, body) values (c.student_id, c.session_date, p_note);
+  insert into public.session_history (student_id, session_date, start_time, end_time, location)
+    values (c.student_id, c.session_date, c.start_time, c.end_time, c.location)
+    on conflict (student_id, session_date, start_time) do nothing;
+  update public.coaching_sessions set submitted_at = now() where id = p_id;
+end;
+$$;
+
 -- 7. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.claim_student() from anon;
 revoke execute on function public.update_my_pronouns(text) from public, anon;
@@ -959,6 +1043,8 @@ revoke execute on function public.staff_lookup(text) from public, anon;
 grant execute on function public.staff_lookup(text) to authenticated;
 revoke execute on function public.login_has_password(text) from public, anon;
 grant execute on function public.login_has_password(text) to authenticated;
+revoke execute on function public.submit_coaching_session(uuid, text) from public, anon;
+grant execute on function public.submit_coaching_session(uuid, text) to authenticated;
 revoke execute on function public.change_student_email(uuid, text), public.prepare_email_change(uuid, text) from public, anon;
 grant execute on function public.delete_student(uuid), public.list_users(), public.delete_staff(uuid), public.student_ready(uuid),
   public.coaches_of(uuid), public.my_staff_id(), public.coach_list(), public.update_my_pronouns(text), public.stamp_sender(text),

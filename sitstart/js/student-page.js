@@ -6,7 +6,7 @@ async function adminStudent(id, again = false) {
   const t = ++navToken;
   const restore = again && keepEdits(again);
   if (!again) view(loading);
-  const [s, coaches, notes, cnotes, log, logs] = await Promise.all([
+  const [s, coaches, notes, cnotes, log, logs, csRows] = await Promise.all([
     sb.from('students').select('*, plans(id,title,active,start_date,repeats,blocks,updated_at), goals(*)').eq('id', id).maybeSingle().then(must),
     sb.rpc('coaches_of', { p_id: id }).then(must),
     // This student's own notes on any of their plans, newest first (like Latest Student Notes on the Students list).
@@ -15,6 +15,7 @@ async function adminStudent(id, again = false) {
     sb.from('coach_notes').select('*').eq('student_id', id).then(must),
     sb.from('session_history').select('*').eq('student_id', id).then(must),
     sb.from('exercise_logs').select('*').eq('student_id', id).order('logged_on', { ascending: false }).order('created_at', { ascending: false }).then(must),
+    sb.from('coaching_sessions').select('*').eq('student_id', id).then(must),
   ]);
   if (t !== navToken) return;
   if (!s) { location.hash = '#/students'; return; }
@@ -57,6 +58,7 @@ async function adminStudent(id, again = false) {
         ${others.length ? `<details class="other-plans"${current ? '' : ' open'}><summary>${current ? 'Other Plans' : 'Plans'} (${others.length})</summary>
           <div id="plansBox">${plansHTML(1)}</div></details>` : ''}
       </section>
+      <section class="card cs-card" id="csCard" hidden></section>
       <section class="card feed" id="snotesCard"><h2>Student Notes${notes.length ? ` <span class="count">(${notes.length})</span>` : ''}</h2>
         <p class="hint">Newest first. Tap a note to open it in the plan and reply.</p>
         ${notes.length ? `<div id="snotesBox">${snotesHTML(1)}</div>` : `<p class="muted">${p.They} ${p.v("haven't", "hasn't")} left any notes yet.</p>`}</section>
@@ -107,7 +109,7 @@ async function adminStudent(id, again = false) {
   // Session History links to Coach Notes from the same day.
   // Coach Notes redraw when the sessions change, for their prompt about the newest past session.
   const hist = { log, page: 1, readOnly: !edit, notes: d => cnotes.filter(n => n.session_date === d).length, showNotes: showCoachNotes,
-    addNotes: startCoachNote, changed: () => renderCoachNotes() };
+    addNotes: startCoachNote, changed: () => { renderCoachNotes(); csNextChanged(); } };
   bindSessions(id, s, hist);
   bindCoachLogCard();
 
@@ -217,6 +219,8 @@ async function adminStudent(id, again = false) {
     card.querySelector('.seg')?.addEventListener('change', e => { Object.assign(cnoteAt, { filter: e.target.value, page: 1, spot: null }); renderCoachNotes(); });
   }
   renderCoachNotes();
+  // The Coaching Session card, between the plan and Student Notes (coaching-session.js).
+  bindCoachSession(s, csRows, { plan: current, showNotes: showCoachNotes, redraw: () => adminStudent(id, true) });
   // From Session History: the page of session notes with that day's first note, scrolled to, and every note from
   // that day lit up for a moment. If they run onto the next page, paging there lights those up too (cnoteAt.spot).
   function spotCoachNotes() {
@@ -276,7 +280,7 @@ async function adminStudent(id, again = false) {
     if (cn) {
       if (act === 'cnote-edit') {
         const f = await ask({ title: 'Edit Notes', ok: 'Save Notes', body: `<div class="stack">
-          <label>Notes${rich(`<textarea name="body" rows="6" maxlength="4000" data-grow required data-need="Write notes.">${esc(cn.body)}</textarea>`)}</label>
+          <label>Notes${rich(`<textarea name="body" rows="6" maxlength="30000" data-grow required data-need="Write notes.">${esc(cn.body)}</textarea>`)}</label>
           ${cnoteDateField(cn.session_date || '')}</div>` });
         const body = f?.get('body').trim();
         if (body) busy(b, async () => {

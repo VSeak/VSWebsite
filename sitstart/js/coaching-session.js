@@ -205,7 +205,8 @@ function csCardHTML() {
       ${cs.plan ? '<button type="button" class="add-ex" data-cs="copy">Copy From Training Plan</button>' : ''}</div>
     <label class="cs-notes">Session Notes${rich(`<textarea rows="3" data-grow data-css="notes" maxlength="4000" placeholder="Goals for today, how it went, what to work on next">${esc(c.notes)}</textarea>`)}</label>
     <div class="cs-submit" id="csSubmit"></div>
-    <div class="cs-foot">${csPastHTML()}<button type="button" class="small ghost danger" data-cs="delete">Delete</button></div>`;
+    <button type="button" class="small ghost danger cs-del" data-cs="delete">Delete This Coaching Session</button>
+    ${csPastHTML()}`;
 }
 
 // The Submit button and its hint: grayed out until the session has ended, so it can't be pressed by mistake.

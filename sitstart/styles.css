@@ -826,9 +826,9 @@ button.log-row > svg:last-child { flex: none; color: var(--muted); }
 button.cs-submit-btn { width: 100%; min-height: 50px; border-radius: 14px; border: 1px solid var(--live); background: var(--live); color: #fff; font-size: 1rem; font-weight: 800; }
 button.cs-submit-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--live) 85%, #000); border-color: var(--live); }
 button.cs-submit-btn:disabled { opacity: 1; cursor: not-allowed; background: var(--chip); border-color: var(--chip); color: var(--muted); }
-.cs-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.cs-foot .cs-past { flex: 1; min-width: 0; margin: 0; }
-.cs-foot > button { margin-left: auto; }
+/* Delete is for the open session, so it sits under its Submit, away from Past Coaching Sessions */
+.cs-card > .cs-del { align-self: center; margin-top: -4px; }
+.cs-card > .cs-past { margin: 0; border-top: 1px solid var(--line); padding-top: 12px; }
 .cs-read-h { margin: 1rem 0 .3rem; font-size: 1.05rem; font-weight: 800; }
 /* Copy From Training Plan (an ask() dialog): session tabs, then the exercises to tick */
 .cs-copy-tabs { margin-top: .6rem; }

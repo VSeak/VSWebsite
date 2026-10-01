@@ -207,13 +207,14 @@ create table public.log_fields (
   created_at timestamptz not null default now(),
   constraint log_fields_pick_opts check (kind <> 'pick' or cardinality(opts) >= 2),
   constraint log_fields_standard_key check (kind <> 'standard'
-    or key in ('weight', 'time', 'sets', 'reps', 'grade', 'attempts', 'edge', 'grip', 'sent'))
+    or key in ('weight', 'time', 'duration', 'sets', 'reps', 'grade', 'attempts', 'problems', 'edge', 'angle', 'grip', 'hand', 'sent', 'effort'))
 );
 insert into public.log_fields (key, label, kind, opts) values
   ('weight', 'Added Weight', 'standard', '{}'), ('time', 'Time', 'standard', '{}'), ('sets', 'Sets Done', 'standard', '{}'),
   ('reps', 'Reps', 'standard', '{}'), ('grade', 'Grade', 'standard', '{}'), ('attempts', 'Attempts', 'standard', '{}'),
-  ('edge', 'Edge', 'standard', '{}'), ('grip', 'Grip', 'standard', '{Half Crimp,Open Hand,Full Crimp,3 Finger Drag}'),
-  ('sent', 'Sent', 'standard', '{}');
+  ('edge', 'Edge', 'standard', '{}'), ('grip', 'Grip', 'standard', '{Half Crimp,Open Hand,Full Crimp,3 Finger Drag,Pinch,Sloper,Pocket}'),
+  ('sent', 'Sent', 'standard', '{}'), ('duration', 'Duration', 'standard', '{}'), ('problems', 'Problems', 'standard', '{}'),
+  ('angle', 'Board Angle', 'standard', '{}'), ('hand', 'Hand', 'standard', '{}'), ('effort', 'Effort', 'standard', '{}');
 
 create function public.sync_exercise_purpose() returns trigger
 language plpgsql set search_path = '' as $$

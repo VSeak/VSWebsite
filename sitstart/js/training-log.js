@@ -10,13 +10,19 @@
 const LOG_STANDARD = {
   weight: { label: 'Added Weight', kind: 'weight' },
   time: { label: 'Time', kind: 'step', step: 1, min: 0, max: 3600, start: 7, sub: 'seconds' },
+  duration: { label: 'Duration', kind: 'step', step: 5, min: 0, max: 600, start: 10, sub: 'minutes' },
   sets: { label: 'Sets Done', kind: 'step', step: 1, min: 0, max: 99, start: 1 },
   reps: { label: 'Reps', kind: 'step', step: 1, min: 0, max: 999, start: 1 },
   grade: { label: 'Grade', kind: 'grade' },
   attempts: { label: 'Attempts', kind: 'step', step: 1, min: 0, max: 99, start: 1 },
-  edge: { label: 'Edge', kind: 'pick', opts: [6, 8, 10, 12, 15, 18, 20, 25, 30], other: true },
-  grip: { label: 'Grip', kind: 'pick', opts: ['Half Crimp', 'Open Hand', 'Full Crimp', '3 Finger Drag'] },
+  problems: { label: 'Problems', kind: 'step', step: 1, min: 0, max: 999, start: 1 },
+  // other: a chip that opens a box for a value not in opts; unit: shown after the value ("20 mm", "40°").
+  edge: { label: 'Edge', kind: 'pick', opts: [6, 8, 10, 12, 15, 18, 20, 25, 30], other: 'Edge in mm', unit: ' mm' },
+  angle: { label: 'Board Angle', kind: 'pick', opts: [20, 25, 30, 35, 40, 45, 50], other: 'Angle in degrees', unit: '°' },
+  grip: { label: 'Grip', kind: 'pick', opts: ['Half Crimp', 'Open Hand', 'Full Crimp', '3 Finger Drag', 'Pinch', 'Sloper', 'Pocket'] },
+  hand: { label: 'Hand', kind: 'pick', opts: ['Left', 'Right', 'Both'] },
   sent: { label: 'Sent', kind: 'pick', opts: ['Sent', 'Not Yet'] },
+  effort: { label: 'Effort', kind: 'pick', opts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], sub: 'RPE: 1 easy, 10 all out' },
 };
 const LOG_FIELDS = { ...LOG_STANDARD };   // the fields there are now (setLogFields)
 // Standard steppers, custom numbers, standard picks, then custom picks: the order of the sheet and the coach's ticks.
@@ -42,7 +48,8 @@ function setLogFields(rows) {
 const customNum = (F, n) => F.unit ? `${n} ${F.unit}` : `${F.label} ${n}`;
 // Quick picks for the coach (Exercises & Drills, and per plan).
 const LOG_PRESETS = [['Hangs', ['weight', 'edge', 'time', 'grip', 'sets']], ['Strength', ['sets', 'reps', 'weight']],
-  ['Timed', ['time', 'sets']], ['Climbing', ['grade', 'attempts', 'sent']]];
+  ['Timed', ['time', 'sets']], ['Climbing', ['grade', 'attempts', 'sent']], ['Limit Bouldering', ['grade', 'attempts', 'effort']],
+  ['Board', ['grade', 'angle', 'attempts', 'sent']], ['Endurance', ['duration', 'effort']], ['Volume', ['problems', 'grade', 'effort']]];
 const GRADES = ['VB', ...Array.from({ length: 18 }, (_, i) => 'V' + i)];
 const LOG_PAGE = 3;   // logs (or days, or exercises) per page
 const trackOf = x => LOG_KEYS.filter(k => (x?.track ?? []).includes(k));
@@ -58,14 +65,17 @@ const round = (n, step) => Math.round(n / step) * step;
 const signed = n => n > 0 ? `+${+n.toFixed(2)}` : n < 0 ? `−${+Math.abs(n).toFixed(2)}` : '0';
 const fmtWeight = (w, unit) => w === 0 ? 'Bodyweight' : `${signed(w)} ${unit || 'lb'}`;
 const inLb = v => v.weight == null ? null : v.unit === 'kg' ? v.weight * KG : v.weight;
+// Minutes as "45 min" or "1 h 30 min".
+const fmtMin = n => n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${+(n % 60).toFixed(1)} min` : ''}` : `${n} min`;
 
-// One log's values on a line: "4 × 5 · +25 lb", "+40 lb · 20 mm · 10s · Half Crimp", "V5 · 4 tries · Sent".
+// One log's values on a line: "4 × 5 · +25 lb", "+40 lb · 20 mm · 10s · Half Crimp · Left", "V5 · 40° · 4 tries · Sent · RPE 8".
 function logSummary(v = {}) {
   const has = k => v[k] != null && v[k] !== '';
   const both = has('sets') && has('reps');
   return [both && `${v.sets} × ${v.reps}`, has('weight') && fmtWeight(v.weight, v.unit), has('edge') && `${v.edge} mm`,
-    has('time') && `${v.time}s`, has('grade') && v.grade, has('attempts') && `${v.attempts} ${v.attempts === 1 ? 'try' : 'tries'}`,
-    has('grip') && v.grip, has('sent') && (v.sent ? 'Sent' : 'Not Yet'),
+    has('time') && `${v.time}s`, has('duration') && fmtMin(v.duration), has('grade') && v.grade, has('angle') && `${v.angle}°`,
+    has('problems') && `${v.problems} problem${v.problems === 1 ? '' : 's'}`, has('attempts') && `${v.attempts} ${v.attempts === 1 ? 'try' : 'tries'}`,
+    has('grip') && v.grip, has('hand') && v.hand, has('sent') && (v.sent ? 'Sent' : 'Not Yet'), has('effort') && `RPE ${v.effort}`,
     !both && has('sets') && `${v.sets} set${v.sets === 1 ? '' : 's'}`, !both && has('reps') && `${v.reps} reps`,
     ...LOG_KEYS.filter(k => LOG_FIELDS[k].custom && has(k)).map(k => LOG_FIELDS[k].kind === 'pick' ? String(v[k]) : customNum(LOG_FIELDS[k], v[k]))]
     .filter(Boolean).join(' · ');
@@ -94,7 +104,8 @@ function latestPerExercise(logs) {
 }
 const sortLogs = logs => logs.sort((a, b) => b.logged_on.localeCompare(a.logged_on) || b.created_at.localeCompare(a.created_at));
 
-// The trend: the first number the logs have, of weight (in the latest log's unit), grade, time, reps or sets.
+// The trend: the first number the logs have, of weight (in the latest log's unit), grade, time, reps, sets, duration,
+// problems, then custom numbers. Never Effort: a harder RPE isn't better.
 // list: newest first. Returns { key, label, val(l), show(n) } or null.
 function logMetric(list) {
   const unit = list.find(l => l.vals.weight != null)?.vals.unit || 'lb';
@@ -105,6 +116,8 @@ function logMetric(list) {
     time: { label: 'Time', val: l => l.vals.time ?? null, show: n => `${n}s` },
     reps: { label: 'Reps', val: l => l.vals.reps ?? null, show: n => `${n} reps` },
     sets: { label: 'Sets', val: l => l.vals.sets ?? null, show: n => `${n} sets` },
+    duration: { label: 'Duration', val: l => l.vals.duration ?? null, show: fmtMin },
+    problems: { label: 'Problems', val: l => l.vals.problems ?? null, show: n => `${n} problems` },
   };
   for (const k of LOG_KEYS) if (LOG_FIELDS[k].custom && LOG_FIELDS[k].kind === 'step')
     M[k] = { label: LOG_FIELDS[k].label, val: l => typeof l.vals[k] === 'number' ? l.vals[k] : null, show: n => customNum(LOG_FIELDS[k], n) };
@@ -142,7 +155,7 @@ function trendText(list, m) {
   const d = m.val(b) - m.val(a), since = `since ${logDay(a.logged_on)}`;
   if (!d) return `Same as ${logDay(a.logged_on)}`;
   const amt = m.key === 'weight' ? `${+Math.abs(d).toFixed(1)} ${list.find(l => l.vals.unit)?.vals.unit || 'lb'}`
-    : m.key === 'grade' ? `${Math.abs(d)} grade${Math.abs(d) === 1 ? '' : 's'}` : m.key === 'time' ? `${Math.abs(d)}s`
+    : m.key === 'grade' ? `${Math.abs(d)} grade${Math.abs(d) === 1 ? '' : 's'}` : m.key === 'time' ? `${Math.abs(d)}s` : m.key === 'duration' ? fmtMin(Math.abs(d))
     : LOG_FIELDS[m.key]?.custom ? `${+Math.abs(d).toFixed(2)}${LOG_FIELDS[m.key].unit ? ` ${LOG_FIELDS[m.key].unit}` : ''}` : `${Math.abs(d)} ${m.key}`;
   return `${d > 0 ? 'Up' : 'Down'} ${amt} ${since}`;
 }
@@ -208,7 +221,7 @@ function openLogSheet(key, sid, date = todayISO()) {
     if (fields.includes('reps') && int(x.reps) != null) vals.reps = int(x.reps);
     if (fields.includes('time') && secs) vals.time = +secs[1];
   }
-  ls = { key, sid, x, fields, vals, unit, date, notes: today?.notes ?? '', editing: today, last, before: list.filter(l => l !== today) };
+  ls = { key, sid, x, fields, vals, unit, date, other: {}, notes: today?.notes ?? '', editing: today, last, before: list.filter(l => l !== today) };
   logSheet.innerHTML = `<div class="exb-head"><div><h2 id="logSheetTitle">Log ${esc(x.name.trim())}</h2>
       <p class="hint">${today ? `Logged ${onDay}. Change what you need.` : last ? `Starts at last time's numbers (${logDay(last.logged_on)}). Tap what changed.` : 'Not logged yet.'}</p></div>
     <button type="button" class="exb-close" data-close aria-label="Close">${EXB_ICON.close}</button></div>
@@ -234,12 +247,13 @@ logSheet.addEventListener('change', e => {
 function logFieldHTML(k) {
   const F = LOG_FIELDS[k], id = 'lf-' + k;
   if (F.kind === 'pick') {
-    const v = ls.vals[k], opts = F.opts, isOther = k === 'edge' && v != null && !opts.includes(v);
+    // F.other: an Other chip opens a box for a value not in opts (Edge, Board Angle); ls.other[k] keeps it open.
+    const v = ls.vals[k], opts = F.opts, isOther = !!F.other && v != null && !opts.includes(v), open = isOther || ls.other[k];
     const val = o => k === 'sent' ? o === 'Sent' : o, on = o => k === 'sent' ? v === (o === 'Sent') : v === o;
-    return `<fieldset class="log-pick" data-pick="${k}" data-field="${k}"><legend>${esc(F.label)}</legend><div class="log-chips">${opts.map(o =>
-      `<button type="button" data-chip="${esc(JSON.stringify(val(o)))}" aria-pressed="${on(o)}">${esc(k === 'edge' ? `${o} mm` : o)}</button>`).join('')}${
-      F.other ? `<button type="button" data-chip="other" aria-pressed="${isOther || ls.otherEdge === true}">Other</button>` : ''}</div>${
-      F.other && (isOther || ls.otherEdge) ? `<label class="log-other">Edge in mm<input data-lf="edge" inputmode="decimal" value="${isOther ? v : ''}" autocomplete="off"></label>` : ''}</fieldset>`;
+    return `<fieldset class="log-pick" data-pick="${k}" data-field="${k}"><legend>${esc(F.label)}</legend>${F.sub ? `<span class="hint">${esc(F.sub)}</span>` : ''}<div class="log-chips">${opts.map(o =>
+      `<button type="button" data-chip="${esc(JSON.stringify(val(o)))}" aria-pressed="${on(o)}">${esc(`${o}${F.unit && !F.custom ? F.unit : ''}`)}</button>`).join('')}${
+      F.other ? `<button type="button" data-chip="other" aria-pressed="${!!open}">Other</button>` : ''}</div>${
+      F.other && open ? `<label class="log-other">${esc(F.other)}<input data-lf="${k}" inputmode="decimal" value="${isOther ? v : ''}" autocomplete="off"></label>` : ''}</fieldset>`;
   }
   const sub = k === 'weight' ? `${ls.unit} · <button type="button" class="link" data-unit>Switch to ${ls.unit === 'lb' ? 'kg' : 'lb'}</button>`
     : k === 'sets' && /^\s*\d+\s*$/.test(ls.x.sets ?? '') ? `Plan says ${ls.x.sets.trim()}` : esc(F.sub ?? '');
@@ -287,7 +301,7 @@ logSheet.addEventListener('input', e => {
   if (k === 'notes') ls.notes = e.target.value;
   else {
     const n = num(e.target.value);
-    ls.vals[k] = n == null ? null : k === 'weight' ? n : Math.max(0, k === 'edge' || LOG_FIELDS[k]?.dec ? n : Math.round(n));
+    ls.vals[k] = n == null ? null : k === 'weight' ? n : Math.max(0, LOG_FIELDS[k]?.other || LOG_FIELDS[k]?.dec ? n : Math.round(n));
     logDiff();
   }
 });
@@ -307,13 +321,13 @@ logSheet.addEventListener('click', async e => {
   }
   if (d.chip) {
     const k = b.closest('[data-pick]').dataset.pick;
-    if (d.chip === 'other') { ls.otherEdge = !(ls.otherEdge || (ls.vals.edge != null && !LOG_FIELDS.edge.opts.includes(ls.vals.edge)));
-      if (!ls.otherEdge) ls.vals.edge = null; }
-    else { const v = JSON.parse(d.chip); ls.vals[k] = ls.vals[k] === v ? null : v; if (k === 'edge') ls.otherEdge = false; }
+    if (d.chip === 'other') { ls.other[k] = !(ls.other[k] || (ls.vals[k] != null && !LOG_FIELDS[k].opts.includes(ls.vals[k])));
+      if (!ls.other[k]) ls.vals[k] = null; }
+    else { const v = JSON.parse(d.chip); ls.vals[k] = ls.vals[k] === v ? null : v; ls.other[k] = false; }
     redrawField(k);
     logDiff();
     const again = logSheet.querySelector(`[data-pick="${k}"] [data-chip="${CSS.escape(d.chip)}"]`);
-    if (k === 'edge' && ls.otherEdge) logSheet.querySelector('.log-other input')?.focus(); else again?.focus();
+    if (ls.other[k]) logSheet.querySelector(`[data-field="${k}"] .log-other input`)?.focus(); else again?.focus();
     return;
   }
   if ('del' in d) {

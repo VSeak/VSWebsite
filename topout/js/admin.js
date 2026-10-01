@@ -119,22 +119,26 @@ async function staffForm(s, locs) {
 }
 
 // ---------- Settings ----------
-// Locations, circuit colors (easiest first) and rating areas. Each row saves on its own.
+// Locations, circuit colors (easiest first), areas (rated and tag only) and check-in questions. Each row saves on its own.
 
 async function settingsPage() {
   const t = ++navToken;
   view(loading);
-  const [locs, members, circuits, areas, used] = await Promise.all([
+  const [locs, members, circuits, areas, questions, used] = await Promise.all([
     sb.from('team_locations').select('*').order('position').order('name').then(must),
     sb.from('team_member_locations').select('location_id').then(must),
     sb.from('team_circuits').select('*').order('position').then(must),
     sb.from('team_rating_areas').select('*').order('position').then(must),
-    sb.from('team_checkins').select('circuit_id, ratings').then(must),
+    sb.from('team_checkin_questions').select('*').order('position').then(must),
+    sb.from('team_checkins').select('circuit_id, ratings, coach_ratings, answers, tags').then(must),
   ]);
   if (t !== navToken) return;
   const nMembers = id => members.filter(m => m.location_id === id).length;
   const circUsed = id => used.some(c => c.circuit_id === id);
-  const areaUsed = id => used.some(c => c.ratings[id] != null);
+  const areaUsed = id => used.some(c => c.ratings[id] != null || c.coach_ratings[id] != null || Object.values(c.tags).some(t => t.includes(id)));
+  const questionUsed = id => used.some(c => c.answers[id] != null || c.tags[id] != null);
+  const groupSelect = (val = 'skill') => `<select name="area_group" aria-label="Group">${Object.entries(AREA_GROUPS).map(([k, v]) =>
+    `<option value="${k}"${k === val ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
   const moveBtns = (kind, i, n, id) => `<span class="row tight">
     <button type="button" class="small ghost" data-move="${kind}" data-id="${id}" data-dir="-1"${i ? '' : ' disabled'} aria-label="Move up">↑</button>
     <button type="button" class="small ghost" data-move="${kind}" data-id="${id}" data-dir="1"${i < n - 1 ? '' : ' disabled'} aria-label="Move down">↓</button></span>`;
@@ -168,21 +172,43 @@ async function settingsPage() {
           <input name="name" maxlength="30" required placeholder="New color" aria-label="New color" data-need="Name the color."><button class="primary">+ Add</button></form>
       </section>
 
-      <section class="card"><h2>Rating Areas</h2>
-        <p class="hint">What coaches rate 1–5 on a check-in. Hide one to leave it off new check-ins but keep old ratings.</p>
+      <section class="card"><h2>Areas</h2>
+        <p class="hint">Rated areas get 1–5 ratings on a check-in, from the member and from the coach. Every area can tag an answer
+          (like Want to Improve); Tag Only areas are just for that. The group sorts the Team Summary into Physical, Skill and Mental.
+          Hide one to leave it off new check-ins but keep old ratings.</p>
         ${areas.map((a, i) => `<form class="set-row" data-kind="area" data-id="${a.id}" data-save>
           <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the area.">
+          ${groupSelect(a.area_group)}
+          <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
           <label class="check"><input type="checkbox" name="active"${a.active ? ' checked' : ''}> Shown</label>
           ${moveBtns('area', i, areas.length, a.id)}
+          ${a.rated ? `<button type="button" class="small ghost" data-guide="${a.id}">${a.guide.some(g => g.trim()) ? 'What 1–5 Mean' : '+ What 1–5 Mean'}</button>` : ''}
           <button class="small primary">Save</button>
           ${areaUsed(a.id) ? '' : `<button type="button" class="small ghost danger" data-del="area" data-id="${a.id}">Delete</button>`}</form>`).join('')}
-        <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New rating area" aria-label="New rating area" data-need="Name the area.">
+        <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New area" aria-label="New area" data-need="Name the area.">
+          ${groupSelect()}<label class="check"><input type="checkbox" name="rated" checked> Rated</label>
+          <button class="primary">+ Add</button></form>
+        <p class="hint">What 1–5 Mean: a line for each number, shown when a coach taps it, so every coach (and member) rates the same way.</p>
+      </section>
+
+      <section class="card"><h2>Check-In Questions</h2>
+        <p class="hint">What a coach asks at a check-in, in this order. Every answer is optional. Area Tags lets the coach tag the answer
+          with areas, which the Team Summary counts. Hide one to leave it off new check-ins but keep old answers.</p>
+        ${questions.map((q, i) => `<form class="set-row" data-kind="question" data-id="${q.id}" data-save>
+          <input name="name" maxlength="80" required value="${esc(q.prompt)}" aria-label="Question" data-need="Write the question.">
+          <input name="hint" maxlength="120" value="${esc(q.hint)}" placeholder="Example answer (optional)" aria-label="Example answer">
+          <label class="check"><input type="checkbox" name="tags"${q.tags ? ' checked' : ''}> Area Tags</label>
+          <label class="check"><input type="checkbox" name="active"${q.active ? ' checked' : ''}> Shown</label>
+          ${moveBtns('question', i, questions.length, q.id)}
+          <button class="small primary">Save</button>
+          ${questionUsed(q.id) ? '' : `<button type="button" class="small ghost danger" data-del="question" data-id="${q.id}">Delete</button>`}</form>`).join('')}
+        <form class="row add-row" data-kind="question" data-save><input name="name" maxlength="80" required placeholder="New question" aria-label="New question" data-need="Write the question.">
           <button class="primary">+ Add</button></form>
       </section>
     </div>`, { keepScroll: true });
 
-  const TABLE = { loc: 'team_locations', circuit: 'team_circuits', area: 'team_rating_areas' };
-  const LIST = { loc: locs, circuit: circuits, area: areas };
+  const TABLE = { loc: 'team_locations', circuit: 'team_circuits', area: 'team_rating_areas', question: 'team_checkin_questions' };
+  const LIST = { loc: locs, circuit: circuits, area: areas, question: questions };
   app.onsubmit = e => {
     e.preventDefault();
     const form = e.target, kind = form.dataset.kind, id = form.dataset.id, f = new FormData(form);
@@ -196,7 +222,15 @@ async function settingsPage() {
         if (row.v_max != null && row.v_max < row.v_min) return fieldError(form.elements.v_max, 'The top can’t be below the bottom.');
       }
     }
-    if (kind === 'area' && id) row.active = !!f.get('active');
+    if (kind === 'area') {
+      row.area_group = f.get('area_group');
+      row.rated = !!f.get('rated');
+      if (id) row.active = !!f.get('active');
+    }
+    if (kind === 'question') {
+      row.prompt = row.name; delete row.name;
+      if (id) Object.assign(row, { hint: f.get('hint').trim(), tags: !!f.get('tags'), active: !!f.get('active') });
+    }
     busy(e.submitter, async () => {
       if (id) await sb.from(TABLE[kind]).update(row).eq('id', id).then(must);
       else await sb.from(TABLE[kind]).insert({ ...row, position: Math.max(0, ...LIST[kind].map(x => x.position)) + 1 }).then(must);
@@ -205,7 +239,8 @@ async function settingsPage() {
     });
   };
   app.onclick = async e => {
-    const mv = e.target.closest('[data-move]'), del = e.target.closest('[data-del]');
+    const mv = e.target.closest('[data-move]'), del = e.target.closest('[data-del]'), gd = e.target.closest('[data-guide]');
+    if (gd) return guideForm(areas.find(a => a.id === gd.dataset.guide));
     if (mv) {
       const list = LIST[mv.dataset.move], i = list.findIndex(x => x.id === mv.dataset.id), j = i + +mv.dataset.dir;
       // Renumber the whole list in its new order (positions may have gaps or ties).
@@ -218,10 +253,26 @@ async function settingsPage() {
     }
     if (del) {
       const item = LIST[del.dataset.del].find(x => x.id === del.dataset.id);
-      if (!await confirmDelete(`Delete ${item.name}?`, 'It will be gone for good.')) return;
+      if (!await confirmDelete(`Delete ${item.name || item.prompt}?`, 'It will be gone for good.')) return;
       busy(del, async () => { await sb.from(TABLE[del.dataset.del]).delete().eq('id', item.id).then(must); flash('Deleted.'); redraw(); });
     }
   };
+}
+
+// What each number 1–5 means for one area: shown in the check-in form when a coach taps a number. A blank line falls
+// back to the general guide (RATING_GUIDE).
+async function guideForm(a) {
+  const f = await ask({ title: `${a.name}: What 1–5 Mean`, ok: 'Save', wide: true,
+    body: `<p class="hint">Describe what a coach would see at each level, so two coaches would pick the same number.
+      A blank line uses the general guide (shown as the example).</p>
+      ${[0, 1, 2, 3, 4].map(i => `<label>${i + 1}<textarea name="g${i}" rows="2" maxlength="200"
+        placeholder="${esc(RATING_GUIDE[i].replace(/<\/?b>/g, ''))}">${esc(a.guide[i] || '')}</textarea></label>`).join('')}` });
+  if (!f) return;
+  const guide = [0, 1, 2, 3, 4].map(i => f.get('g' + i).trim());
+  await busy(null, async () => {
+    await sb.from('team_rating_areas').update({ guide: guide.some(Boolean) ? guide : [] }).eq('id', a.id).then(must);
+    flash('Saved.'); redraw();
+  });
 }
 
 // ---------- Someone the other app already knows ----------

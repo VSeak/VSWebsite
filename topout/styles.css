@@ -284,9 +284,16 @@ details > summary { cursor: pointer; font-weight: 700; margin-top: .8rem; }
 .delta { font-size: .95rem; font-weight: 800; }
 .delta.up { color: var(--ok); }
 .delta.down { color: var(--danger); }
-.ratings { display: grid; gap: .35rem; margin-bottom: .8rem; }
-.rating { display: grid; grid-template-columns: minmax(7rem, 1fr) auto 2.6rem; align-items: center; gap: .7rem; font-size: .92rem; }
-.rating b { display: flex; gap: .3rem; }
+.answers { display: grid; gap: .65rem; margin-bottom: .9rem; }
+.answer > small { display: block; color: var(--muted); font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.answer .chips { margin-top: .35rem; }
+/* Ratings on a check-in: the area, then Them and Coach. */
+.ratings { display: grid; grid-template-columns: minmax(5.5rem, 1fr) auto auto; gap: .35rem .9rem; align-items: center; font-size: .92rem; margin-bottom: .9rem; }
+.ratings > small { color: var(--muted); font-size: .75rem; font-weight: 700; }
+.rcell { display: flex; align-items: center; gap: .4rem; }
+.rcell b { display: flex; gap: .2rem; min-width: 1.9rem; }
+.pips.sm { gap: 3px; }
+.pips.sm i { width: .8rem; height: .5rem; }
 .pips { display: flex; gap: 4px; }
 .pips i { width: 1.4rem; height: .55rem; border-radius: 999px; background: var(--sunk); }
 .pips i.on { background: var(--accent); }
@@ -295,10 +302,21 @@ details > summary { cursor: pointer; font-weight: 700; margin-top: .8rem; }
 details.history { border-top: 1px solid var(--line); padding: .15rem 0; }
 details.history > summary { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-weight: 400; margin: .5rem 0; list-style-position: outside; }
 details.history[open] { padding-bottom: .6rem; }
-.rate-guide { display: grid; grid-template-columns: auto 1fr; gap: .2rem .6rem; margin: -.2rem 0 .3rem; font-size: .88rem; color: var(--muted); }
-.rate-guide dt { font-weight: 800; color: var(--accent-text); }
-.rate-guide dd { margin: 0; }
-.rate-guide b { color: var(--ink-2); }
+/* The check-in form: questions with area tags, then each rated area with a Them row and a Coach row. */
+.q-block { margin-bottom: .8rem; }
+.tag-pick { display: flex; flex-direction: column; gap: .35rem; margin-top: .45rem; }
+.tag-group { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.tag-group > small { color: var(--muted); font-size: .75rem; font-weight: 700; min-width: 4.2rem; }
+.chip-check { display: inline-block; font-weight: 600; }
+.chip-check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.chip-check span { display: inline-flex; padding: .28rem .7rem; border-radius: 999px; border: 1.5px solid var(--line); font-size: .85rem; cursor: pointer; }
+.chip-check input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip-check input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.rate-area { border-top: 1px solid var(--line); padding: .5rem 0 .4rem; }
+.rate-area > b { display: block; font-size: .95rem; }
+.rate-area .rate-row > span:first-child { color: var(--muted); }
+.rate-desc { font-size: .88rem; color: var(--ink-2); margin: .25rem 0 0; }
+.rate-desc:empty { display: none; }
 .rate-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; padding: .2rem 0; font-weight: 600; font-size: .92rem; }
 .rate-pick { display: flex; gap: .25rem; align-items: center; }
 .rate-pick label { display: block; }
@@ -313,6 +331,8 @@ details.history[open] { padding-bottom: .6rem; }
 @media (max-width: 400px) { .settings-grid { grid-template-columns: 1fr; } }
 .set-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; padding: .5rem 0; border-top: 1px solid var(--line); }
 .set-row > input[name="name"] { flex: 1 1 8rem; }
+.set-row > input[name="hint"] { flex: 2 1 12rem; }
+.set-row select, .add-row select { width: auto; flex: none; }
 /* Lifted above the next row's top line so the bottom of the orange edge isn't covered. */
 .set-row.unsaved { position: relative; z-index: 1; margin: 3px 0; border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));
   padding-left: .5rem; padding-right: .5rem; }

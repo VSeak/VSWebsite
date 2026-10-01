@@ -9,7 +9,7 @@ let notesAll = false;
 async function memberPage(id) {
   const t = ++navToken;
   view(loading);
-  const [m, goals, notes, checkins, circuits, areas, locs] = await Promise.all([
+  const [m, goals, notes, checkins, circuits, areas, questions, locs] = await Promise.all([
     sb.from('team_members').select('*, teams:team_member_locations(location_id)').eq('id', id).maybeSingle().then(must),
     sb.from('team_goals').select('*').eq('member_id', id).order('created_at').then(must),
     sb.from('team_coach_notes').select('*').eq('member_id', id)
@@ -17,6 +17,7 @@ async function memberPage(id) {
     sb.from('team_checkins').select('*').eq('member_id', id).order('checkin_date', { ascending: false }).order('created_at', { ascending: false }).then(must),
     sb.from('team_circuits').select('*').order('position').then(must),
     sb.from('team_rating_areas').select('*').order('position').then(must),
+    sb.from('team_checkin_questions').select('*').order('position').then(must),
     sb.from('team_locations').select('id, name').order('position').then(must),
   ]);
   if (t !== navToken) return;
@@ -27,7 +28,7 @@ async function memberPage(id) {
   const mine = locs.filter(l => m.teams.includes(l.id));
   const loc = mine.find(l => l.id === lastLoc) || mine[0];
   m.backTo = loc && lastLoc !== 'members' ? `#/loc/${loc.id}` : '#/members';
-  const ctx = { m, goals, notes, checkins, circuits, areas, locs };
+  const ctx = { m, goals, notes, checkins, circuits, areas, questions, locs };
   const status = [mine.map(l => l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
     .filter(Boolean).map(esc).join(' · ');
   view(`${crumbs([['Home', '#/'], m.backTo === '#/members' ? ['Team Members', m.backTo] : [loc.name, m.backTo], [m.name]])}

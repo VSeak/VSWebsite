@@ -112,19 +112,71 @@ insert into public.team_circuits (name, color, position, v_min, v_max) values
   ('White',  '#F4F4F4', 9, 8, 10),
   ('Mint',   '#A8DCD1', 10, 11, null);
 
--- What coaches rate 1–5 on a check-in. Admins edit the list; hiding one (active = false) keeps old ratings.
+-- Areas: what a check-in rates 1–5 (rated) and what an answer can be tagged with (every area). Admins edit the list;
+-- hiding one (active = false) keeps old ratings. guide = what each number 1–5 means, so coaches rate the same way.
 create table public.team_rating_areas (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(trim(name)) between 1 and 40),
   name_key text generated always as (lower(trim(name))) stored unique,
   position int not null,
-  active boolean not null default true
+  active boolean not null default true,
+  area_group text not null default 'skill' check (area_group in ('physical', 'skill', 'mental')),
+  rated boolean not null default true,   -- false = tag only
+  guide text[] not null default '{}' check (cardinality(guide) in (0, 5))
 );
-insert into public.team_rating_areas (name, position) values
-  ('Technique', 1), ('Strength', 2), ('Endurance', 3), ('Mental Game', 4), ('Footwork', 5);
+insert into public.team_rating_areas (name, position, area_group, rated, guide) values
+  ('Technique', 1, 'skill', true, array[
+    'Climbs mostly with arms; moves feel stiff or random.',
+    'Knows basic moves (flagging, drop knees) but uses them only on easy climbs.',
+    'Picks the right move on most climbs at their level; smooth on familiar styles.',
+    'Adapts to new styles and harder climbs; rarely wastes a move.',
+    'Reads and climbs efficiently in any style; others copy their beta.']),
+  ('Strength', 2, 'physical', true, array[
+    'Struggles to hold small edges or pull through steep moves.',
+    'Holds good edges; steep or crimpy climbs at their level shut them down.',
+    'Strength matches their grade; rarely the main reason they fall.',
+    'Strength lets them try climbs above their grade; strong on the boards.',
+    'Powerful on any angle and hold type.']),
+  ('Endurance', 3, 'physical', true, array[
+    'Pumped or tired after a few climbs; needs long rests.',
+    'Lasts part of a session; quality drops off fast.',
+    'Climbs a full session at a steady level; recovers between tries.',
+    'Stays strong through long sessions and long problems.',
+    'Barely fades; many hard tries in a session or a comp round.']),
+  ('Mental Game', 4, 'mental', true, array[
+    'Hesitates or backs off when scared, pumped or watched.',
+    'Commits on familiar climbs; nerves or a fall throw them off.',
+    'Commits on most climbs at their level; bounces back after falls.',
+    'Calm and focused at their limit, in comps and on scary moves.',
+    'Thrives under pressure; makes good decisions when it counts.']),
+  ('Footwork', 5, 'skill', true, array[
+    'Feet cut or scrape often; looks at hands, not feet.',
+    'Places feet, but often readjusts or misses small holds.',
+    'Precise on most holds; quiet feet on easier climbs.',
+    'Precise on small holds at their limit; heel and toe hooks when needed.',
+    'Feet drive the climbing; finds and uses footholds others miss.']),
+  ('Flexibility', 6, 'physical', false, '{}'),
+  ('Volume', 7, 'skill', false, '{}'),
+  ('Comp Prep', 8, 'mental', false, '{}');
+
+-- What a coach asks at a check-in. Admins edit the list; hiding one keeps old answers. tags = the answer can be tagged
+-- with areas (Want to Improve), which the Team Summary counts.
+create table public.team_checkin_questions (
+  id uuid primary key default gen_random_uuid(),
+  prompt text not null check (length(trim(prompt)) between 1 and 80),
+  hint text not null default '' check (length(hint) <= 120),   -- the example shown in the empty box
+  position int not null,
+  active boolean not null default true,
+  tags boolean not null default false
+);
+insert into public.team_checkin_questions (prompt, hint, position, tags) values
+  ('Proud Of', 'E.g. sent their first Black, stuck with the board all winter', 1, false),
+  ('Want to Improve', 'E.g. slab feet, trusting high steps, finishing sessions strong', 2, true),
+  ('Competition Thoughts', 'E.g. how Boulderfest went and how they felt about it', 3, false);
 
 -- A check-in: a snapshot of a member on a day, whenever the coach wants (monthly, per season, yearly).
--- Every grade is optional. V grades are 0–17. Board angles are degrees. ratings = {"<rating area id>": 1..5}.
+-- Every grade is optional. V grades are 0–17. Board angles are degrees. ratings = the member's own {"<area id>": 1..5},
+-- coach_ratings = the coach's. answers = {"<question id>": text}, tags = {"<question id>": ["<area id>", …]}.
 create table public.team_checkins (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.team_members (id) on delete cascade,
@@ -139,6 +191,9 @@ create table public.team_checkins (
     '5.10a', '5.10b', '5.10c', '5.10d', '5.11a', '5.11b', '5.11c', '5.11d', '5.12a', '5.12b', '5.12c', '5.12d',
     '5.13a', '5.13b', '5.13c', '5.13d', '5.14a', '5.14b', '5.14c', '5.14d', '5.15a', '5.15b', '5.15c', '5.15d')),
   ratings jsonb not null default '{}' check (jsonb_typeof(ratings) = 'object'),
+  coach_ratings jsonb not null default '{}' check (jsonb_typeof(coach_ratings) = 'object'),
+  answers jsonb not null default '{}' check (jsonb_typeof(answers) = 'object'),
+  tags jsonb not null default '{}' check (jsonb_typeof(tags) = 'object'),
   notes text not null default '',
   author_id uuid references auth.users (id) on delete set null,
   author_name text not null default '',
@@ -146,6 +201,21 @@ create table public.team_checkins (
   edited_at timestamptz
 );
 create index on public.team_checkins (member_id, checkin_date desc);
+
+-- Team Focus: what a location's team works on, written by its coaches from the check-ins. Dated, so earlier ones stay
+-- as history. Any coach at the location writes and changes them (signed by the first writer).
+create table public.team_focus (
+  id uuid primary key default gen_random_uuid(),
+  location_id uuid not null references public.team_locations (id) on delete cascade,
+  focus_date date not null default current_date,
+  body text not null check (length(trim(body)) > 0),
+  area_ids uuid[] not null default '{}',
+  author_id uuid references auth.users (id) on delete set null,
+  author_name text not null default '',
+  created_at timestamptz not null default now(),
+  edited_at timestamptz
+);
+create index on public.team_focus (location_id, focus_date desc);
 
 -- The calendar. location_ids: the locations it shows at, or null = every location (only admins add those).
 -- kind: competition, practice (an agenda: what to work on that day), open_house, other.
@@ -311,6 +381,8 @@ create trigger team_stamp_author before insert or update on public.team_checkins
   for each row execute function public.team_stamp_author();
 create trigger team_stamp_author before insert or update on public.team_events
   for each row execute function public.team_stamp_author();
+create trigger team_stamp_author before insert or update on public.team_focus
+  for each row execute function public.team_stamp_author();
 
 -- A deleted location comes off its events; an event that was only there goes too.
 create function public.team_drop_event_location() returns trigger
@@ -363,18 +435,32 @@ $$;
 create trigger team_protect_owner before update or delete on public.team_staff
   for each row execute function public.team_protect_owner();
 
--- A rating area that a check-in uses can be hidden but not deleted.
+-- An area a check-in uses (either rating or a tag) can be hidden but not deleted. Same for a question with answers.
 create function public.team_area_in_use() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if exists (select 1 from public.team_checkins where ratings ? old.id::text) then
-    raise exception 'Check-ins use this rating area. Hide it instead.';
+  if exists (select 1 from public.team_checkins c
+             where c.ratings ? old.id::text or c.coach_ratings ? old.id::text
+                or exists (select 1 from jsonb_each(c.tags) t where t.value ? old.id::text)) then
+    raise exception 'Check-ins use this area. Hide it instead.';
   end if;
   return old;
 end;
 $$;
 create trigger team_area_in_use before delete on public.team_rating_areas
   for each row execute function public.team_area_in_use();
+
+create function public.team_question_in_use() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from public.team_checkins where answers ? old.id::text or tags ? old.id::text) then
+    raise exception 'Check-ins have answers to this question. Hide it instead.';
+  end if;
+  return old;
+end;
+$$;
+create trigger team_question_in_use before delete on public.team_checkin_questions
+  for each row execute function public.team_question_in_use();
 
 -- A goal's done_at is the day it left current (the page can change it for an achieved goal).
 create function public.team_goal_done() returns trigger
@@ -403,6 +489,8 @@ alter table public.team_circuits enable row level security;
 alter table public.team_rating_areas enable row level security;
 alter table public.team_checkins enable row level security;
 alter table public.team_events enable row level security;
+alter table public.team_checkin_questions enable row level security;
+alter table public.team_focus enable row level security;
 
 -- Staff read each other (coworkers' names); admins change them.
 create policy "staff: read" on public.team_staff for select to authenticated using ((select public.team_is_staff()));
@@ -458,6 +546,13 @@ create policy "admin: everything" on public.team_circuits for all to authenticat
 create policy "staff: read" on public.team_rating_areas for select to authenticated using ((select public.team_is_staff()));
 create policy "admin: everything" on public.team_rating_areas for all to authenticated
   using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
+create policy "staff: read" on public.team_checkin_questions for select to authenticated using ((select public.team_is_staff()));
+create policy "admin: everything" on public.team_checkin_questions for all to authenticated
+  using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
+
+-- Team Focus: any coach at the location.
+create policy "staff: everything" on public.team_focus for all to authenticated
+  using (public.team_can_location(location_id)) with check (public.team_can_location(location_id));
 
 -- Calendar: staff read the events at their locations and every-location events; they change an event only when
 -- they have all its locations. Admins change any (and only they add every-location ones).

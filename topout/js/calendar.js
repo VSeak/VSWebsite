@@ -5,6 +5,7 @@
 
 let calMonth = null;   // first of the shown month, YYYY-MM-01
 let calPick = null;    // the picked day, YYYY-MM-DD
+let calOpen = null;    // an event to open when the calendar draws (clicked in Home's Coming Up): { id, date }
 const UPCOMING = 8;
 const MAX_REPEATS = 200;
 
@@ -20,7 +21,9 @@ const alsoAt = (e, loc, locs) => !e.location_ids ? 'All Locations'
 
 async function calendarTab(loc, head, t) {
   // Coming to the calendar starts at this month. A redraw (a picked day, another month, a save) keeps the place.
-  if (!redrawing || !calPick) { calPick = today(); calMonth = calPick.slice(0, 8) + '01'; }
+  // An event clicked on Home starts at its day.
+  if (calOpen) { calPick = calOpen.date; calMonth = calPick.slice(0, 8) + '01'; }
+  else if (!redrawing || !calPick) { calPick = today(); calMonth = calPick.slice(0, 8) + '01'; }
   const first = day(calMonth), gridStart = addDays(calMonth, -first.getDay());
   const from = [gridStart, today()].sort()[0];
   const [events, locs] = await Promise.all([
@@ -82,6 +85,11 @@ async function calendarTab(loc, head, t) {
     } else if (ev) showEvent(events.find(x => x.id === ev.dataset.event), loc, locs);
   };
   $('#addEvent').onclick = () => editEvent(null, loc, locs);
+  if (calOpen) {
+    const e = events.find(x => x.id === calOpen.id);
+    calOpen = null;
+    if (e) showEvent(e, loc, locs);
+  }
 }
 
 const locsText = (e, locs) => !e.location_ids ? 'All Locations' : e.location_ids.map(id => locs.find(l => l.id === id)?.name).filter(Boolean).join(', ');
@@ -128,7 +136,8 @@ function repeatDates(from, until, weekdays) {
 }
 
 async function editEvent(e, loc, locs) {
-  const v = e || { kind: 'practice', title: '', event_date: calPick || today(), end_date: null, start_time: null, end_time: null, place: '', notes: '',
+  // A new event starts as a practice at the usual time, 6 to 8 PM.
+  const v = e || { kind: 'practice', title: '', event_date: calPick || today(), end_date: null, start_time: '18:00', end_time: '20:00', place: '', notes: '',
     location_ids: [loc.id] };
   const allDay = !v.start_time;
   const pickLocs = me.isAdmin || locs.length > 1;   // a coach at one location has nothing to pick

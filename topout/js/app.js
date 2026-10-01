@@ -105,6 +105,7 @@ function route() {
   const [, page, id, sub] = location.hash.split('/');
   const go = page === 'loc' && id ? locationPage(id, sub)
     : page === 'member' && id ? memberPage(id)
+    : page === 'members' ? membersPage()
     : me.isAdmin && page === 'staff' ? staffPage()
     : me.isAdmin && page === 'settings' ? settingsPage()
     : homePage();
@@ -222,7 +223,7 @@ async function homePage() {
   view(loading);
   const [locs, members, events] = await Promise.all([
     sb.from('team_locations').select('id, name').order('position').order('name').then(must),
-    sb.from('team_members').select('location_id').is('left_on', null).then(must),
+    sb.from('team_member_locations').select('location_id, member:team_members!inner(left_on)').is('member.left_on', null).then(must),
     sb.from('team_events').select('id, location_ids, kind, title, event_date, end_date, start_time, end_time')
       .or(`event_date.gte.${today()},end_date.gte.${today()}`).order('event_date').order('start_time', { nullsFirst: true }).limit(40).then(must),
   ]);
@@ -255,13 +256,20 @@ async function homePage() {
             href: `#/loc/${locs.find(l => isAt(e, l.id))?.id}/calendar` })).join('')
             : '<p class="none-up">Nothing coming up. Add competitions, practices and open houses on a location’s calendar.</p>'}
         </section>
-        ${me.isAdmin ? `<div class="tiles">
+        <div class="tiles">
+          <a class="card tile" href="#/members"><div><h2>Team Members</h2><p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'}, and which teams they're on.</p></div>${ICON_ARROW}</a>
+        ${me.isAdmin ? `
           <a class="card tile" href="#/staff"><div><h2>Staff</h2><p class="muted">Admins and coaches, and where they coach.</p></div>${ICON_ARROW}</a>
-          <a class="card tile" href="#/settings"><div><h2>Settings</h2><p class="muted">Locations, circuit colors and rating areas.</p></div>${ICON_ARROW}</a>
-        </div>` : ''}
+          <a class="card tile" href="#/settings"><div><h2>Settings</h2><p class="muted">Locations, circuit colors and rating areas.</p></div>${ICON_ARROW}</a>` : ''}
+        </div>
       </aside>
     </div>`);
   $('#addLoc')?.addEventListener('click', addLocation);
+  // A Coming Up event opens on the calendar, at its day (today, for one that has already started).
+  app.onclick = e => {
+    const ev = events.find(x => x.id === e.target.closest('a.todo[data-open]')?.dataset.open);
+    if (ev) calOpen = { id: ev.id, date: ev.event_date < today() ? today() : ev.event_date };
+  };
 }
 
 async function addLocation() {
@@ -283,7 +291,7 @@ function eventWhen(e) {
   return e.start_time ? `${days} · ${fmtTime(e.start_time)}${e.end_time ? ' – ' + fmtTime(e.end_time) : ''}` : `${days} · All day`;
 }
 function eventRow(e, { where = "", href = "" } = {}) {
-  const tag = href ? `a href="${href}"` : `button type="button" data-event="${e.id}"`;
+  const tag = href ? `a href="${href}" data-open="${e.id}"` : `button type="button" data-event="${e.id}"`;
   return `<${tag} class="todo">${dayBlock(e.event_date)}
     <span><b>${esc(e.title)}</b><span>${esc(eventWhen(e))}${where ? ' · ' + esc(where) : ''}</span></span>
     <span class="kind k-${e.kind}">${KINDS[e.kind]}</span></${href ? "a" : "button"}>`;

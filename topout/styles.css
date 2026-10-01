@@ -113,6 +113,7 @@ input, select, textarea { font: inherit; font-weight: 400; color: var(--ink); ba
 textarea { resize: vertical; field-sizing: content; min-height: 3.2em; }
 input[type="color"] { padding: .15rem; width: 2.6rem; height: 2.4rem; flex: none; }
 input[type="number"] { width: 4.5rem; }
+.two input[type="number"] { width: 100%; }
 input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); }
 .field-error { display: block; color: var(--danger); font-size: .85rem; font-weight: 600; margin-top: .25rem; }
 fieldset > .field-error, .two + .field-error { margin-top: -.3rem; }
@@ -160,6 +161,7 @@ h1.big { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 700; margin: 0; let
 .seg button.on { background: var(--card); box-shadow: var(--shadow); }
 .count { color: var(--muted); font-weight: 500; }
 .list-tools { margin-bottom: .9rem; flex-wrap: wrap; }
+.team-filter { width: auto; }
 
 /* Home */
 .home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.4rem; align-items: start; }
@@ -167,7 +169,7 @@ h1.big { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 700; margin: 0; let
 .section-head { margin-bottom: .7rem; }
 .loc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
 .loc-card { display: block; text-decoration: none; color: var(--ink); margin: 0; position: relative; overflow: hidden; transition: transform .12s, border-color .12s; }
-.loc-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: repeating-linear-gradient(90deg, var(--accent) 0 14px, var(--navy) 14px 22px); }
+.loc-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: var(--accent); }
 .loc-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .loc-top { display: flex; align-items: center; gap: .5rem; margin-top: .3rem; }
 .loc-top h2 { margin: 0; font-size: 1.45rem; flex: 1; }
@@ -268,7 +270,8 @@ details > summary { cursor: pointer; font-weight: 700; margin-top: .8rem; }
 .note-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .25rem; }
 .note-acts { margin-left: auto; display: flex; gap: .2rem; }
 .note-body { overflow-wrap: anywhere; }
-.danger-zone { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.danger-zone { margin-top: 1rem; padding: 1rem 0 .5rem; border-top: 1px solid var(--line); }
+.danger-zone + .hint { margin-top: 0; }
 
 /* Check-ins */
 .grades { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: .5rem; margin-bottom: .9rem; }
@@ -303,7 +306,8 @@ details.history[open] { padding-bottom: .6rem; }
 @media (max-width: 400px) { .settings-grid { grid-template-columns: 1fr; } }
 .set-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; padding: .5rem 0; border-top: 1px solid var(--line); }
 .set-row > input[name="name"] { flex: 1 1 8rem; }
-.set-row.unsaved { border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));
+/* Lifted above the next row's top line so the bottom of the orange edge isn't covered. */
+.set-row.unsaved { position: relative; z-index: 1; margin: 3px 0; border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));
   padding-left: .5rem; padding-right: .5rem; }
 .vrange { display: inline-flex; align-items: center; gap: .2rem; font-weight: 700; color: var(--muted); }
 .vrange input { width: 3.6rem; padding: .4rem; }
@@ -322,7 +326,7 @@ dialog.wide { width: min(620px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgba(16, 19, 31, .5); }
 dialog form { display: flex; flex-direction: column; gap: .8rem; }
 dialog h3 { margin: .3rem 0 0; }
-dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: -1.3rem; background: var(--card); padding: .6rem 0 .2rem; }
+dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: -1.3rem; background: var(--card); padding: .6rem 0 .6rem; }
 #flash { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); z-index: 30; padding: .7rem 1.1rem; border-radius: 14px;
   background: var(--navy); color: var(--navy-ink); font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); max-width: calc(100vw - 32px); }
 #flash.error { background: var(--danger); color: #fff; }

@@ -10,7 +10,7 @@ async function memberPage(id) {
   const t = ++navToken;
   view(loading);
   const [m, goals, notes, checkins, circuits, areas, locs] = await Promise.all([
-    sb.from('team_members').select('*').eq('id', id).maybeSingle().then(must),
+    sb.from('team_members').select('*, teams:team_member_locations(location_id)').eq('id', id).maybeSingle().then(must),
     sb.from('team_goals').select('*').eq('member_id', id).order('created_at').then(must),
     sb.from('team_coach_notes').select('*').eq('member_id', id)
       .order('note_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).then(must),
@@ -22,11 +22,15 @@ async function memberPage(id) {
   if (t !== navToken) return;
   if (!m) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Member Not Found</h2>
     <p class="muted">They may have been deleted, or they're at a location you aren't assigned to.</p></section>`);
-  const loc = locs.find(l => l.id === m.location_id);
+  m.teams = m.teams.map(x => x.location_id);
+  // Breadcrumbs go back to the location page they came from, else their first team.
+  const mine = locs.filter(l => m.teams.includes(l.id));
+  const loc = mine.find(l => l.id === lastLoc) || mine[0];
+  m.backTo = loc ? `#/loc/${loc.id}` : '#/members';
   const ctx = { m, goals, notes, checkins, circuits, areas, locs };
-  const status = [loc?.name, m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
+  const status = [mine.map(l => l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
     .filter(Boolean).map(esc).join(' · ');
-  view(`${crumbs([['Home', '#/'], [loc?.name || 'Location', `#/loc/${m.location_id}`], [m.name]])}
+  view(`${crumbs([['Home', '#/'], loc ? [loc.name, m.backTo] : ['Team Members', '#/members'], [m.name]])}
     <div class="page-head"><span class="ini big-ini">${esc(initials(m.name))}</span>
       <div><h1 class="big">${esc(m.name)}${pronounsTag(m.pronouns)}${m.left_on ? ' <span class="tag">Former</span>' : ''}</h1>
       <p class="muted">${status}</p></div></div>
@@ -109,14 +113,18 @@ function coachNotesHTML({ notes }) {
 // ---------- Details ----------
 
 function detailsHTML(m, locs) {
+  const hidden = m.teams.filter(id => !locs.some(l => l.id === id)).length;   // teams at locations this coach can't see
   return `<section class="card"><h2>Details</h2>
     <form id="detailsForm" class="stack" data-save>
       <div class="two"><label>First Name<input name="first_name" maxlength="60" required value="${esc(m.first_name)}" data-need="Enter their first name."></label>
         <label>Last Name<input name="last_name" maxlength="60" required value="${esc(m.last_name)}" data-need="Enter their last name."></label></div>
       ${pronounsField(m.pronouns, true)}
       <label>Email <span class="muted">(optional)</span><input type="email" name="email" value="${esc(m.email || '')}"></label>
-      <div class="two"><label>Joined the Team<input type="date" name="joined_on" value="${m.joined_on || ''}" required data-need="Pick the day they joined."></label>
-        <label>Location<select name="location_id">${locs.map(l => `<option value="${l.id}"${l.id === m.location_id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label></div>
+      <label>Joined the Team<input type="date" name="joined_on" value="${m.joined_on || ''}" required data-need="Pick the day they joined."></label>
+      <fieldset><legend>Teams</legend>
+        ${locs.map(l => `<label class="check"><input type="checkbox" name="team" value="${l.id}"${m.teams.includes(l.id) ? ' checked' : ''}> ${esc(l.name)}</label>`).join('')}
+        ${hidden ? `<p class="hint">Also on ${hidden === 1 ? 'a team' : hidden + ' teams'} you don't coach.</p>` : ''}
+      </fieldset>
       <button class="primary">Save Details</button>
     </form>
     <div class="row wrap danger-zone">
@@ -146,14 +154,25 @@ function bindMember(ctx) {
   $('#detailsForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
+    // Teams: add the newly ticked first, so they can still see the member while taking off the rest.
+    const ticked = f.getAll('team'), seen = ctx.locs.map(l => l.id);
+    const add = ticked.filter(id => !m.teams.includes(id)), drop = m.teams.filter(id => seen.includes(id) && !ticked.includes(id));
+    if (!ticked.length && m.teams.every(id => seen.includes(id))) {
+      const box = e.target.querySelector('[name="team"]');
+      fieldError(box, 'Pick at least one team.'); box.focus(); return;
+    }
     busy(e.submitter, async () => {
-      const moved = f.get('location_id') !== m.location_id;
       await upd({ first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f),
-        email: f.get('email').trim().toLowerCase() || null, joined_on: f.get('joined_on') || null, location_id: f.get('location_id') });
-      flash(moved ? `Moved to ${ctx.locs.find(l => l.id === f.get('location_id'))?.name}.` : 'Details saved.');
-      e.target.reset(); redraw();
+        email: f.get('email').trim().toLowerCase() || null, joined_on: f.get('joined_on') || null });
+      if (add.length) await sb.from('team_member_locations').insert(add.map(location_id => ({ member_id: m.id, location_id }))).then(must);
+      if (drop.length) await sb.from('team_member_locations').delete().eq('member_id', m.id).in('location_id', drop).then(must);
+      flash('Details saved.');
+      e.target.reset();
+      // Taken off every team they could see here: back to the list.
+      if (!ticked.length) goTo('#/members'); else redraw();
     });
   };
+  $('#detailsForm').addEventListener('change', e => { if (e.target.name === 'team') clearFieldError(e.target.form.querySelector('[name="team"]')); });
   $('#goalForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -180,7 +199,7 @@ function bindMember(ctx) {
   $('#delMember').onclick = async e => {
     if (!await confirmDelete('Delete Member?', `This deletes ${esc(m.name)} and all their goals, notes and check-ins. It can't be undone.
       If they just left, use Left the Team instead.`)) return;
-    busy(e.target, async () => { await sb.from('team_members').delete().eq('id', m.id).then(must); flash('Member deleted.'); goTo('#/loc/' + m.location_id); });
+    busy(e.target, async () => { await sb.from('team_members').delete().eq('id', m.id).then(must); flash('Member deleted.'); goTo(m.backTo); });
   };
 
   app.onclick = async e => {

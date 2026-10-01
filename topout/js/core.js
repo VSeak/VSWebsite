@@ -64,7 +64,7 @@ function msgOf(e) {
   if (/invalid login credentials/i.test(m)) return "That email and password don't match. Forgot your password? Tap Forgot Password below.";
   if (/failed to fetch/i.test(m)) return "Couldn't reach the server. Check your connection and try again.";
   if (/does not exist|could not find the function|schema cache/i.test(m)) return m + ' (Has topout/supabase/schema.sql been run?)';
-  if (/team_members_location_id_fkey/.test(m)) return 'This location still has team members. Move or delete them first.';
+  if (/team_member(s|_locations)_location_id_fkey/.test(m)) return 'This location still has team members. Take them off this team or delete them first.';
   if (/team_checkins_circuit_id_fkey/.test(m)) return 'Check-ins use this circuit, so it can’t be deleted. Rename it instead.';
   if (/duplicate key.*name_key/.test(m)) return 'That name is already taken.';
   if (/duplicate key.*team_staff_email/.test(m)) return 'That email is already on the staff list.';

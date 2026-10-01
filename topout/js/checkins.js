@@ -85,14 +85,19 @@ async function checkinForm(c, { m, checkins, circuits, areas }) {
       <div class="two"><label>Boulder (Outdoor/Other)<select name="boulder_grade">${vOpts(v.boulder_grade)}</select></label>
         <label>Route<select name="route_grade"><option value="">—</option>${ROUTE_GRADES.map(g => `<option${g === v.route_grade ? ' selected' : ''}>${g}</option>`).join('')}</select></label></div>
       ${shownAreas.length ? `<h3>Ratings <span class="muted">(1 = just starting, 5 = a real strength)</span></h3>
+        <p class="hint">Tap a picked number again to clear it.</p>
         ${shownAreas.map(a => `<div class="rate-row"><span>${esc(a.name)}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}">
-          ${[1, 2, 3, 4, 5].map(i => `<label><input type="radio" name="r_${a.id}" value="${i}"${v.ratings[a.id] === i ? ' checked' : ''}><span>${i}</span></label>`).join('')}
-          <button type="button" class="small ghost" data-clear="r_${a.id}" aria-label="Clear ${esc(a.name)}">×</button></span></div>`).join('')}` : ''}
+          ${[1, 2, 3, 4, 5].map(i => `<label><input type="radio" name="r_${a.id}" value="${i}"${v.ratings[a.id] === i ? ' checked' : ''}><span>${i}</span></label>`).join('')}</span></div>`).join('')}` : ''}
       <label>Notes<textarea name="notes" rows="3" placeholder="E.g. Moved up a color since spring. Wants to try the Kilter at 45° next.">${esc(v.notes)}</textarea></label>`,
-    onOpen: form => form.addEventListener('click', e => {
-      const b = e.target.closest('[data-clear]');
-      if (b) form.querySelectorAll(`[name="${b.dataset.clear}"]`).forEach(r => { r.checked = false; });
-    }) });
+    // Tapping the picked rating again clears it (a radio can't be unticked on its own); pointerdown notes whether it was already picked.
+    onOpen: form => {
+      let was = null;
+      form.addEventListener('pointerdown', e => { const r = e.target.closest('.rate-pick label')?.querySelector('input'); was = r?.checked ? r : null; });
+      form.addEventListener('click', e => {
+        if (e.target.matches('.rate-pick input') && e.target === was) { e.target.checked = false; e.target.dispatchEvent(new Event('change', { bubbles: true })); }
+        if (e.target.matches('.rate-pick input')) was = null;
+      });
+    } });
   if (!f) return;
   const num = k => f.get(k) === '' || f.get(k) == null ? null : +f.get(k);
   const ratings = {};

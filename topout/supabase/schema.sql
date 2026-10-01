@@ -232,6 +232,19 @@ begin
   return new_id;
 end $$;
 
+-- Add Member's same-name check, for members the person adding can't see (on teams at locations they don't coach).
+-- It says only where they are and whether they've left: no id, so a coach still can't open them.
+create function public.team_same_name(p_first text, p_last text)
+returns table (locations text, left_team boolean) language sql stable security definer set search_path = '' as $$
+  select coalesce(string_agg(l.name, ', ' order by l.position, l.name), ''), m.left_on is not null
+  from public.team_members m
+  left join public.team_member_locations ml on ml.member_id = m.id
+  left join public.team_locations l on l.id = ml.location_id
+  where public.team_is_staff() and not public.team_can_member(m.id)
+    and lower(m.first_name) = lower(trim(p_first)) and lower(m.last_name) = lower(trim(p_last))
+  group by m.id;
+$$;
+
 -- Admins' Staff page: every staff member plus when they last signed in (Active vs Invited).
 create function public.team_staff_list()
 returns table (id uuid, email text, first_name text, last_name text, name text, pronouns text, roles text[],
@@ -538,12 +551,12 @@ revoke execute on function public.person_pull(), public.person_push() from publi
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
   public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
   public.team_staff_list(), public.team_stamp_sender(text), public.team_add_member(text, text, text, text, date, uuid[]),
-  public.team_staff_lookup(text)
+  public.team_same_name(text, text), public.team_staff_lookup(text)
   from public, anon;
 grant execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
   public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
   public.team_staff_list(), public.team_stamp_sender(text), public.team_add_member(text, text, text, text, date, uuid[]),
-  public.team_staff_lookup(text)
+  public.team_same_name(text, text), public.team_staff_lookup(text)
   to authenticated;
 
 -- 7. The two starting locations.

@@ -147,21 +147,24 @@ async function addMember(loc) {
   });
 }
 
-// Before adding a member: is someone with this name already here (among the members this person can see)?
-// They may be the same person, who should be put on this team instead (Details, Teams) rather than added twice.
+// Before adding a member: is someone with this name already here? They may be the same person, who should be put on this team
+// instead (Details, Teams) rather than added twice. Members this person can see are links; team_same_name says where the rest are.
 async function notADuplicate(first, last) {
   const like = s => s.replace(/[\\%_]/g, '\\$&');
-  const [same, locs] = await Promise.all([
+  const [same, locs, unseen] = await Promise.all([
     sb.from('team_members').select('id, name, joined_on, left_on, teams:team_member_locations(location_id)')
       .ilike('first_name', like(first)).ilike('last_name', like(last)).then(must),
     sb.from('team_locations').select('id, name').then(must),
+    sb.rpc('team_same_name', { p_first: first, p_last: last }).then(must),
   ]);
-  if (!same.length) return true;
+  if (!same.length && !unseen.length) return true;
+  const n = same.length + unseen.length;
   const where = m => [m.teams.map(t => locs.find(l => l.id === t.location_id)?.name).filter(Boolean).join(', '),
     m.joined_on ? `joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? 'left the team' : ''].filter(Boolean).join(', ');
   return !!await ask({ title: 'Same Name Already Here', ok: 'Add Anyway',
-    body: `<p>${same.length === 1 ? 'There is already a team member' : `There are already ${same.length} team members`} with this name:</p>
-      <ul class="dupes">${same.map(m => `<li><a href="#/member/${m.id}">${esc(m.name)}</a>${where(m) ? ` <span class="muted">(${esc(where(m))})</span>` : ''}</li>`).join('')}</ul>
-      <p class="hint">If it's the same person, open them and tick this team under Details instead. Add Anyway if it's someone else.</p>`,
+    body: `<p>${n === 1 ? 'There is already a team member' : `There are already ${n} team members`} with this name:</p>
+      <ul class="dupes">${same.map(m => `<li><a href="#/member/${m.id}">${esc(m.name)}</a>${where(m) ? ` <span class="muted">(${esc(where(m))})</span>` : ''}</li>`).join('')}
+        ${unseen.map(u => `<li>${esc(first)} ${esc(last)} <span class="muted">(${esc([u.locations || 'no team', u.left_team ? 'left the team' : ''].filter(Boolean).join(', '))}, a location you don't coach)</span></li>`).join('')}</ul>
+      <p class="hint">If it's the same person, ${same.length ? 'open them and tick this team under Details instead' : ''}${same.length && unseen.length ? '. For one at a location you don’t coach, ' : ''}${unseen.length ? 'ask an admin to add them to this team' : ''}. Add Anyway if it's someone else.</p>`,
     onOpen: form => form.addEventListener('click', e => { if (e.target.closest('a')) $('#dlg').close(); }) });
 }

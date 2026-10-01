@@ -514,20 +514,20 @@ function exbRecent(here) {
 }
 
 // All, then the purposes in use among the search's matches, most used first, with counts (a picked one stays, even
-// at 0). wide: the panel shows the first EXB_CHIPS, then View All (exb.allChips), which becomes View Less; the
-// sheet's chips scroll sideways instead.
-const EXB_CHIPS = 6;
+// at 0). The first few (EXB_CHIPS in the wide panel, EXB_SHEET_CHIPS in the narrower sheet), then View All (exb.allChips),
+// which becomes View Less. The chips wrap, so every one can be reached (the sheet's used to scroll sideways, hiding most).
+const EXB_CHIPS = 6, EXB_SHEET_CHIPS = 4;
 function exbChipsHTML(wide) {
   const all = exbMatches(''), n = new Map();
   all.forEach(x => (x.purposes ?? []).forEach(h => n.set(h, (n.get(h) || 0) + 1)));
   if (exb.purpose && !n.has(exb.purpose)) n.set(exb.purpose, 0);
   const chip = (g, label, k) => `<button type="button" role="tab" data-purpose="${esc(g)}" aria-selected="${g === exb.purpose}">${esc(label)}<span class="count">${k}</span></button>`;
   const used = [...n].sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
-  const cut = wide && !exb.allChips && used.length > EXB_CHIPS + 1;
-  let shown = cut ? used.slice(0, EXB_CHIPS) : used;
+  const max = wide ? EXB_CHIPS : EXB_SHEET_CHIPS, cut = !exb.allChips && used.length > max + 1;
+  let shown = cut ? used.slice(0, max) : used;
   if (cut && exb.purpose && !shown.some(([g]) => g === exb.purpose)) shown = [...shown, used.find(([g]) => g === exb.purpose)];
   const more = cut ? '<button type="button" class="more-chips" data-chips="all">View All</button>'
-    : wide && exb.allChips && used.length > EXB_CHIPS + 1 ? '<button type="button" class="more-chips" data-chips="less">View Less</button>' : '';
+    : exb.allChips && used.length > max + 1 ? '<button type="button" class="more-chips" data-chips="less">View Less</button>' : '';
   return chip('', 'All', all.length) + shown.map(([g, k]) => chip(g, g, k)).join('') + more;
 }
 
@@ -595,7 +595,7 @@ function openExBrowser(sid) {
 
 exSheet.addEventListener('input', e => { exb.q = e.target.value; exbRender(exSheet, false); });
 // Its search and picks end with it (the wide-screen panel shares exb).
-exSheet.addEventListener('close', () => { exb.q = ''; exb.purpose = ''; exb.picked.clear(); });
+exSheet.addEventListener('close', () => { exb.q = ''; exb.purpose = ''; exb.picked.clear(); exb.allChips = false; });
 exSheet.addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
@@ -605,6 +605,7 @@ exSheet.addEventListener('click', e => {
   // Redraws replace the buttons, so the focus goes back to the same one.
   let again = null;
   if (d.purpose != null) { exb.purpose = d.purpose; again = `[data-purpose="${CSS.escape(d.purpose)}"]`; }
+  else if (d.chips) { exb.allChips = d.chips === 'all'; again = '.more-chips'; }
   else if (d.key) {
     const x = exSource().library.find(y => y.name_key === d.key);
     if (exb.picked.has(d.key)) exb.picked.delete(d.key); else exb.picked.set(d.key, x.name);

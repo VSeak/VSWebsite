@@ -233,10 +233,10 @@ begin
 end $$;
 
 -- Add Member's same-name check, for members the person adding can't see (on teams at locations they don't coach).
--- It says only where they are and whether they've left: no id, so a coach still can't open them.
+-- It says only where they are and whether they've left, and the id for team_join_location (the id alone doesn't open them).
 create function public.team_same_name(p_first text, p_last text)
-returns table (locations text, left_team boolean) language sql stable security definer set search_path = '' as $$
-  select coalesce(string_agg(l.name, ', ' order by l.position, l.name), ''), m.left_on is not null
+returns table (member_id uuid, locations text, left_team boolean) language sql stable security definer set search_path = '' as $$
+  select m.id, coalesce(string_agg(l.name, ', ' order by l.position, l.name), ''), m.left_on is not null
   from public.team_members m
   left join public.team_member_locations ml on ml.member_id = m.id
   left join public.team_locations l on l.id = ml.location_id
@@ -244,6 +244,16 @@ returns table (locations text, left_team boolean) language sql stable security d
     and lower(m.first_name) = lower(trim(p_first)) and lower(m.last_name) = lower(trim(p_last))
   group by m.id;
 $$;
+
+-- Puts a member on a location the caller coaches (or any, for an admin), even if they don't coach the member's other teams.
+create function public.team_join_location(p_member uuid, p_location uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.team_can_location(p_location) then
+    raise exception 'You can only add members to a team you coach.' using errcode = '42501';
+  end if;
+  insert into public.team_member_locations (member_id, location_id) values (p_member, p_location) on conflict do nothing;
+end $$;
 
 -- Admins' Staff page: every staff member plus when they last signed in (Active vs Invited).
 create function public.team_staff_list()
@@ -551,12 +561,12 @@ revoke execute on function public.person_pull(), public.person_push() from publi
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
   public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
   public.team_staff_list(), public.team_stamp_sender(text), public.team_add_member(text, text, text, text, date, uuid[]),
-  public.team_same_name(text, text), public.team_staff_lookup(text)
+  public.team_same_name(text, text), public.team_join_location(uuid, uuid), public.team_staff_lookup(text)
   from public, anon;
 grant execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
   public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
   public.team_staff_list(), public.team_stamp_sender(text), public.team_add_member(text, text, text, text, date, uuid[]),
-  public.team_same_name(text, text), public.team_staff_lookup(text)
+  public.team_same_name(text, text), public.team_join_location(uuid, uuid), public.team_staff_lookup(text)
   to authenticated;
 
 -- 7. The two starting locations.

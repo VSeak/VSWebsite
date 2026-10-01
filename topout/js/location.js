@@ -136,7 +136,7 @@ async function addMember(loc) {
       <label>Joined the Team<input type="date" name="joined_on" value="${today()}" required data-need="Pick the day they joined."></label>
       <p class="hint">On another team too? Add it under Details on their page.</p>` });
   if (!f) return;
-  if (!await notADuplicate(f.get('first_name').trim(), f.get('last_name').trim())) return;
+  if (!await notADuplicate(f.get('first_name').trim(), f.get('last_name').trim(), loc)) return;
   await busy(null, async () => {
     const id = await sb.rpc('team_add_member', {
       p_first: f.get('first_name').trim(), p_last: f.get('last_name').trim(), p_pronouns: readPronouns(f),
@@ -147,24 +147,43 @@ async function addMember(loc) {
   });
 }
 
-// Before adding a member: is someone with this name already here? They may be the same person, who should be put on this team
-// instead (Details, Teams) rather than added twice. Members this person can see are links; team_same_name says where the rest are.
-async function notADuplicate(first, last) {
-  const like = s => s.replace(/[\\%_]/g, '\\$&');
-  const [same, locs, unseen] = await Promise.all([
+// Before adding a member: is someone with this name already here? They may be the same person, who should go on this team
+// rather than be added twice. Each match has Add to <location>: team_join_location puts them on it, even when the coach
+// doesn't coach their other teams. Members this person can see are links; team_same_name says where the rest are.
+async function notADuplicate(first, last, loc) {
+  const like = s => s.replace(/[\%_]/g, '\$&');
+  const [seen, locs, unseen] = await Promise.all([
     sb.from('team_members').select('id, name, joined_on, left_on, teams:team_member_locations(location_id)')
       .ilike('first_name', like(first)).ilike('last_name', like(last)).then(must),
     sb.from('team_locations').select('id, name').then(must),
     sb.rpc('team_same_name', { p_first: first, p_last: last }).then(must),
   ]);
-  if (!same.length && !unseen.length) return true;
-  const n = same.length + unseen.length;
-  const where = m => [m.teams.map(t => locs.find(l => l.id === t.location_id)?.name).filter(Boolean).join(', '),
-    m.joined_on ? `joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? 'left the team' : ''].filter(Boolean).join(', ');
+  const same = [
+    ...seen.map(m => ({ id: m.id, name: m.name, here: m.teams.some(t => t.location_id === loc.id), link: true,
+      where: [m.teams.map(t => locs.find(l => l.id === t.location_id)?.name).filter(Boolean).join(', '),
+        m.joined_on ? `joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? 'left the team' : ''] })),
+    ...unseen.map(u => ({ id: u.member_id, name: `${first} ${last}`, here: false,
+      where: [u.locations || 'no team', u.left_team ? 'left the team' : ''] })),
+  ];
+  if (!same.length) return true;
+  const row = m => `<li><span>${m.link ? `<a href="#/member/${m.id}">${esc(m.name)}</a>` : esc(m.name)}
+      <span class="muted">(${esc(m.where.filter(Boolean).join(', '))})</span></span>
+    ${m.here ? `<span class="tag">Already on ${esc(loc.name)}</span>`
+      : `<button type="button" class="small" data-join="${m.id}">Add to ${esc(loc.name)}</button>`}</li>`;
   return !!await ask({ title: 'Same Name Already Here', ok: 'Add Anyway',
-    body: `<p>${n === 1 ? 'There is already a team member' : `There are already ${n} team members`} with this name:</p>
-      <ul class="dupes">${same.map(m => `<li><a href="#/member/${m.id}">${esc(m.name)}</a>${where(m) ? ` <span class="muted">(${esc(where(m))})</span>` : ''}</li>`).join('')}
-        ${unseen.map(u => `<li>${esc(first)} ${esc(last)} <span class="muted">(${esc([u.locations || 'no team', u.left_team ? 'left the team' : ''].filter(Boolean).join(', '))}, a location you don't coach)</span></li>`).join('')}</ul>
-      <p class="hint">If it's the same person, ${same.length ? 'open them and tick this team under Details instead' : ''}${same.length && unseen.length ? '. For one at a location you don’t coach, ' : ''}${unseen.length ? 'ask an admin to add them to this team' : ''}. Add Anyway if it's someone else.</p>`,
-    onOpen: form => form.addEventListener('click', e => { if (e.target.closest('a')) $('#dlg').close(); }) });
+    body: `<p>${same.length === 1 ? 'There is already a team member' : `There are already ${same.length} team members`} with this name:</p>
+      <ul class="dupes">${same.map(row).join('')}</ul>
+      <p class="hint">If it's the same person, add them to ${esc(loc.name)} here. Add Anyway if it's someone else.</p>`,
+    onOpen: form => form.addEventListener('click', e => {
+      if (e.target.closest('a')) return $('#dlg').close();
+      const b = e.target.closest('[data-join]');
+      if (!b) return;
+      const m = same.find(x => x.id === b.dataset.join);
+      $('#dlg').close();
+      busy(null, async () => {
+        await sb.rpc('team_join_location', { p_member: m.id, p_location: loc.id }).then(must);
+        flash(`${m.name} is now on the ${loc.name} team.`);
+        goTo('#/member/' + m.id);
+      });
+    }) });
 }

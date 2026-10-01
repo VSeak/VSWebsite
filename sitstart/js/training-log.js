@@ -95,6 +95,9 @@ function logDay(d, long = false) {
     ...(d.slice(0, 4) !== t.slice(0, 4) && { year: 'numeric' }) });
 }
 
+// A day in the middle of a sentence: "yesterday", else as logDay ("Sep 28").
+const midDay = d => logDay(d) === 'Yesterday' ? 'yesterday' : logDay(d);
+
 // logs: newest first. The ones for an exercise, and the latest one per exercise.
 const logsOf = (logs, key) => logs.filter(l => l.exercise_key === key);
 function latestPerExercise(logs) {
@@ -210,7 +213,7 @@ function openLogSheet(key, sid, date = todayISO()) {
   sid = s.id;
   const all = logsOf(logCtx.logs, key), list = all.filter(l => l.logged_on <= date);
   const today = list[0]?.logged_on === date ? list[0] : null, last = today ? list[1] : list[0];
-  const isToday = date === todayISO(), onDay = isToday ? 'today' : `on ${logDay(date)}`;
+  const isToday = date === todayISO(), onDay = isToday ? 'today' : `on ${midDay(date)}`.replace('on yesterday', 'yesterday');
   const fields = trackOf(x), from = today ?? last, unit = logUnit();
   const vals = {};
   for (const k of fields) if (from?.vals[k] != null) vals[k] = from.vals[k];
@@ -331,7 +334,7 @@ logSheet.addEventListener('click', async e => {
     return;
   }
   if ('del' in d) {
-    const whose = ls.date === todayISO() ? "Today's log" : `The log from ${logDay(ls.date)}`;
+    const whose = ls.date === todayISO() ? "Today's log" : `The log from ${midDay(ls.date)}`;
     if (!await ask({ title: 'Delete This Log?', warn: true, ok: 'Delete', body: `<p>${whose} for ${esc(ls.x.name.trim())} will be deleted.</p>` })) return;
     return busy(b, async () => {
       must(await sb.from('exercise_logs').delete().eq('id', ls.editing.id));
@@ -357,7 +360,7 @@ function saveLog(btn) {
     const mine = logsOf(logCtx.logs, ls.key), wasBest = mine[0] === saved && isNewBest(mine);
     logSheet.close();
     redrawLogs();
-    const when = ls.date === todayISO() ? '' : ` for ${logDay(ls.date)}`;
+    const when = ls.date === todayISO() ? '' : ` for ${midDay(ls.date)}`;
     flash(wasBest ? `Logged${when}. That's a new best!` : `Logged${when}.`);
   });
 }

@@ -669,6 +669,7 @@ button.exb-new { margin-top: 10px; border: 1.5px dashed var(--deep-accent); bord
 /* Master Exercise List purposes: pills to tick in the form, tags under each exercise */
 fieldset.picks { border: 0; margin: 0; padding: 0; display: grid; gap: .5rem; }
 fieldset.picks legend { font-weight: 500; font-size: .9rem; padding: 0; }
+fieldset.picks + fieldset.track-picks { margin-top: .75rem; }
 .pick-row { display: flex; flex-wrap: wrap; gap: .4rem; }
 .pick-row label { margin: 0; padding: .3rem .75rem; border: 1px solid var(--line); border-radius: 999px; background: var(--field);
   cursor: pointer; font-weight: 500; font-size: .85rem; color: var(--muted); }

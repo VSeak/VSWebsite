@@ -31,10 +31,10 @@ function exFromForm(f) {
   if (purposes.length > EX_PURPOSES_MAX) throw new Error(`Pick at most ${EX_PURPOSES_MAX} purposes.`);
   return { ...Object.fromEntries(['name', ...EX_FIELDS.map(([k]) => k)].map(k => [k, (f.get(k) || '').trim()])), purposes, track: f.getAll('track') };
 }
-// Students Log (Training Log): what students fill in when they log this exercise. Quick picks tick a set of fields.
+// Log Fields (Training Log): what students fill in when they log this exercise. Quick picks tick a set of fields.
 // Also the plan editor's Change dialog, for one exercise in one plan.
 const trackFieldsHTML = (picked = [], hint = 'What students fill in when they log this. Plans copy it, and you can change it in a plan. Notes are always there. Add your own in the Log Fields card.') =>
-  `<fieldset class="picks track-picks"><legend>Students Log</legend>
+  `<fieldset class="picks track-picks"><legend>Log Fields</legend>
     <span class="hint field-hint">${hint}</span>
     <div class="track-presets"><span class="muted">Quick Pick:</span>${LOG_PRESETS.map(([name, keys]) => [name, keys.filter(k => LOG_FIELDS[k])]).filter(([, keys]) => keys.length).map(([name, keys]) =>
       `<button type="button" class="small" data-preset="${keys.join(',')}">${name}</button>`).join('')}</div>
@@ -131,7 +131,7 @@ async function adminExercises() {
         <div id="purPager"></div>
       </section>
       <section class="card" data-fold="logfields" data-fold-start><h2>Log Fields (<span id="lfCount"></span>)</h2>
-        <p class="hint">What students can fill in when they log. Tick them under Students Log on an exercise. Add your own when these don't cover it.</p>
+        <p class="hint">What students can fill in when they log. Tick them under Log Fields on an exercise. Add your own when these don't cover it.</p>
         <form id="lfAdd" class="stack" data-save>${lfFieldsHTML()}<button class="primary">+ Add Log Field</button></form>
         <ul class="list" id="lfList"></ul>
         <div id="lfPager"></div>
@@ -215,7 +215,7 @@ async function adminExercises() {
         <button type="button" class="small ghost danger" data-act="lf-delete" data-lfid="${r.id}">Delete</button></div></li>`;
     }).join('') || `<li><p class="muted" style="margin:.6rem 0">No log fields. Add one for students to fill in.</p></li>`;
   }
-  // Redraws the Add form's Students Log ticks after the fields change, keeping what's ticked (as properties, like redrawPicks).
+  // Redraws the Add form's Log Fields ticks after the fields change, keeping what's ticked (as properties, like redrawPicks).
   function redrawTrack() {
     const row = $('#exAdd .track-picks .pick-row');
     const ticked = [...row.querySelectorAll('input:checked')].map(i => i.value);
@@ -262,7 +262,7 @@ async function adminExercises() {
         <button type="button" class="small ghost danger" data-act="ex-delete" data-ex="${x.id}">Delete</button></span></div>
         <div class="stats">${EX_FIELDS.slice(0, 3).map(([f, l]) =>
           `<div class="stat"><span class="stat-l">${l}</span><span class="stat-v${x[f] ? '' : ' none'}">${x[f] ? esc(x[f]) : '—'}</span></div>`).join('')}</div>
-        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${x.track?.length ? `<p class="ex-track">Students log: ${esc(trackNames(trackOf(x)))}</p>` : ''}${x.purposes.length ? exPurposeTags(x.purposes)
+        ${x.notes ? `<p class="ex-note">${para(x.notes)}</p>` : ''}${x.track?.length ? `<p class="ex-track">Log fields: ${esc(trackNames(trackOf(x)))}</p>` : ''}${x.purposes.length ? exPurposeTags(x.purposes)
           : '<span class="ex-purposes"><span class="tag warn">Needs a Purpose</span></span>'}</article>`).join('')
       || `<p class="muted">${list.length ? 'No exercise matches that search or purpose.' : 'No exercises yet. Add your first one.'}</p>`;
   }
@@ -314,7 +314,7 @@ async function adminExercises() {
       e.target.reset();
       e.target.querySelectorAll('[data-lf-for]').forEach(l => { l.hidden = l.dataset.lfFor !== 'number'; });
       e.target.elements.label.focus();
-      flash(`${data.label} added. Tick it under Students Log on an exercise.`);
+      flash(`${data.label} added. Tick it under Log Fields on an exercise.`);
     });
   };
 

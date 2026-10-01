@@ -113,7 +113,7 @@ function exEditHTML(s, i, e) {
   const notes = `<label class="ex-notes">Notes${rich(`<textarea rows="1" data-grow data-s="${i}" data-e="${e}" data-f="notes" placeholder="Notes">${esc(s.exercises[e].notes)}</textarea>`)}</label>`;
   // What the student fills in when they log it (Change: for this plan only), and what they logged last.
   const x = s.exercises[e], last = lastLogOf(x), who = esc(draft.plan.student.first_name || draft.plan.student.name);
-  const logBoxes = `<div class="ex-box"><div><span class="eyebrow">Students Log</span><span class="ex-box-v">${esc(trackNames(trackOf(x)))}</span></div>
+  const logBoxes = `<div class="ex-box"><div><span class="eyebrow">Log Fields</span><span class="ex-box-v">${esc(trackNames(trackOf(x)))}</span></div>
       ${btn('ex-track', 'Change')}</div>
     ${last ? `<div class="ex-box logged"><div><span class="eyebrow">${who} ${last.logged_on === todayISO() ? 'Logged Today' : `Last Logged, ${logDay(last.logged_on)}`}</span>
       <span class="ex-box-v">${esc(logLine(last))}</span></div>${btn('ex-hist', 'History')}</div>` : ''}`;
@@ -295,7 +295,7 @@ function renderEditor() {
       case 'ex-hist': return openLogHistory(exKey(S[i].exercises[x].name), { logs: draft.logs, who: draft.plan.student.name });
       case 'ex-track': {
         const ex = S[i].exercises[x];
-        const f = await ask({ title: `Students Log: ${ex.name.trim() || 'Exercise'}`, ok: 'Save',
+        const f = await ask({ title: `Log Fields: ${ex.name.trim() || 'Exercise'}`, ok: 'Save',
           body: trackFieldsHTML(trackOf(ex), 'What students fill in when they log this, in this plan only. Exercises & Drills keeps its own. Notes are always there.') });
         if (!f) return;
         ex.track = f.getAll('track');

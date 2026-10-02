@@ -98,6 +98,29 @@ function clearFieldError(el) {
   document.getElementById(el.getAttribute('aria-describedby'))?.remove();
   el.removeAttribute('aria-describedby');
 }
+
+// A small red * after the label of every required field (the user asked), and on the legend of a fieldset[data-required]
+// (pick at least one). It watches the page, so dialogs, redraws and fields that turn required (Other pronouns) stay right.
+function markRequired() {
+  const want = new Set();
+  for (const el of document.querySelectorAll(':is(input, select, textarea)[required]:not([type="checkbox"], [type="radio"])')) {
+    const label = el.closest('label:not(.check)') || document.getElementById(el.getAttribute('aria-labelledby'));
+    if (label) want.add(label);
+  }
+  for (const legend of document.querySelectorAll('fieldset[data-required] > legend')) want.add(legend);
+  for (const star of document.querySelectorAll('.req')) if (!want.has(star.parentElement)) star.remove();
+  for (const label of want) {
+    if (label.querySelector(':scope > .req')) continue;
+    const star = Object.assign(document.createElement('span'), { className: 'req', textContent: '*' });
+    star.setAttribute('aria-hidden', 'true');   // the field's own required is what screen readers hear
+    const text = [...label.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+    if (!text) { label.append(star); continue; }
+    const end = text.textContent.trimEnd().length;
+    if (end < text.textContent.length) text.splitText(end);
+    text.after(star);
+  }
+}
+new MutationObserver(markRequired).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['required'] });
 function validityMsg(el) {
   const v = el.validity;
   if (v.valueMissing || v.customError) return el.dataset.need || 'Fill this in.';

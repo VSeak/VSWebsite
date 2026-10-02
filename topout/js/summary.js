@@ -30,7 +30,7 @@ function teamStats(rows, areas, questions) {
 
 async function summaryTab(loc, head, t) {
   const [onTeam, areas, questions, focus] = await Promise.all([
-    sb.from('team_member_locations').select('member:team_members(id, name, first_name, left_on)').eq('location_id', loc.id).then(must),
+    sb.from('team_member_locations').select('member:team_members(id, name, first_name, left_on)').eq('location_id', loc.id).is('inactive_on', null).then(must),
     sb.from('team_rating_areas').select('*').order('position').then(must),
     sb.from('team_checkin_questions').select('*').order('position').then(must),
     sb.from('team_focus').select('*').eq('location_id', loc.id).order('focus_date', { ascending: false }).order('created_at', { ascending: false }).then(must),

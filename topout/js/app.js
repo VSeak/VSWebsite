@@ -226,7 +226,7 @@ async function homePage() {
   view(loading);
   const [locs, members, events] = await Promise.all([
     sb.from('team_locations').select('id, name').order('position').order('name').then(must),
-    sb.from('team_member_locations').select('location_id, member:team_members!inner(left_on)').is('member.left_on', null).then(must),
+    sb.from('team_member_locations').select('location_id, member:team_members!inner(left_on)').is('member.left_on', null).is('inactive_on', null).then(must),
     sb.from('team_events').select('id, location_ids, kind, title, event_date, end_date, start_time, end_time')
       .or(`event_date.gte.${today()},end_date.gte.${today()}`).order('event_date').order('start_time', { nullsFirst: true }).limit(40).then(must),
   ]);

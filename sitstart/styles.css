@@ -914,3 +914,6 @@ dialog.cs-view[open] { display: flex; flex-direction: column; }
   .cv-nav { position: static; padding: 0; border-top: 0; }
   .cs-view button.cv-add-main { display: none; }
 }
+
+/* A required field: a small red * after its label (markRequired in core.js). */
+.req { color: var(--danger); font-weight: 700; margin-left: .15em; }

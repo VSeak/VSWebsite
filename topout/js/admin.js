@@ -50,7 +50,7 @@ async function staffForm(s, locs) {
       <div class="two"><label>First Name<input name="first_name" maxlength="60" required value="${esc(s?.first_name || '')}" data-need="Enter their first name." autocomplete="off"></label>
         <label>Last Name<input name="last_name" maxlength="60" value="${esc(s?.last_name || '')}" autocomplete="off"></label></div>
       ${pronounsField(s?.pronouns || '')}
-      <fieldset><legend>Roles</legend>
+      <fieldset data-required><legend>Roles</legend>
         <label class="check"><input type="checkbox" name="role" value="coach"${roles.includes('coach') ? ' checked' : ''}> Coach <span class="muted">— members, notes, check-ins and the calendar at their locations</span></label>
         <label class="check"><input type="checkbox" name="role" value="admin"${roles.includes('admin') ? ' checked' : ''}${lockAdmin ? ' disabled' : ''}> Admin <span class="muted">— every location, staff and settings</span></label>
         ${self ? '<p class="hint">You can’t take Admin off yourself.</p>' : ''}

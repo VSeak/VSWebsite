@@ -150,7 +150,7 @@ async function addUserDialog(btn) {
 // Student (not a staff role) makes a student row with the same name and email, so they also get View My Training.
 // student: their student row's id once they are one (ticked and locked, with a link), or null.
 function rolesFieldset(current, locked = [], student = null) {
-  return `<fieldset class="roles"><legend>Roles</legend>
+  return `<fieldset class="roles" data-required><legend>Roles</legend>
     ${STAFF_ROLES.map(r => `<label class="check"><input type="checkbox" name="roles" value="${r}"
       ${current.includes(r) ? 'checked' : ''} ${locked.includes(r) ? 'disabled' : ''}>
       <span><strong>${ROLE_LABEL[r]}</strong> <span class="muted">${ROLE_HINT[r]}</span></span></label>`).join('')}

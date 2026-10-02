@@ -10,7 +10,7 @@ async function memberPage(id) {
   const t = ++navToken;
   view(loading);
   const [m, goals, notes, checkins, circuits, areas, questions, locs] = await Promise.all([
-    sb.from('team_members').select('*, teams:team_member_locations(location_id)').eq('id', id).maybeSingle().then(must),
+    sb.from('team_members').select('*, teams:team_member_locations(location_id, inactive_on)').eq('id', id).maybeSingle().then(must),
     sb.from('team_goals').select('*').eq('member_id', id).order('created_at').then(must),
     sb.from('team_coach_notes').select('*').eq('member_id', id)
       .order('note_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).then(must),
@@ -23,13 +23,13 @@ async function memberPage(id) {
   if (t !== navToken) return;
   if (!m) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Member Not Found</h2>
     <p class="muted">They may have been deleted, or they're at a location you aren't assigned to.</p></section>`);
-  m.teams = m.teams.map(x => x.location_id);
+  inactiveOn(m);
   // Breadcrumbs go back to the list they came from: Team Members, or a location they're on (else their first team).
   const mine = locs.filter(l => m.teams.includes(l.id));
   const loc = mine.find(l => l.id === lastLoc) || mine[0];
   m.backTo = loc && lastLoc !== 'members' ? `#/loc/${loc.id}` : '#/members';
   const ctx = { m, goals, notes, checkins, circuits, areas, questions, locs };
-  const status = [mine.map(l => l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
+  const status = [mine.map(l => m.inactive[l.id] ? `${l.name} (inactive)` : l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
     .filter(Boolean).map(esc).join(' · ');
   view(`${crumbs([['Home', '#/'], m.backTo === '#/members' ? ['Team Members', m.backTo] : [loc.name, m.backTo], [m.name]])}
     <div class="page-head"><span class="ini big-ini">${esc(initials(m.name))}</span>
@@ -122,9 +122,13 @@ function detailsHTML(m, locs) {
       ${pronounsField(m.pronouns, true)}
       <label>Email <span class="muted">(optional)</span><input type="email" name="email" value="${esc(m.email || '')}"></label>
       <label>Joined the Team<input type="date" name="joined_on" value="${m.joined_on || ''}" required data-need="Pick the day they joined."></label>
-      <fieldset><legend>Teams</legend>
-        ${locs.map(l => `<label class="check"><input type="checkbox" name="team" value="${l.id}"${m.teams.includes(l.id) ? ' checked' : ''}> ${esc(l.name)}</label>`).join('')}
+      <fieldset data-required><legend>Teams</legend>
+        ${locs.map(l => { const on = m.teams.includes(l.id), off = m.inactive[l.id];
+          return `<div class="team-row"><label class="check"><input type="checkbox" name="team" value="${l.id}"${on ? ' checked' : ''}> ${esc(l.name)}</label>
+            <select name="status_${l.id}" aria-label="${esc(l.name)} status"${on ? '' : ' disabled'}><option value="">Active</option>
+              <option value="inactive"${off ? ' selected' : ''}>Inactive${off ? ` Since ${fmtShort(off)}` : ''}</option></select></div>`; }).join('')}
         ${hidden ? `<p class="hint">Also on ${hidden === 1 ? 'a team' : hidden + ' teams'} you don't coach.</p>` : ''}
+        <p class="hint">Switched locations? Mark the old team Inactive: they stay on it, under Former there.</p>
       </fieldset>
       <button class="primary">Save Details</button>
     </form>
@@ -158,6 +162,9 @@ function bindMember(ctx) {
     // Teams: add the newly ticked first, so they can still see the member while taking off the rest.
     const ticked = f.getAll('team'), seen = ctx.locs.map(l => l.id);
     const add = ticked.filter(id => !m.teams.includes(id)), drop = m.teams.filter(id => seen.includes(id) && !ticked.includes(id));
+    // Active / Inactive on each team: flip = kept teams whose status changed.
+    const off = id => f.get('status_' + id) === 'inactive';
+    const flip = ticked.filter(id => m.teams.includes(id) && off(id) !== !!m.inactive[id]);
     if (!ticked.length && m.teams.every(id => seen.includes(id))) {
       const box = e.target.querySelector('[name="team"]');
       fieldError(box, 'Pick at least one team.'); box.focus(); return;
@@ -165,7 +172,10 @@ function bindMember(ctx) {
     busy(e.submitter, async () => {
       await upd({ first_name: f.get('first_name').trim(), last_name: f.get('last_name').trim(), pronouns: readPronouns(f),
         email: f.get('email').trim().toLowerCase() || null, joined_on: f.get('joined_on') || null });
-      if (add.length) await sb.from('team_member_locations').insert(add.map(location_id => ({ member_id: m.id, location_id }))).then(must);
+      if (add.length) await sb.from('team_member_locations')
+        .insert(add.map(location_id => ({ member_id: m.id, location_id, inactive_on: off(location_id) ? today() : null }))).then(must);
+      for (const id of flip) await sb.from('team_member_locations').update({ inactive_on: off(id) ? today() : null })
+        .eq('member_id', m.id).eq('location_id', id).then(must);
       if (drop.length) await sb.from('team_member_locations').delete().eq('member_id', m.id).in('location_id', drop).then(must);
       flash('Details saved.');
       e.target.reset();
@@ -173,7 +183,11 @@ function bindMember(ctx) {
       if (!ticked.length) goTo('#/members'); else redraw();
     });
   };
-  $('#detailsForm').addEventListener('change', e => { if (e.target.name === 'team') clearFieldError(e.target.form.querySelector('[name="team"]')); });
+  $('#detailsForm').addEventListener('change', e => {
+    if (e.target.name !== 'team') return;
+    clearFieldError(e.target.form.querySelector('[name="team"]'));
+    e.target.form.elements['status_' + e.target.value].disabled = !e.target.checked;
+  });
   $('#goalForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);

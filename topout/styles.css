@@ -123,6 +123,10 @@ label.check { display: flex; flex-direction: row; align-items: center; gap: .55r
 label.check input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); flex: none; margin: 0; }
 label.inline { display: flex; flex-direction: row; align-items: center; gap: .5rem; }
 label.inline :is(input, select) { width: auto; margin: 0; }
+.team-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .3rem .6rem; }
+.team-row .field-error { flex-basis: 100%; margin-top: 0; }
+.team-row select { width: auto; padding: .3rem .5rem; font-size: .88rem; }
+.team-row select:disabled { opacity: .45; }
 .days { display: flex; flex-wrap: wrap; gap: .3rem .9rem; }
 fieldset { border: 1px solid var(--line); border-radius: 14px; padding: .7rem .9rem .8rem; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
 legend { font-weight: 700; font-size: .92rem; padding: 0 .3rem; }
@@ -435,3 +439,6 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 .mins input { width: 4.6rem; margin: 0; }
 #addBlock { align-self: flex-start; }
 .form-foot { margin-top: .4rem; flex-wrap: wrap; }
+
+/* A required field: a small red * after its label (markRequired in core.js). */
+.req { color: var(--danger); font-weight: 700; margin-left: .15em; }

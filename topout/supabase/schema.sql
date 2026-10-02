@@ -62,6 +62,7 @@ create table public.team_members (
 create table public.team_member_locations (
   member_id uuid not null references public.team_members (id) on delete cascade,
   location_id uuid not null references public.team_locations (id) on delete restrict,   -- take members off first
+  inactive_on date,   -- set = inactive on this team since then (switched locations); Left the Team is team_members.left_on
   primary key (member_id, location_id)
 );
 create index on public.team_member_locations (location_id);
@@ -322,7 +323,9 @@ end $$;
 -- It says only where they are and whether they've left, and the id for team_join_location (the id alone doesn't open them).
 create function public.team_same_name(p_first text, p_last text)
 returns table (member_id uuid, pronouns text, locations text, left_team boolean) language sql stable security definer set search_path = '' as $$
-  select m.id, m.pronouns, coalesce(string_agg(l.name, ', ' order by l.position, l.name), ''), m.left_on is not null
+  select m.id, m.pronouns,
+         coalesce(string_agg(l.name || case when ml.inactive_on is not null then ' (inactive)' else '' end, ', ' order by l.position, l.name), ''),
+         m.left_on is not null
   from public.team_members m
   left join public.team_member_locations ml on ml.member_id = m.id
   left join public.team_locations l on l.id = ml.location_id
@@ -338,7 +341,8 @@ begin
   if not public.team_can_location(p_location) then
     raise exception 'You can only add members to a team you coach.' using errcode = '42501';
   end if;
-  insert into public.team_member_locations (member_id, location_id) values (p_member, p_location) on conflict do nothing;
+  insert into public.team_member_locations (member_id, location_id) values (p_member, p_location)
+    on conflict (member_id, location_id) do update set inactive_on = null;   -- inactive there: active again
 end $$;
 
 -- Admins' Staff page: every staff member plus when they last signed in (Active vs Invited).
@@ -539,11 +543,13 @@ create policy "staff: change" on public.team_members for update to authenticated
   using (public.team_can_member(id)) with check (public.team_can_member(id));
 create policy "staff: delete" on public.team_members for delete to authenticated using (public.team_can_member(id));
 
--- Teams: anyone who sees the member sees all their teams; a coach adds or takes off only their own locations.
+-- Teams: anyone who sees the member sees all their teams; a coach adds, takes off or marks inactive only their own locations.
 create policy "staff: read" on public.team_member_locations for select to authenticated using (public.team_can_member(member_id));
 create policy "staff: add" on public.team_member_locations for insert to authenticated
   with check (public.team_can_location(location_id) and public.team_can_member(member_id));
 create policy "staff: remove" on public.team_member_locations for delete to authenticated using (public.team_can_location(location_id));
+create policy "staff: change" on public.team_member_locations for update to authenticated
+  using (public.team_can_location(location_id)) with check (public.team_can_location(location_id));
 
 create policy "staff: everything" on public.team_goals for all to authenticated
   using (public.team_can_member(member_id)) with check (public.team_can_member(member_id));

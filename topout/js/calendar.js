@@ -164,7 +164,7 @@ async function editEvent(e, loc, locs) {
         <label id="evLast">Last Day <span class="muted">(if several days)</span><input type="date" name="end_date" value="${v.end_date || ''}" min="${v.event_date}"
           data-range="The last day can't be before the first."></label></div>
       ${e ? '' : `<label class="check"><input type="checkbox" name="repeat"> Repeats Weekly</label>
-      <fieldset id="evRepeat" hidden><legend>Repeats On</legend>
+      <fieldset id="evRepeat" hidden data-required><legend>Repeats On</legend>
         <div class="days">${weekdayNames.map((w, i) => `<label class="check"><input type="checkbox" name="dow" value="${i}"> ${w}</label>`).join('')}</div>
         <label>Until<input type="date" name="until" value="${addMonths(v.event_date, 3)}" min="${v.event_date}"
           data-need="Pick the last day it repeats." data-range="Pick a day after the first date, within a year."></label>
@@ -176,7 +176,7 @@ async function editEvent(e, loc, locs) {
           data-range="End after it starts."></label></div>
       <label>Notes <span class="muted">(agenda, what to bring, links)</span><textarea name="notes" rows="5"
         placeholder="E.g. Warm-up, then 4×4s on the 40° wall. Focus: heel hooks.">${esc(v.notes)}</textarea></label>
-      ${pickLocs ? `<fieldset><legend>Show At</legend>
+      ${pickLocs ? `<fieldset data-required><legend>Show At</legend>
         ${me.isAdmin ? `<label class="check"><input type="checkbox" name="everywhere"${v.location_ids ? '' : ' checked'}> Every Location</label>` : ''}
         ${locs.map(l => `<label class="check"><input type="checkbox" name="loc" value="${l.id}"${at(l.id) ? ' checked' : ''}> ${esc(l.name)}</label>`).join('')}
       </fieldset>` : ''}`,

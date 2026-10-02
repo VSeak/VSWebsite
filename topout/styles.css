@@ -459,7 +459,8 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 /* Summary: Next Practice (the notes sit close under the date, with room before the buttons) */
 .next-practice .next-when { margin-bottom: .25rem; }
 .next-practice .note-body { margin: 0; }
-.next-practice .next-actions { margin-top: 1rem; }
+/* Practice Plan and Open in Calendar stacked, each the width of the card (a long plan name wraps inside its button; the user asked). */
+.next-practice .next-actions { margin-top: 1rem; flex-direction: column; align-items: stretch; }
 .heads-up { margin-top: .9rem; padding: .6rem .8rem; border-radius: 10px; background: var(--warn-soft); font-size: .92rem; overflow-wrap: anywhere; }
 .heads-up b { color: var(--warn); }
 .heads-up ul { margin: .3rem 0 0; padding-left: 1.1rem; }

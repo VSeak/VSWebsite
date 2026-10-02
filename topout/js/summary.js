@@ -131,11 +131,10 @@ function nextPracticeHTML(e, plan, loc) {
     <a class="button small" href="#/loc/${loc.id}/calendar">Open Calendar</a></section>`;
   return `<section class="card next-practice"><h2>Next Practice</h2>
     <h3>${esc(e.title)}${e.series_id ? ' <span class="chip soft">Repeats Weekly</span>' : ''}</h3>
-    <p><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
+    <p class="next-when"><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
     ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
     <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button>` : ''}
-      <a class="button small ghost" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
-    <p class="hint">Added by ${esc(e.author_name || 'staff')}${e.edited_at ? ` · edited ${fmtWhen(e.edited_at)}` : ''}</p>
+      <a class="button small" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
   </section>`;
 }
 

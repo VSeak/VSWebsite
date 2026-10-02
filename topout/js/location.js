@@ -12,11 +12,9 @@ async function locationPage(id, sub) {
   const tabs = app.querySelector(`nav.tabs[data-loc="${id}"]`);
   if (tabs) tabs.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === location.hash));
   else view(loading);
-  const [loc, coaches, [focus]] = await Promise.all([
+  const [loc, coaches] = await Promise.all([
     sb.from('team_locations').select('id, name').eq('id', id).maybeSingle().then(must),
     sb.from('team_staff_locations').select('staff:team_staff(name, email, roles)').eq('location_id', id).then(must),
-    sb.from('team_focus').select('focus_date, body').eq('location_id', id)
-      .order('focus_date', { ascending: false }).order('created_at', { ascending: false }).limit(1).then(must),
   ]);
   if (t !== navToken) return;
   if (!loc) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Location Not Found</h2>
@@ -25,12 +23,9 @@ async function locationPage(id, sub) {
   const tab = ['calendar', 'team'].includes(sub) ? sub : 'summary';   // a location opens on its Summary
   const names = coaches.map(c => c.staff).filter(s => s?.roles.includes('coach')).map(s => s.name || s.email).sort();
   const tabLink = (key, label, href) => `<a href="${href}" class="${tab === key ? 'on' : ''}" ${tab === key ? 'aria-current="page"' : ''}>${label}</a>`;
-  // The current Team Focus (summary.js) shows under the name, except on the Summary tab, which shows it in full.
   const head = `${crumbs([['Home', '#/'], [loc.name]])}
     <div class="page-head"><div><h1 class="big">${esc(loc.name)}</h1>
       <p class="muted">${names.length ? `Coaches: ${names.map(esc).join(', ')}` : 'No coaches assigned yet.'}</p></div></div>
-    ${focus && tab !== 'summary' ? `<a class="focus-strip" href="#/loc/${id}"><b>Team Focus</b><span>${esc(firstLine(focus.body))}</span>
-      <small>${fmtShort(focus.focus_date)}</small></a>` : ''}
     <nav class="tabs" aria-label="Location" data-loc="${id}">${tabLink('summary', 'Summary', `#/loc/${id}`)}${tabLink('calendar', 'Calendar', `#/loc/${id}/calendar`)}
       ${tabLink('team', 'Team', `#/loc/${id}/team`)}</nav>`;
   return tab === 'calendar' ? calendarTab(loc, head, t) : tab === 'summary' ? summaryTab(loc, head, t) : teamTabView(loc, head, t);

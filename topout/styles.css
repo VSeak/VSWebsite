@@ -393,6 +393,13 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 .tcount { display: flex; align-items: center; gap: .35rem; }
 .tbar { width: 2.6rem; height: .5rem; border-radius: 999px; background: var(--sunk); overflow: hidden; flex: none; }
 .tbar i { display: block; height: 100%; background: var(--accent); }
+.tally { list-style: none; margin: 0; padding: 0; }
+.tally li { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .35rem 0; border-top: 1px solid var(--line); }
+.tally .tbar { width: 5rem; }
+.exit { border-top: 1px solid var(--line); padding: .7rem 0 .2rem; overflow-wrap: anywhere; }
+.exit h3 { margin: 0; font-size: 1rem; }
+.exit p { margin: .35rem 0; }
+.exit > .tag { margin-top: .3rem; }
 .said { list-style: none; margin: 0 0 .6rem; padding: 0; }
 .said li { padding: .4rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .said li > b { margin-right: .25rem; }

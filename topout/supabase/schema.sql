@@ -232,6 +232,23 @@ create table public.team_practices (
   edited_at timestamptz
 );
 
+-- Exit Intake: why someone left Adult Team, asked at Left the Team (every field optional). One row per time they left.
+-- reasons are keys from EXIT_REASONS in member.js (not checked here, so the list can change).
+create table public.team_exits (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid not null references public.team_members (id) on delete cascade,
+  left_on date not null,
+  reasons text[] not null default '{}',
+  details text not null default '',     -- in their words
+  better text not null default '',      -- what we could have done better
+  come_back text not null default '' check (come_back in ('', 'yes', 'maybe', 'no')),
+  author_id uuid references auth.users (id) on delete set null,
+  author_name text not null default '',
+  created_at timestamptz not null default now(),
+  edited_at timestamptz
+);
+create index on public.team_exits (member_id);
+
 -- The calendar. location_ids: the locations it shows at, or null = every location (only admins add those).
 -- kind: competition, practice (an agenda: what to work on that day), open_house, other.
 -- series_id: the events made by one Repeats Weekly, changed or deleted together.
@@ -405,6 +422,8 @@ create trigger team_stamp_author before insert or update on public.team_practice
   for each row execute function public.team_stamp_author();
 create trigger team_stamp_author before insert or update on public.team_focus
   for each row execute function public.team_stamp_author();
+create trigger team_stamp_author before insert or update on public.team_exits
+  for each row execute function public.team_stamp_author();
 
 -- A deleted location comes off its events; an event that was only there goes too.
 create function public.team_drop_event_location() returns trigger
@@ -546,6 +565,7 @@ alter table public.team_events enable row level security;
 alter table public.team_checkin_questions enable row level security;
 alter table public.team_focus enable row level security;
 alter table public.team_practices enable row level security;
+alter table public.team_exits enable row level security;
 
 -- Staff read each other (coworkers' names); admins change them.
 create policy "staff: read" on public.team_staff for select to authenticated using ((select public.team_is_staff()));
@@ -579,6 +599,13 @@ create policy "staff: change" on public.team_member_locations for update to auth
 
 create policy "staff: everything" on public.team_goals for all to authenticated
   using (public.team_can_member(member_id)) with check (public.team_can_member(member_id));
+
+-- Exit Intake: anyone who sees the member reads, adds and changes it; it goes with the member (admins delete).
+create policy "staff: read" on public.team_exits for select to authenticated using (public.team_can_member(member_id));
+create policy "staff: add" on public.team_exits for insert to authenticated with check (public.team_can_member(member_id));
+create policy "staff: change" on public.team_exits for update to authenticated
+  using (public.team_can_member(member_id)) with check (public.team_can_member(member_id));
+create policy "admins: delete" on public.team_exits for delete to authenticated using ((select public.team_is_admin()));
 
 -- Coach Notes and check-ins: anyone at the location reads and adds; the author or an admin edits or deletes.
 create policy "staff: read" on public.team_coach_notes for select to authenticated using (public.team_can_member(member_id));

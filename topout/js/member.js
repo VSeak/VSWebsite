@@ -9,7 +9,7 @@ let notesAll = false;
 async function memberPage(id) {
   const t = ++navToken;
   view(loading);
-  const [m, goals, notes, checkins, circuits, areas, questions, locs] = await Promise.all([
+  const [m, goals, notes, checkins, circuits, areas, questions, locs, exits] = await Promise.all([
     sb.from('team_members').select('*, teams:team_member_locations(location_id, inactive_on)').eq('id', id).maybeSingle().then(must),
     sb.from('team_goals').select('*').eq('member_id', id).order('created_at').then(must),
     sb.from('team_coach_notes').select('*').eq('member_id', id)
@@ -19,6 +19,7 @@ async function memberPage(id) {
     sb.from('team_rating_areas').select('*').order('position').then(must),
     sb.from('team_checkin_questions').select('*').order('position').then(must),
     sb.from('team_locations').select('id, name').order('position').then(must),
+    sb.from('team_exits').select('*').eq('member_id', id).order('left_on', { ascending: false }).then(r => r.data || []),   // still works before the migration
   ]);
   if (t !== navToken) return;
   if (!m) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Member Not Found</h2>
@@ -28,7 +29,9 @@ async function memberPage(id) {
   const mine = locs.filter(l => m.teams.includes(l.id));
   const loc = mine.find(l => l.id === lastLoc) || mine[0];
   m.backTo = loc && lastLoc !== 'members' ? `#/loc/${loc.id}/team` : '#/members';
-  const ctx = { m, goals, notes, checkins, circuits, areas, questions, locs };
+  // The Exit Intake for this time they left (none yet if they left before there was one); earlier exits are read-only.
+  const exit = m.left_on ? exits.find(x => x.left_on === m.left_on) || null : null;
+  const ctx = { m, goals, notes, checkins, circuits, areas, questions, locs, exit, pastExits: exits.filter(x => x !== exit) };
   const status = [mine.map(l => m.inactive[l.id] ? `${l.name} (inactive)` : l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
     .filter(Boolean).map(esc).join(' · ');
   view(`${crumbs([['Home', '#/'], m.backTo === '#/members' ? ['Team Members', m.backTo] : [loc.name, m.backTo], [m.name]])}
@@ -41,8 +44,10 @@ async function memberPage(id) {
         ${coachNotesHTML(ctx)}
       </div>
       <div class="col">
+        ${m.left_on ? exitCardHTML(m, ctx.exit) : ''}
         ${intakeHTML(m)}
         ${goalsHTML(goals)}
+        ${pastExitsHTML(m, ctx.pastExits)}
         ${detailsHTML(m, locs)}
       </div>
     </div>`, { keepScroll: true });
@@ -52,20 +57,63 @@ async function memberPage(id) {
 // ---------- Intake ----------
 
 const COMPS = { '': 'Not Asked Yet', yes: 'Yes', maybe: 'Maybe', no: 'No' };
+// The labels use the member's pronouns: Why She Joined, What They Want.
 function intakeHTML(m) {
-  const empty = !m.intake_why.trim() && !m.intake_wants.trim();
+  const empty = !m.intake_why.trim() && !m.intake_wants.trim(), pr = pronounWords(m.pronouns);
   return `<section class="card${empty ? ' overdue' : ''}">
     <div class="row between"><h2>Intake</h2>${empty ? '<span class="tag warn">Needs Intake</span>' : ''}</div>
-    <p class="hint">What ${esc(m.first_name)} wants out of Adult Team, from a chat with them.${m.intake_updated_at ? ` Updated ${fmtWhen(m.intake_updated_at)}.` : ''}</p>
+    <p class="hint">What ${esc(m.first_name)} wants out of Adult Team, from a chat with ${pr.obj}.${m.intake_updated_at ? ` Updated ${fmtWhen(m.intake_updated_at)}.` : ''}</p>
     <form id="intakeForm" class="stack" data-save>
-      <label>Why They Joined<textarea name="intake_why" rows="2" placeholder="E.g. wants climbing friends, got hooked at a comp">${esc(m.intake_why)}</textarea></label>
-      <label>What They Want From Adult Team<textarea name="intake_wants" rows="3" placeholder="E.g. send V5, learn to read routes, get stronger on slab">${esc(m.intake_wants)}</textarea></label>
-      <label>Interested in Competing?<select name="intake_comps">${Object.entries(COMPS).map(([k, v]) =>
+      <label>Why ${Cap(pr.subj)} Joined<textarea name="intake_why" rows="2" placeholder="E.g. wants climbing friends, got hooked at a comp">${esc(m.intake_why)}</textarea></label>
+      <label>What ${Cap(pr.subj)} ${pr.plural ? 'Want' : 'Wants'} From Adult Team<textarea name="intake_wants" rows="3" placeholder="E.g. send V5, learn to read routes, get stronger on slab">${esc(m.intake_wants)}</textarea></label>
+      <label>${pr.plural ? 'Are' : 'Is'} ${Cap(pr.subj)} Interested in Competing?<select name="intake_comps">${Object.entries(COMPS).map(([k, v]) =>
         `<option value="${k}"${k === m.intake_comps ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
       <label>Injuries or Limits<textarea name="intake_injuries" rows="2" placeholder="E.g. left shoulder, avoid big dynos">${esc(m.intake_injuries)}</textarea></label>
       <label>Anything Else<textarea name="intake_other" rows="2">${esc(m.intake_other)}</textarea></label>
       <button class="primary">Save Intake</button>
     </form></section>`;
+}
+
+// ---------- Exit Intake (team_exits): why they left, asked at Left the Team; every field optional ----------
+
+// Keys are stored (team_exits.reasons), so add new ones at the end of their spot and don't rename a key.
+const EXIT_REASONS = { schedule: 'Schedule or Time', cost: 'Cost', moved: 'Moved Away', injury: 'Injury or Health', life: 'Work or Family',
+  interest: 'Lost Interest', level: 'Not the Right Level', fit: "Didn't Feel Like a Fit", elsewhere: 'Another Gym or Program', other: 'Other' };
+const COME_BACK = { '': 'Not Asked', yes: 'Yes', maybe: 'Maybe', no: 'No' };
+const exitEmpty = x => !x || (!x.reasons.length && !x.details.trim() && !x.better.trim() && !x.come_back);
+const readExit = f => ({ reasons: f.getAll('reason'), details: f.get('details').trim(), better: f.get('better').trim(), come_back: f.get('come_back') });
+// The fields, in the Left the Team dialog and on a Former member's page.
+function exitFieldsHTML(m, x) {
+  const pr = pronounWords(m.pronouns), v = x || { reasons: [], details: '', better: '', come_back: '' };
+  return `<fieldset><legend>Why ${Cap(pr.subj)} Left</legend>
+      <div class="chips">${Object.entries(EXIT_REASONS).map(([k, l]) =>
+        `<label class="chip-check"><input type="checkbox" name="reason" value="${k}"${v.reasons.includes(k) ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div>
+      <p class="hint">Pick any that fit.</p></fieldset>
+    <label>In ${Cap(pr.pos)} Words<textarea name="details" rows="2" placeholder="E.g. new job, can't make weeknight practices">${esc(v.details)}</textarea></label>
+    <label>What Could We Have Done Better?<textarea name="better" rows="2" placeholder="E.g. more beginner-friendly sessions">${esc(v.better)}</textarea></label>
+    <label>Would ${Cap(pr.subj)} Come Back?<select name="come_back">${Object.entries(COME_BACK).map(([k, l]) =>
+      `<option value="${k}"${k === v.come_back ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+}
+function exitCardHTML(m, x) {
+  const pr = pronounWords(m.pronouns);
+  return `<section class="card">
+    <div class="row between"><h2>Exit Intake</h2>${exitEmpty(x) ? '<span class="tag">Not Filled In</span>' : ''}</div>
+    <p class="hint">Why ${esc(m.first_name)} left Adult Team, from a chat with ${pr.obj}. Every field is optional.${x?.author_name ? ` Added by ${esc(x.author_name)}.` : ''}${x?.edited_at ? ` Updated ${fmtWhen(x.edited_at)}.` : ''}</p>
+    <form id="exitForm" class="stack" data-save>${exitFieldsHTML(m, x)}<button class="primary">Save Exit Intake</button></form></section>`;
+}
+// One exit, read-only: on the member page (earlier times they left) and on Why Members Left.
+function exitSummaryHTML(x, m) {
+  const reasons = x.reasons.map(k => `<span class="chip">${esc(EXIT_REASONS[k] || k)}</span>`).join('');
+  return `${reasons ? `<div class="chips">${reasons}</div>` : ''}
+    ${x.details ? `<p><b>In ${pronounWords(m.pronouns).pos} words:</b> ${esc(x.details)}</p>` : ''}
+    ${x.better ? `<p><b>Could do better:</b> ${esc(x.better)}</p>` : ''}
+    ${x.come_back ? `<p><b>Would come back:</b> ${COME_BACK[x.come_back]}</p>` : ''}
+    ${exitEmpty(x) ? '<p class="muted">No exit intake.</p>' : ''}`;
+}
+function pastExitsHTML(m, list) {
+  if (!list.length) return '';
+  return `<section class="card"><details><summary><b>${m.left_on ? 'Earlier Exits' : 'Left Before'} (${list.length})</b></summary>
+    ${list.map(x => `<article class="exit"><h3>Left ${fmtDate(x.left_on)}</h3>${exitSummaryHTML(x, m)}</article>`).join('')}</details></section>`;
 }
 
 // ---------- Goals ----------
@@ -156,6 +204,15 @@ function bindMember(ctx) {
       flash('Intake saved.'); e.target.reset(); redraw();
     });
   };
+  $('#exitForm')?.addEventListener('submit', e => {
+    e.preventDefault();
+    const row = readExit(new FormData(e.target));
+    busy(e.submitter, async () => {
+      if (ctx.exit) await sb.from('team_exits').update(row).eq('id', ctx.exit.id).then(must);
+      else await sb.from('team_exits').insert({ member_id: m.id, left_on: m.left_on, ...row }).then(must);
+      flash('Exit intake saved.'); e.target.reset(); redraw();
+    });
+  });
   $('#detailsForm').onsubmit = e => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -205,11 +262,20 @@ function bindMember(ctx) {
     });
   };
   $('#leave')?.addEventListener('click', async e => {
-    const f = await ask({ title: 'Left the Team?', ok: 'Mark as Left',
-      body: `<p>${esc(m.first_name)} moves to Former and every team they're on is marked Inactive. Their intake, goals, notes and check-ins stay.</p>
-        <label>Last Day<input type="date" name="left_on" value="${today()}" required data-need="Pick the day."></label>` });
+    const pr = pronounWords(m.pronouns);
+    const f = await ask({ title: 'Left the Team?', ok: 'Mark as Left', wide: true,
+      body: `<p>${esc(m.first_name)} moves to Former and every team ${pr.subj} ${pr.plural ? 'are' : 'is'} on is marked Inactive. ${Cap(pr.pos)} intake, goals, notes and check-ins stay.</p>
+        <label>Last Day<input type="date" name="left_on" value="${today()}" required data-need="Pick the day."></label>
+        <h3>Exit Intake</h3>
+        <p class="hint">Why ${pr.subj} left, if you know. Every field is optional; you can fill it in later on ${pr.pos} page.</p>
+        ${exitFieldsHTML(m, null)}` });
     // The database (team_member_left) marks every team inactive, including ones this coach can't see.
-    if (f) busy(e.target, async () => { await upd({ left_on: f.get('left_on') }); flash('Moved to Former.'); redraw(); });
+    // The exit row is saved even when empty, so the page has one to fill in later.
+    if (f) busy(e.target, async () => {
+      await upd({ left_on: f.get('left_on') });
+      await sb.from('team_exits').insert({ member_id: m.id, left_on: f.get('left_on'), ...readExit(f) }).then(must);
+      flash('Moved to Former.'); redraw();
+    });
   });
   // Back on Team: their teams stay inactive; the coach picks the one they're coming back to.
   $('#rejoin')?.addEventListener('click', async e => {

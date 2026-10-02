@@ -210,15 +210,17 @@ function setPronouns(form, value) {
   if (other) form.elements.pronouns_other.value = value;
   sel.dispatchEvent(new Event('change', { bubbles: true }));
 }
-// Pronouns for a sentence about someone: { obj: 'her', self: 'herself' }. The first set of a pair (she/they) is used;
-// a typed one like ze/hir gives hir / hirself; none gives they.
+// Pronouns for a sentence about someone: { subj: 'she', obj: 'her', pos: 'her', self: 'herself', plural: false }.
+// plural: the verb goes with they ("they want", not "they wants"). The first set of a pair (she/they) is used;
+// a typed one like ze/hir gives ze / hir / hir / hirself; none gives they. Cap(w) for a label: "Why She Joined".
 function pronounWords(p) {
   const [a, b] = (p || '').toLowerCase().split('/').map(s => s.trim());
-  if (a === 'she') return { obj: 'her', self: 'herself' };
-  if (a === 'he') return { obj: 'him', self: 'himself' };
-  if (!a || a === 'they' || !b) return { obj: 'them', self: 'themselves' };
-  return { obj: esc(b), self: esc(b) + 'self' };
+  if (a === 'she') return { subj: 'she', obj: 'her', pos: 'her', self: 'herself', plural: false };
+  if (a === 'he') return { subj: 'he', obj: 'him', pos: 'his', self: 'himself', plural: false };
+  if (!a || a === 'they' || !b) return { subj: 'they', obj: 'them', pos: 'their', self: 'themselves', plural: true };
+  return { subj: esc(a), obj: esc(b), pos: esc(b), self: esc(b) + 'self', plural: false };
 }
+const Cap = w => w.charAt(0).toUpperCase() + w.slice(1);
 function readPronouns(f) {
   if (f.get('pronouns') !== 'other') return f.get('pronouns') || '';
   const typed = f.get('pronouns_other').trim();

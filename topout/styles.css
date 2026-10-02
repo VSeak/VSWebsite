@@ -69,6 +69,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
 .fill { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .fill:hover { border-color: var(--accent); filter: brightness(1.05); }
+/* Plain until hovered, then orange (the same-name check's buttons: the user didn't want them lit all the time). */
+.hover-fill:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 /* Save and Add: grey until there is something to save (markUnsaved enables them), then orange, filled on hover. */
 .primary { border-color: var(--accent); color: var(--accent-text); background: var(--card); }
 .primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

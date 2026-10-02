@@ -123,13 +123,13 @@ document.addEventListener('input', e => {
 // cancel: false for a notice with just OK. wide: a bigger dialog (the check-in form).
 // extra: another button beside OK, e.g. Delete; its value comes back as FormData's 'button'.
 // onOpen(form) runs once the dialog is showing (to wire up its fields).
-function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = false, extra = null, onOpen = null }) {
+function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = false, extra = null, onOpen = null, okClass = '' }) {
   const d = $('#dlg');
   d.className = wide ? 'wide' : '';
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
     <div class="row end">${extra ? `<button value="${extra.value}" formnovalidate class="ghost danger push-left">${esc(extra.label)}</button>` : ''}
     ${cancel ? '<button value="cancel" formnovalidate class="ghost">Cancel</button>' : ''}
-    <button value="ok" class="${warn ? 'risky' : 'fill'}">${esc(ok)}</button></div></form>`;
+    <button value="ok" class="${okClass || (warn ? 'risky' : 'fill')}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
     // Enter in a field means OK. (The browser would press the first button in the form, which is Cancel.)

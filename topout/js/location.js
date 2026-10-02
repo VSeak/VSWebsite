@@ -178,11 +178,11 @@ async function notADuplicate(first, last, loc) {
   const row = m => `<li><span>${m.link ? `<a href="#/member/${m.id}">${esc(m.name)}</a>` : esc(m.name)}${m.pronouns ? ` <span class="muted">(${esc(m.pronouns)})</span>` : ''}</span>
     <span class="muted small-text">${esc(m.where.filter(Boolean).join(' · '))}</span>
     ${m.here ? `<span class="tag">Already on ${esc(loc.name)}</span>`
-      : `<button type="button" class="small fill" data-join="${m.id}">Add to ${esc(loc.name)}</button>`}</li>`;
-  return !!await ask({ title: 'This Person May Exist on Another Team', ok: 'Add New Person',
+      : `<button type="button" class="small hover-fill" data-join="${m.id}">Add to ${esc(loc.name)}</button>`}</li>`;
+  return !!await ask({ title: 'This Person May Exist on Another Team', ok: 'Add New Person', okClass: 'hover-fill',
     body: `<p>${same.length === 1 ? 'There is already a team member' : `There are already ${same.length} team members`} with this name:</p>
       <ul class="dupes">${same.map(row).join('')}</ul>
-      <p class="hint">If it's the same person, click the button below their name to add them to ${esc(loc.name)}. Click Add New Person if it's someone else.</p>`,
+      <p class="hint">If it's the same person, click the button below their name to add them to ${esc(loc.name)}. Click the Add New Person button if it's someone new to Adult Team.</p>`,
     onOpen: form => form.addEventListener('click', e => {
       if (e.target.closest('a')) return $('#dlg').close();
       const b = e.target.closest('[data-join]');

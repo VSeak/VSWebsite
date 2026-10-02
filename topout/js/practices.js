@@ -5,7 +5,6 @@
 
 let practiceSearch = '';
 let practiceArea = '';         // the list's Area: filter, an area id or ''
-let practiceStart = '18:00';   // Starts At on a practice: the clock its blocks count from (practices run 6–8 PM)
 const PRACTICE_MAX_BLOCKS = 40;
 
 const blockMinutes = b => b.blocks.reduce((n, x) => n + (+x.minutes || 0), 0);
@@ -74,24 +73,16 @@ async function practicePage(id, sub) {
     <p class="muted">It may have been deleted.</p></section>`);
   if (sub === 'edit') return practiceEditor(p, areas);
 
-  // Each block's start on the clock, while every block before it has a length.
-  const [h, m] = practiceStart.split(':').map(Number);
-  let at = h * 60 + m;
-  const clock = mins => fmtTime(`${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
-  const blocks = p.blocks.map(b => {
-    const start = at == null ? '' : clock(at);
-    at = at == null || !(+b.minutes) ? null : at + +b.minutes;
-    return `<li class="block-view"><div class="block-when">${start ? `<b>${start}</b>` : ''}${+b.minutes ? `<span>${fmtMinutes(+b.minutes)}</span>` : ''}</div>
-      <div class="block-what"><h3>${esc(b.title || 'Block')}</h3>${b.notes ? `<div class="note-body">${para(b.notes)}</div>` : ''}</div></li>`;
-  }).join('');
+  // Each block with how long it takes (no clock times: the user wants lengths only).
+  const blocks = p.blocks.map(b => `<li class="block-view"><div class="block-when">${+b.minutes ? `<b>${fmtMinutes(+b.minutes)}</b>` : ''}</div>
+    <div class="block-what"><h3>${esc(b.title || 'Block')}</h3>${b.notes ? `<div class="note-body">${para(b.notes)}</div>` : ''}</div></li>`).join('');
   view(`${crumbs([['Home', '#/'], ['Practices', '#/practices'], [p.name]])}
     <div class="page-head"><div><h1 class="big">${esc(p.name)}</h1><p class="muted">${practiceMeta(p)}</p></div>
       <a class="button" href="#/practice/${p.id}/edit">Edit</a></div>
     <div class="practice-layout">
       <section class="card">
-        <div class="row between wrap"><h2>Plan</h2>
-          ${p.blocks.length ? `<label class="inline">Starts At<input type="time" id="startAt" value="${practiceStart}"></label>` : ''}</div>
-        ${p.blocks.length ? `<ol class="blocks">${blocks}</ol>${at != null ? `<p class="muted small-text">Ends ${clock(at)}</p>` : ''}`
+        <h2>Plan</h2>
+        ${p.blocks.length ? `<ol class="blocks">${blocks}</ol>`
           : `<p class="muted">No blocks yet. <a href="#/practice/${p.id}/edit">Add some</a>.</p>`}
       </section>
       <aside class="side">
@@ -102,7 +93,6 @@ async function practicePage(id, sub) {
         <p class="hint">Added by ${esc(p.author_name || 'staff')}${p.edited_at ? ` · edited ${fmtWhen(p.edited_at)}` : ''}</p>
       </aside>
     </div>`);
-  $('#startAt')?.addEventListener('change', e => { if (e.target.value) { practiceStart = e.target.value; redraw(); } });
 }
 
 // Add or edit a practice. Blocks reorder by their grips (wireGrips); the hidden order field makes a reorder, add or

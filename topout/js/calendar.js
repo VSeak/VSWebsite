@@ -109,7 +109,7 @@ async function showEvent(e, loc, locs) {
     body: `<p class="event-meta wrap"><span class="kind k-${e.kind}">${KINDS[e.kind]}</span> <span class="chip">${esc(locsText(e, locs))}</span>
         ${e.series_id ? '<span class="chip soft">Repeats Weekly</span>' : ''}</p>
       <p><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
-      ${plan ? `<p><button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}${plan.event_only ? ' (This Event Only)' : ''}</button></p>` : ''}
+      ${plan ? `<p><button type="button" class="small${plan.event_only ? ' plan-one-off' : ''}" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}${plan.event_only ? '<span>(This Event Only)</span>' : ''}</button></p>` : ''}
       ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
       <p class="hint">Added by ${esc(e.author_name || 'staff')}${e.edited_at ? ` · edited ${fmtWhen(e.edited_at)}` : ''}</p>` });
   if (!f || !edit) return;

@@ -146,7 +146,7 @@ function nextPracticeHTML(e, plan, loc, areas, members) {
     ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
     ${focusAreas.length ? `<p class="next-areas"><b>Focus Areas</b> <span class="chips">${focusAreas.map(a => `<span class="chip strong">${esc(a.name)}</span>`).join('')}</span></p>` : ''}
     ${headsUpHTML(members)}
-    <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}${plan.event_only ? ' (This Event Only)' : ''}</button>` : ''}
+    <div class="row wrap next-actions">${plan ? `<button type="button" class="small${plan.event_only ? ' plan-one-off' : ''}" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}${plan.event_only ? '<span>(This Event Only)</span>' : ''}</button>` : ''}
       <a class="button small" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
   </section>`;
 }

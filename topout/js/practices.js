@@ -307,7 +307,7 @@ async function practiceDialog(id, ev = null) {
     ? ` and on ${n === 1 ? 'the 1 event that uses' : `all ${n} events that use`} it${ahead ? ` (${ahead} coming up)` : ''}` : ''}.</p>` : '';
   const saves = forEvent
     ? { ok: 'Save to This Event Only', alt: { value: 'orig', label: 'Save to Original Practice', class: 'risky' } }
-    : { ok: toOrig && ev ? 'Save to Original Practice' : 'Save Practice', okClass: toOrig && n > 1 ? 'risky' : '',
+    : { ok: oneOff ? 'Save One-Off Practice' : ev ? 'Save to Original Practice' : 'Save Practice', okClass: toOrig && n > 1 ? 'risky' : '',
         extra: { value: 'delete', label: 'Delete' } };
   let form;
   const res = await ask({ title: 'Edit Practice', wide: true, ...saves,

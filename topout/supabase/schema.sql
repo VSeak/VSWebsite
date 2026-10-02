@@ -49,7 +49,7 @@ create table public.team_members (
   pronouns text not null default '' check (length(pronouns) <= 40),
   email text check (email = lower(email)),
   joined_on date,
-  left_on date,   -- set when they leave the team (Inactive); null while on it
+  left_on date,   -- set when they leave the team (Former; every team goes inactive); null while on it
   intake_why text not null default '',
   intake_wants text not null default '',
   intake_comps text not null default '' check (intake_comps in ('', 'yes', 'maybe', 'no')),
@@ -418,6 +418,18 @@ $$;
 create trigger team_drop_event_location after delete on public.team_locations
   for each row execute function public.team_drop_event_location();
 
+-- Left the Team marks every team they're on inactive, including teams the coach doesn't coach.
+-- Back on Team leaves them inactive; the coach picks the team they come back to (team_join_location).
+create function public.team_member_left() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  update public.team_member_locations set inactive_on = new.left_on where member_id = new.id and inactive_on is null;
+  return new;
+end;
+$$;
+create trigger team_member_left after update of left_on on public.team_members
+  for each row when (old.left_on is null and new.left_on is not null) execute function public.team_member_left();
+
 -- There must always be an admin, so nobody locks everyone out of the Staff page.
 create function public.team_keep_an_admin() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -686,6 +698,7 @@ create trigger person_push after insert or update of email, first_name, last_nam
 create trigger person_push after insert or update of email, first_name, last_name, pronouns on public.students
   for each row execute function public.person_push();
 revoke execute on function public.person_pull(), public.person_push() from public, anon, authenticated;
+revoke execute on function public.team_member_left() from public, anon, authenticated;
 
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),

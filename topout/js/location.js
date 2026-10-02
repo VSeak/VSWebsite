@@ -1,7 +1,7 @@
 // ---------- A location: #/loc/<id> (Summary, summary.js; also #/loc/<id>/summary), #/loc/<id>/calendar and #/loc/<id>/team. Every team member: #/members ----------
 // A member is on one team (location) or several (team_member_locations). A coach sees the members of their teams.
 
-let teamTab = 'active';     // Active or Former members, kept while moving around
+let teamTab = 'active';     // Active, Moved or Former members, kept while moving around
 let teamSearch = '';
 let membersTeam = '';       // the All Members page's team filter: '' (every team), a location id, or 'several'
 let lastLoc = null;         // the list last shown (a location id, or 'members'), for the member page's breadcrumbs
@@ -32,12 +32,11 @@ async function locationPage(id, sub) {
 }
 
 // A member's team_member_locations rows → m.teams (location ids) and m.inactive ({location id: inactive since}).
-// Inactive on a team: still on it (switched locations, say), but under Former there and not counted.
+// Inactive on a team: still on it (switched locations, say), but under Moved there and not counted.
 function inactiveOn(m) {
   m.inactive = Object.fromEntries(m.teams.filter(x => x.inactive_on).map(x => [x.location_id, x.inactive_on]));
   m.teams = m.teams.map(x => x.location_id);
 }
-const activeOn = (m, id) => !m.left_on && m.teams.includes(id) && !m.inactive[id];
 
 // Every member this person can see, each with `teams` (location ids), plus the latest check-in per member and the
 // circuits and locations to show them with.
@@ -55,16 +54,19 @@ async function loadMembers() {
   return { members, latest, circuits, locs };
 }
 
-// Active / Former, a search box and the member cards. teamChips(m) adds chips for the teams they're on;
-// former(m) says who goes under Former (default: left the team).
+// Active / Moved / Former, a search box and the member cards. teamChips(m) adds chips for the teams they're on;
+// moved(m) says who goes under Moved (still on Adult Team, inactive here). Former is everyone who left Adult Team.
+// Moved and Former show only when someone is in them.
 // Two members with the same name get a line telling them apart: when they joined, and their email if there is one.
-function membersView(head, list, { latest, circuits, teamChips, former: isFormer = m => !!m.left_on, tools = '', empty }) {
+function membersView(head, list, { latest, circuits, teamChips, moved: isMoved, tools = '', empty }) {
   const named = {};
   for (const m of list) named[m.name.toLowerCase()] = (named[m.name.toLowerCase()] || 0) + 1;
   const tellApart = m => named[m.name.toLowerCase()] < 2 ? ''
     : `<span class="person-sub">${esc([m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.email || ''].filter(Boolean).join(' · ') || 'Same name as another member')}</span>`;
-  const active = list.filter(m => !isFormer(m)), former = list.filter(isFormer);
-  if (teamTab === 'former' && !former.length) teamTab = 'active';
+  const former = list.filter(m => m.left_on), moved = list.filter(m => !m.left_on && isMoved(m)),
+    active = list.filter(m => !m.left_on && !isMoved(m));
+  const groups = { active, moved, former };
+  if (!groups[teamTab]?.length) teamTab = 'active';
   const card = m => {
     const c = latest[m.id], circ = c && circuits.find(x => x.id === c.circuit_id);
     const chips = [
@@ -77,13 +79,12 @@ function membersView(head, list, { latest, circuits, teamChips, former: isFormer
     return `<a class="person" href="#/member/${m.id}" data-name="${esc(m.name.toLowerCase())}"><span class="ini">${esc(initials(m.name))}</span>
       <span class="person-main"><b>${esc(m.name)}${pronounsTag(m.pronouns)}</b>${tellApart(m)}<span class="chips">${chips}</span></span></a>`;
   };
-  const shown = teamTab === 'former' ? former : active;
+  const shown = groups[teamTab];
+  const seg = (key, label) => key === 'active' || groups[key].length
+    ? `<button type="button" data-team="${key}" class="${teamTab === key ? 'on' : ''}">${label} <span class="count">${groups[key].length}</span></button>` : '';
   view(`${head}
     <div class="row between list-tools">
-      <div class="seg" role="group" aria-label="Show">
-        <button type="button" data-team="active" class="${teamTab === 'active' ? 'on' : ''}">Active <span class="count">${active.length}</span></button>
-        ${former.length ? `<button type="button" data-team="former" class="${teamTab === 'former' ? 'on' : ''}">Former <span class="count">${former.length}</span></button>` : ''}
-      </div>
+      <div class="seg" role="group" aria-label="Show">${seg('active', 'Active')}${seg('moved', 'Moved')}${seg('former', 'Former')}</div>
       ${tools}
     </div>
     ${list.length > 6 ? `<input type="search" id="teamSearch" class="search" placeholder="Search by name" value="${esc(teamSearch)}" aria-label="Search by name">` : ''}
@@ -107,11 +108,11 @@ function membersView(head, list, { latest, circuits, teamChips, former: isFormer
 async function teamTabView(loc, head, t) {
   const { members, latest, circuits, locs } = await loadMembers();
   if (t !== navToken) return;
-  // Inactive here, and the other teams they're on (a coach may not see that location's name).
-  const also = m => (m.inactive[loc.id] && !m.left_on ? `<span class="chip soft">Inactive since ${fmtShort(m.inactive[loc.id])}</span>` : '')
-    + m.teams.filter(id => id !== loc.id).map(id =>
-      `<span class="chip soft">${m.inactive[id] ? 'Formerly' : 'Also'} ${esc(locs.find(l => l.id === id)?.name || 'another team')}</span>`).join('');
-  membersView(head, members.filter(m => m.teams.includes(loc.id)), { latest, circuits, teamChips: also, former: m => !activeOn(m, loc.id),
+  // The other teams they're active on (a coach may not see that location's name): Also on X, or Now at X once moved from here.
+  const also = m => m.left_on ? '' : (m.inactive[loc.id] ? `<span class="chip soft">Moved ${fmtShort(m.inactive[loc.id])}</span>` : '')
+    + m.teams.filter(id => id !== loc.id && !m.inactive[id]).map(id =>
+      `<span class="chip soft">${m.inactive[loc.id] ? 'Now at' : 'Also on'} ${esc(locs.find(l => l.id === id)?.name || 'another team')}</span>`).join('');
+  membersView(head, members.filter(m => m.teams.includes(loc.id)), { latest, circuits, teamChips: also, moved: m => !!m.inactive[loc.id],
     tools: '<button type="button" id="addMember" class="fill">+ Add Member</button>',
     empty: `<section class="card empty"><h2>No Team Members Yet</h2><p class="muted">Add the first member of the ${esc(loc.name)} team.</p></section>` });
   $('#addMember').onclick = () => addMember(loc);
@@ -129,12 +130,12 @@ async function membersPage() {
   const teams = m => locs.filter(l => m.teams.includes(l.id)).map(l => m.inactive[l.id]
       ? `<span class="chip soft">${esc(l.name)} (Inactive)</span>` : `<span class="chip strong">${esc(l.name)}</span>`).join('')
     + (m.teams.some(id => !locs.some(l => l.id === id)) ? '<span class="chip soft">Another team</span>' : '');
-  // Picked a location: Former there. All of them: left, or inactive on every team.
-  const former = m => m.left_on || (membersTeam && membersTeam !== 'several' ? !activeOn(m, membersTeam) : m.teams.every(id => m.inactive[id]));
+  // Moved: picked a location, inactive there; all of them, inactive on every team they're on.
+  const moved = m => membersTeam && membersTeam !== 'several' ? !!m.inactive[membersTeam] : m.teams.every(id => m.inactive[id]);
   const head = `${crumbs([['Home', '#/'], ['Team Members']])}
     <div class="page-head"><div><h1 class="big">Team Members</h1>
       <p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'} and which teams they're on.</p></div></div>`;
-  membersView(head, list, { latest, circuits, teamChips: teams, former,
+  membersView(head, list, { latest, circuits, teamChips: teams, moved,
     tools: locs.length > 1 ? `<label class="inline">Location:<select id="membersTeam" class="team-filter">
       <option value="">All Locations</option>${locs.map(l => `<option value="${l.id}"${l.id === membersTeam ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
       <option value="several"${membersTeam === 'several' ? ' selected' : ''}>On Several Teams</option></select></label>` : '',

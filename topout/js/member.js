@@ -128,16 +128,16 @@ function detailsHTML(m, locs) {
             <select name="status_${l.id}" aria-label="${esc(l.name)} status"${on ? '' : ' disabled'}><option value="">Active</option>
               <option value="inactive"${off ? ' selected' : ''}>Inactive${off ? ` Since ${fmtShort(off)}` : ''}</option></select></div>`; }).join('')}
         ${hidden ? `<p class="hint">Also on ${hidden === 1 ? 'a team' : hidden + ' teams'} you don't coach.</p>` : ''}
-        <p class="hint">Switched locations? Mark the old team Inactive: they stay on it, under Former there.</p>
+        <p class="hint">Switched locations? Mark the old team Inactive: they stay on it, under Moved there.</p>
       </fieldset>
       <button class="primary">Save Details</button>
     </form>
     <div class="row wrap danger-zone">
-      ${m.left_on ? '<button type="button" class="ghost" id="rejoin">Back on the Team</button>'
+      ${m.left_on ? '<button type="button" class="ghost" id="rejoin">Back on Team</button>'
         : '<button type="button" class="ghost" id="leave">Left the Team</button>'}
       <button type="button" class="ghost danger" id="delMember">Delete Member</button>
     </div>
-    <p class="hint">Left the Team keeps their history and moves them to Former. Delete is for someone added by mistake.</p>
+    <p class="hint">Left the Team keeps their history, makes every team Inactive and moves them to Former. Delete is for someone added by mistake.</p>
   </section>`;
 }
 
@@ -206,11 +206,24 @@ function bindMember(ctx) {
   };
   $('#leave')?.addEventListener('click', async e => {
     const f = await ask({ title: 'Left the Team?', ok: 'Mark as Left',
-      body: `<p>${esc(m.first_name)} moves to Former. Their intake, goals, notes and check-ins stay.</p>
+      body: `<p>${esc(m.first_name)} moves to Former and every team they're on is marked Inactive. Their intake, goals, notes and check-ins stay.</p>
         <label>Last Day<input type="date" name="left_on" value="${today()}" required data-need="Pick the day."></label>` });
+    // The database (team_member_left) marks every team inactive, including ones this coach can't see.
     if (f) busy(e.target, async () => { await upd({ left_on: f.get('left_on') }); flash('Moved to Former.'); redraw(); });
   });
-  $('#rejoin')?.addEventListener('click', e => busy(e.target, async () => { await upd({ left_on: null }); flash(`${m.first_name} is back on the team.`); redraw(); }));
+  // Back on Team: their teams stay inactive; the coach picks the one they're coming back to.
+  $('#rejoin')?.addEventListener('click', async e => {
+    const locs = ctx.locs;
+    const f = await ask({ title: 'Back on Team?', ok: 'Back on Team',
+      body: `<label>Location<select name="loc" required data-need="Pick a location.">
+        ${locs.length === 1 ? '' : '<option value="">Pick a location</option>'}${locs.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></label>
+        <p class="hint">Their other teams stay Inactive.</p>` });
+    if (f) busy(e.target, async () => {
+      await sb.rpc('team_join_location', { p_member: m.id, p_location: f.get('loc') }).then(must);
+      await upd({ left_on: null });
+      flash(`${m.first_name} is back on the team.`); redraw();
+    });
+  });
   $('#delMember').onclick = async e => {
     if (!await confirmDelete('Delete Member?', `This deletes ${esc(m.name)} and all their goals, notes and check-ins. It can't be undone.
       If they just left, use Left the Team instead.`)) return;

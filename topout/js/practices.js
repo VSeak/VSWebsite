@@ -75,7 +75,7 @@ async function practicesPage() {
       <input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
       <select id="pracSort" class="team-filter" aria-label="Sort practices">${Object.entries(PRACTICE_SORTS).map(([k, l]) =>
         `<option value="${k}"${k === practiceSort ? ' selected' : ''}>Sort: ${l}</option>`).join('')}</select>
-      ${oneOffs.length ? `<label class="check"><input type="checkbox" id="pracOneOffs"${practiceOneOffs ? ' checked' : ''}> Show One-Offs (${oneOffs.length})</label>` : ''}
+      ${oneOffs.length ? `<label class="switch"><input type="checkbox" role="switch" id="pracOneOffs"${practiceOneOffs ? ' checked' : ''}> Show One-Offs (${oneOffs.length})</label>` : ''}
       ${used.length ? `<div class="chips prac-areas" id="pracAreas" role="group" aria-label="Filter by focus area">
         ${used.map(([a, n]) => `<label class="chip-check"><input type="checkbox" value="${a.id}"${practiceAreas.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)} (${n})</span></label>`).join('')}
         <button type="button" class="small ghost" id="pracClear"${practiceAreas.length ? '' : ' hidden'}>Clear</button></div>` : ''}
@@ -276,7 +276,7 @@ async function practiceEditor(p, areas) {
 // ev = the event it was opened from ({ id, canEdit }). Then Save to This Event Only (team_event_practice: a one-off
 // copy linked to just that event, or the event's own one-off changed in place) sits beside Save to Original Practice,
 // which changes the library practice for every event that uses it (a red line says how many; the user asked).
-// Saving a one-off to the original also links the event back to the original (the unused one-off is then deleted).
+// Editing a one-off again just saves it (no choice, no red line; the user asked).
 
 async function practiceDialog(id, ev = null) {
   $('#dlg').close();   // the event pop-up it was opened from (ask() has one dialog)
@@ -299,32 +299,32 @@ async function practiceDialog(id, ev = null) {
       <p class="hint">${practiceByline(p)} · <a href="#/practice/${p.id}" data-close>Open Practice Page</a></p>` });
   if (!look) return;
 
-  // Which saves there are: for this event only (when they can change the event) and to the original (when there is one).
-  const forEvent = !!ev?.canEdit, toOrig = !!orig && (!oneOff || forEvent);
+  // A one-off just saves (to itself). Otherwise, from an event they can change: both saves (no Delete, so the buttons fit
+  // on one line; Delete is on the practice page); else one save with the red line.
+  const forEvent = !oneOff && !!ev?.canEdit, toOrig = !oneOff;
   const n = uses.length, ahead = uses.filter(u => u.event_date >= today()).length;
-  const warn = toOrig ? `<p class="field-error orig-warn">${ev ? 'Save to Original Practice changes' : 'Saving changes'} ${esc(orig.name)} in Practices${n
+  const warn = toOrig ? `<p class="field-error orig-warn">${ev ? 'Save to Original Practice changes' : 'Saving changes'} ${esc(p.name)} in Practices${n
     ? ` and on ${n === 1 ? 'the 1 event that uses' : `all ${n} events that use`} it${ahead ? ` (${ahead} coming up)` : ''}` : ''}.</p>` : '';
   const saves = forEvent
-    ? { ok: 'Save to This Event Only', alt: toOrig ? { value: 'orig', label: 'Save to Original Practice', class: 'risky' } : null }
-    : { ok: toOrig && ev ? 'Save to Original Practice' : 'Save Practice', okClass: n > 1 ? 'risky' : '' };
+    ? { ok: 'Save to This Event Only', alt: { value: 'orig', label: 'Save to Original Practice', class: 'risky' } }
+    : { ok: toOrig && ev ? 'Save to Original Practice' : 'Save Practice', okClass: toOrig && n > 1 ? 'risky' : '',
+        extra: { value: 'delete', label: 'Delete' } };
   let form;
-  const res = await ask({ title: 'Edit Practice', wide: true, extra: { value: 'delete', label: 'Delete' }, ...saves,
+  const res = await ask({ title: 'Edit Practice', wide: true, ...saves,
     body: `${warn}<div class="practice-form in-dialog">${practiceFieldsHTML(p, areas)}</div>`,
     onOpen: f => { form = f; wirePracticeForm(f); } });
   if (!res) return;
   if (res.get('button') === 'delete') return deletePractice(p, () => redraw());
   const row = readPractice(form);
   const saved = await busy(null, async () => {
-    let to;
+    let to = p.id;
     if (forEvent && res.get('button') !== 'orig') {
       to = await sb.rpc('team_event_practice', { p_event: ev.id, p_name: row.name, p_summary: row.summary,
         p_area_ids: row.area_ids, p_blocks: row.blocks }).then(must);
       flash('Saved for this event only. The original practice is unchanged.');
     } else {
-      to = toOrig ? orig.id : p.id;
-      await sb.from('team_practices').update(row).eq('id', to).then(must);
-      if (oneOff && ev) await sb.from('team_events').update({ practice_id: to }).eq('id', ev.id).then(must);
-      flash(n > 1 ? `Practice saved for all ${n} events.` : 'Practice saved.');
+      await sb.from('team_practices').update(row).eq('id', p.id).then(must);
+      flash(toOrig && n > 1 ? `Practice saved for all ${n} events.` : 'Practice saved.');
     }
     redraw();
     return to;

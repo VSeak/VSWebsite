@@ -467,3 +467,15 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 .intake-recap p { margin: .15rem 0; }
 .intake-recap ul { margin: .2rem 0 0; padding-left: 1.1rem; }
 .next-practice .next-areas { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .8rem 0 0; font-size: .92rem; }
+
+/* A toggle switch (a checkbox with role="switch"), e.g. Practices' Show One-Offs. */
+.switch { display: inline-flex; align-items: center; gap: .55rem; font-weight: 600; cursor: pointer; }
+label.switch > input { appearance: none; -webkit-appearance: none; flex: none; display: block; margin: 0; padding: 0; border: 0; width: 2.5rem; height: 1.45rem;
+  border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; }
+label.switch > input::before { content: ''; position: absolute; top: 3px; left: 3px; width: calc(1.45rem - 6px); height: calc(1.45rem - 6px); border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(16, 19, 31, .3); transition: transform .15s; }
+label.switch > input:checked { background: var(--accent); }
+label.switch > input:checked::before { transform: translateX(1.05rem); }
+label.switch > input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A dialog with two saves (alt): on a narrow screen the buttons share the lines evenly instead of leaving gaps. */
+@media (max-width: 560px) { dialog .row.end.many > button { flex: 1 1 auto; } }

@@ -188,6 +188,8 @@ create table public.team_checkins (
   tb2_angle smallint check (tb2_angle between 0 and 70),
   kilter_grade smallint check (kilter_grade between 0 and 17),
   kilter_angle smallint check (kilter_angle between 0 and 70),
+  moon_grade smallint check (moon_grade between 0 and 17),
+  moon_angle smallint check (moon_angle between 0 and 70),
   boulder_grade smallint check (boulder_grade between 0 and 17),   -- outdoors or another gym
   route_grade text check (route_grade in ('5.5', '5.6', '5.7', '5.8', '5.9',
     '5.10a', '5.10b', '5.10c', '5.10d', '5.11a', '5.11b', '5.11c', '5.11d', '5.12a', '5.12b', '5.12c', '5.12d',

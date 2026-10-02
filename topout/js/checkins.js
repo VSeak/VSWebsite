@@ -32,6 +32,7 @@ function gradeParts(c, circuits) {
     { key: 'circuit', label: 'Circuit', show: circ ? `${swatch(circ.color)}${esc(circ.name)}` : null, sub: circ ? circuitRange(circ) : '', rank: circ?.position },
     { key: 'tb2', label: 'Tension Board 2', show: esc(board(c.tb2_grade, c.tb2_angle)), rank: c.tb2_grade },
     { key: 'kilter', label: 'Kilter Board', show: esc(board(c.kilter_grade, c.kilter_angle)), rank: c.kilter_grade },
+    { key: 'moon', label: 'MoonBoard', show: esc(board(c.moon_grade, c.moon_angle)), rank: c.moon_grade },
     { key: 'boulder', label: 'Boulder (Outdoor/Other)', show: c.boulder_grade == null ? null : vText(c.boulder_grade), rank: c.boulder_grade },
     { key: 'route', label: 'Route', show: c.route_grade ? esc(c.route_grade) : null, rank: c.route_grade ? ROUTE_GRADES.indexOf(c.route_grade) : null },
   ].filter(p => p.show);
@@ -72,7 +73,7 @@ function checkinsCardHTML(ctx) {
   const [latest, ...older] = checkins;
   const summary = c => {
     const circ = circuits.find(x => x.id === c.circuit_id);
-    const bits = gradeParts(c, circuits).filter(p => p.key !== 'circuit').map(p => `${p.key === 'tb2' ? 'TB2' : p.key === 'kilter' ? 'Kilter' : ''} ${p.show}`.trim());
+    const bits = gradeParts(c, circuits).filter(p => p.key !== 'circuit').map(p => `${p.key === 'tb2' ? 'TB2' : p.key === 'kilter' ? 'Kilter' : p.key === 'moon' ? 'Moon' : ''} ${p.show}`.trim());
     return `<b>${fmtDate(c.checkin_date)}</b>${circ ? circuitChip(circ) : ''}<span class="muted">${[...bits.slice(0, 2), c.author_name ? `by ${esc(c.author_name)}` : ''].filter(Boolean).join(' · ')}</span>`;
   };
   return `<section class="card checkins-card">
@@ -131,6 +132,7 @@ async function checkinForm(c, { m, goals, checkins, circuits, areas, questions }
         `<option value="${x.id}"${x.id === v.circuit_id ? ' selected' : ''}>${esc(x.name)}${circuitRange(x) ? ` (${circuitRange(x)})` : ''}</option>`).join('')}</select></label>
       <fieldset><legend>Tension Board 2</legend><div class="two"><label>Grade<select name="tb2_grade">${vOpts(v.tb2_grade)}</select></label>${angle('tb2_angle', v.tb2_angle)}</div></fieldset>
       <fieldset><legend>Kilter Board</legend><div class="two"><label>Grade<select name="kilter_grade">${vOpts(v.kilter_grade)}</select></label>${angle('kilter_angle', v.kilter_angle)}</div></fieldset>
+      <fieldset><legend>MoonBoard</legend><div class="two"><label>Grade<select name="moon_grade">${vOpts(v.moon_grade)}</select></label>${angle('moon_angle', v.moon_angle)}</div></fieldset>
       <div class="two"><label>Boulder (Outdoor/Other)<select name="boulder_grade">${vOpts(v.boulder_grade)}</select></label>
         <label>Route<select name="route_grade"><option value="">—</option>${ROUTE_GRADES.map(g => `<option${g === v.route_grade ? ' selected' : ''}>${g}</option>`).join('')}</select></label></div>
       ${shownAreas.length ? `<h3 class="sec">Ratings</h3>
@@ -169,6 +171,7 @@ async function checkinForm(c, { m, goals, checkins, circuits, areas, questions }
     checkin_date: f.get('checkin_date'), circuit_id: f.get('circuit_id') || null,
     tb2_grade: num('tb2_grade'), tb2_angle: num('tb2_grade') == null ? null : num('tb2_angle'),
     kilter_grade: num('kilter_grade'), kilter_angle: num('kilter_grade') == null ? null : num('kilter_angle'),
+    moon_grade: num('moon_grade'), moon_angle: num('moon_grade') == null ? null : num('moon_angle'),
     boulder_grade: num('boulder_grade'), route_grade: f.get('route_grade') || null,
     ratings: pickAll('r_', c?.ratings), coach_ratings: pickAll('c_', c?.coach_ratings),
     answers: keep(answers, c?.answers, shownQs), tags: keep(tags, c?.tags, shownQs), notes: f.get('notes').trim(),

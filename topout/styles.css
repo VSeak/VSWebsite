@@ -399,8 +399,12 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 /* Practices (practices.js) */
 .practices { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: .75rem; }
 @media (max-width: 420px) { .practices { grid-template-columns: 1fr; } }
-.practice { display: flex; flex-direction: column; gap: .25rem; margin: 0; text-decoration: none; color: var(--ink); }
-.practice:hover { border-color: var(--accent); }
+.practice { position: relative; display: flex; flex-direction: column; gap: .25rem; margin: 0; color: var(--ink); }
+.practice-go { color: inherit; text-decoration: none; }
+.practice-go::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }   /* the whole card opens it */
+.practice-foot { margin-top: .35rem; align-items: flex-end; gap: .5rem; }
+.practice-foot button { position: relative; z-index: 1; flex: none; }   /* above the stretched link */
+.practice:hover, .practice:has(.practice-go:focus-visible) { border-color: var(--accent); }
 .practice h2 { margin: 0; overflow-wrap: anywhere; }
 .practice svg { color: var(--accent-text); flex: none; }
 .practice p { margin: 0; }

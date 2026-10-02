@@ -15,6 +15,12 @@ const practiceAreaChips = (p, areas) => byGroup(areas).filter(a => p.area_ids.in
   .map(a => `<span class="chip">${esc(a.name)}</span>`).join('');
 const loadAreas = () => sb.from('team_rating_areas').select('id, name, area_group, active').order('position').then(must);
 
+// Delete, after asking (from the list, the practice or the editor); then() runs once it's gone.
+async function deletePractice(p, then) {
+  if (!await confirmDelete(`Delete ${p.name}?`, 'It will be gone for every coach, and calendar events that use it will no longer link to it.')) return;
+  busy(null, async () => { await sb.from('team_practices').delete().eq('id', p.id).then(must); flash('Practice deleted.'); then(); });
+}
+
 async function practicesPage() {
   const t = ++navToken;
   view(loading);
@@ -25,15 +31,16 @@ async function practicesPage() {
   if (t !== navToken) return;
   const used = byGroup(areas).map(a => [a, list.filter(p => p.area_ids.includes(a.id)).length]).filter(([, n]) => n);
   if (practiceArea && !used.some(([a]) => a.id === practiceArea)) practiceArea = '';
-  const card = p => `<a class="card practice" href="#/practice/${p.id}" data-area="${p.area_ids.join(' ')}"
-      data-find="${esc((p.name + ' ' + p.summary).toLowerCase())}">
-    <div class="row between"><h2>${esc(p.name)}</h2>${ICON_ARROW}</div>
+  // The name is the link, stretched over the card (.practice-go::after), so Delete can sit inside it.
+  const card = p => `<article class="card practice" data-area="${p.area_ids.join(' ')}" data-find="${esc((p.name + ' ' + p.summary).toLowerCase())}">
+    <div class="row between"><h2><a class="practice-go" href="#/practice/${p.id}">${esc(p.name)}</a></h2>${ICON_ARROW}</div>
     <p class="muted small-text">${practiceMeta(p)}</p>
     ${p.summary ? `<p class="practice-sum">${esc(p.summary)}</p>` : ''}
-    <span class="chips">${practiceAreaChips(p, areas)}</span></a>`;
+    <div class="row between practice-foot"><span class="chips">${practiceAreaChips(p, areas)}</span>
+      <button type="button" class="small ghost danger" data-del="${p.id}">Delete</button></div></article>`;
   view(`${crumbs([['Home', '#/'], ['Practices']])}
     <div class="page-head"><div><h1 class="big">Practices</h1>
-      <p class="muted">Practice plans every coach shares. Open one for the plan, block by block.</p></div>
+      <p class="muted">List of practices to use for team practice. Feel free to create a new practice if it doesn't exist yet!</p></div>
       <a class="button fill" href="#/practice/new">+ New Practice</a></div>
     ${list.length ? `<div class="row list-tools">
       <input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
@@ -57,6 +64,10 @@ async function practicesPage() {
   filter();
   $('#pracSearch').addEventListener('input', e => { practiceSearch = e.target.value; filter(); });
   $('#pracArea')?.addEventListener('change', e => { practiceArea = e.target.value; filter(); });
+  app.onclick = e => {
+    const del = e.target.closest('[data-del]');
+    if (del) deletePractice(list.find(p => p.id === del.dataset.del), () => redraw());
+  };
 }
 
 async function practicePage(id, sub) {
@@ -78,7 +89,7 @@ async function practicePage(id, sub) {
     <div class="block-what"><h3>${esc(b.title || 'Block')}</h3>${b.notes ? `<div class="note-body">${para(b.notes)}</div>` : ''}</div></li>`).join('');
   view(`${crumbs([['Home', '#/'], ['Practices', '#/practices'], [p.name]])}
     <div class="page-head"><div><h1 class="big">${esc(p.name)}</h1><p class="muted">${practiceMeta(p)}</p></div>
-      <div class="row"><button type="button" id="dupPractice">Duplicate</button><a class="button" href="#/practice/${p.id}/edit">Edit</a></div></div>
+      <div class="row"><button type="button" class="ghost danger" id="delPractice">Delete</button><button type="button" id="dupPractice">Duplicate</button><a class="button" href="#/practice/${p.id}/edit">Edit</a></div></div>
     <div class="practice-layout">
       <section class="card">
         <h2>Plan</h2>
@@ -93,6 +104,7 @@ async function practicePage(id, sub) {
         <p class="hint">Added by ${esc(p.author_name || 'staff')}${p.edited_at ? ` · edited ${fmtWhen(p.edited_at)}` : ''}</p>
       </aside>
     </div>`);
+  $('#delPractice').onclick = () => deletePractice(p, () => goTo('#/practices'));
   // Duplicate: a copy named "<name> (Copy)", signed by whoever made it, opened in the editor to rename and change.
   $('#dupPractice').onclick = e => busy(e.currentTarget, async () => {
     const copy = await sb.from('team_practices').insert({ name: `${p.name} (Copy)`.slice(0, 120), summary: p.summary, area_ids: p.area_ids,
@@ -164,8 +176,7 @@ async function practiceEditor(p, areas) {
     if (rm) { rm.closest('.block-edit').remove(); changed(); }
   };
   $('#delPractice')?.addEventListener('click', async () => {
-    if (!await confirmDelete(`Delete ${p.name}?`, 'It will be gone for every coach, and calendar practices that use it will no longer link to it.')) return;
-    busy(null, async () => { await sb.from('team_practices').delete().eq('id', p.id).then(must); flash('Practice deleted.'); goTo('#/practices'); });
+    deletePractice(p, () => goTo('#/practices'));
   });
   app.onsubmit = e => {
     e.preventDefault();

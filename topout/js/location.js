@@ -8,7 +8,10 @@ let lastLoc = null;         // the list last shown (a location id, or 'members')
 
 async function locationPage(id, sub) {
   const t = ++navToken;
-  view(loading);
+  // Another tab of the location on screen: keep it (with the new tab lit) until this one is ready, instead of Loading.
+  const tabs = app.querySelector(`nav.tabs[data-loc="${id}"]`);
+  if (tabs) tabs.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === location.hash));
+  else view(loading);
   const [loc, coaches, [focus]] = await Promise.all([
     sb.from('team_locations').select('id, name').eq('id', id).maybeSingle().then(must),
     sb.from('team_staff_locations').select('staff:team_staff(name, email, roles)').eq('location_id', id).then(must),
@@ -28,7 +31,7 @@ async function locationPage(id, sub) {
       <p class="muted">${names.length ? `Coaches: ${names.map(esc).join(', ')}` : 'No coaches assigned yet.'}</p></div></div>
     ${focus && tab !== 'summary' ? `<a class="focus-strip" href="#/loc/${id}/summary"><b>Team Focus</b><span>${esc(firstLine(focus.body))}</span>
       <small>${fmtShort(focus.focus_date)}</small></a>` : ''}
-    <nav class="tabs" aria-label="Location">${tabLink('team', 'Team', `#/loc/${id}`)}${tabLink('summary', 'Summary', `#/loc/${id}/summary`)}
+    <nav class="tabs" aria-label="Location" data-loc="${id}">${tabLink('team', 'Team', `#/loc/${id}`)}${tabLink('summary', 'Summary', `#/loc/${id}/summary`)}
       ${tabLink('calendar', 'Calendar', `#/loc/${id}/calendar`)}</nav>`;
   return tab === 'calendar' ? calendarTab(loc, head, t) : tab === 'summary' ? summaryTab(loc, head, t) : teamTabView(loc, head, t);
 }

@@ -6,7 +6,8 @@
 let calMonth = null;   // first of the shown month, YYYY-MM-01
 let calPick = null;    // the picked day, YYYY-MM-DD
 let calOpen = null;    // an event to open when the calendar draws (clicked in Home's Coming Up): { id, date }
-let calPractices = [];  // the practices a practice event can link to: { id, name }
+let calPractices = [];  // the practices an event can link to: { id, name }
+const hasPlan = kind => kind !== 'competition';   // Practice, Open House and Other can have a Practice Plan
 const UPCOMING = 8;
 const MAX_REPEATS = 200;
 
@@ -100,7 +101,7 @@ const locsText = (e, locs) => !e.location_ids ? 'All Locations' : e.location_ids
 // An event's details, with Edit and Delete for someone who can change it.
 async function showEvent(e, loc, locs) {
   const edit = canEditEvent(e, locs);
-  const plan = e.kind === 'practice' && calPractices.find(p => p.id === e.practice_id);
+  const plan = hasPlan(e.kind) && calPractices.find(p => p.id === e.practice_id);
   const f = await ask({ title: e.title, ok: edit ? 'Edit' : 'Close', cancel: edit,
     extra: edit ? { value: 'delete', label: 'Delete' } : null,
     onOpen: form => form.querySelector('[data-close]')?.addEventListener('click', () => $('#dlg').close()),
@@ -156,7 +157,7 @@ async function editEvent(e, loc, locs) {
       <div class="two"><label>Type<select name="kind">${Object.entries(KINDS).map(([k, l]) =>
         `<option value="${k}"${k === v.kind ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Place <span class="muted">(optional)</span><input name="place" maxlength="200" value="${esc(v.place)}" autocomplete="off"></label></div>
-      ${calPractices.length ? `<label id="evPlan"${v.kind === 'practice' ? '' : ' hidden'}>Practice Plan <span class="muted">(optional, from Practices)</span>
+      ${calPractices.length ? `<label id="evPlan"${hasPlan(v.kind) ? '' : ' hidden'}>Practice Plan <span class="muted">(optional, from Practices)</span>
         <select name="practice_id"><option value="">None</option>${calPractices.map(p =>
           `<option value="${p.id}"${p.id === v.practice_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
       <div class="two"><label>Date<input type="date" name="event_date" required value="${v.event_date}" data-need="Pick the date."></label>
@@ -181,7 +182,7 @@ async function editEvent(e, loc, locs) {
       </fieldset>` : ''}`,
     onOpen: form => {
       const els = form.elements;
-      els.kind.onchange = () => { if ($('#evPlan')) $('#evPlan').hidden = els.kind.value !== 'practice'; };
+      els.kind.onchange = () => { if ($('#evPlan')) $('#evPlan').hidden = !hasPlan(els.kind.value); };
       els.all_day.onchange = () => {
         $('#evTimes').hidden = els.all_day.checked;
         els.start_time.required = !els.all_day.checked;
@@ -238,8 +239,8 @@ async function editEvent(e, loc, locs) {
     start_time: timed ? f.get('start_time') : null, end_time: timed && f.get('end_time') ? f.get('end_time') : null,
     location_ids: !pickLocs ? v.location_ids : f.get('everywhere') ? null : f.getAll('loc'),
   };
-  // Only a practice links to a plan. (Without the list, keep whatever it had.)
-  if (calPractices.length) row.practice_id = f.get('kind') === 'practice' && f.get('practice_id') || null;
+  // Every type but Competition can link to a plan. (Without the list, keep whatever it had.)
+  if (calPractices.length) row.practice_id = hasPlan(f.get('kind')) && f.get('practice_id') || null;
   const later = f.get('scope') === 'later';
   const date = later ? v.event_date : f.get('event_date');
   if (!later) row.end_date = f.get('end_date') && f.get('end_date') !== date ? f.get('end_date') : null;

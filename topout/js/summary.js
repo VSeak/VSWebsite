@@ -39,7 +39,7 @@ async function summaryTab(loc, head, t) {
       .gte('event_date', today()).order('event_date').order('start_time', { nullsFirst: true }).limit(1).then(must),
   ]);
   const members = onTeam.map(x => x.member).filter(m => m && !m.left_on).sort((a, b) => a.name.localeCompare(b.name));
-  const plan = next?.practice_id ? await sb.from('team_practices').select('id, name').eq('id', next.practice_id).maybeSingle().then(r => r.data) : null;
+  const plan = next?.practice_id ? await sb.from('team_practices').select('id, name, area_ids').eq('id', next.practice_id).maybeSingle().then(r => r.data) : null;
   const checkins = members.length ? await sb.from('team_checkins').select('*').in('member_id', members.map(m => m.id))
     .order('checkin_date', { ascending: false }).order('created_at', { ascending: false }).then(must) : [];
   if (t !== navToken) return;
@@ -62,7 +62,7 @@ async function summaryTab(loc, head, t) {
       ${missing.length ? `No check-in${sumSince ? ' since then' : ' yet'}: ${missing.map(link).join(', ')}.` : ''}</p>
     <div class="member-grid">
       <div class="col">${focusCardHTML(ctx)}${areaCardHTML(ctx)}</div>
-      <div class="col">${nextPracticeHTML(next, plan, loc)}${answersCardHTML(ctx)}</div>
+      <div class="col">${nextPracticeHTML(next, plan, loc, areas)}${answersCardHTML(ctx)}</div>
     </div>`, { keepScroll: true });
 
   $('#sumSince').addEventListener('change', e => { sumSince = e.target.value; redraw(); });
@@ -126,13 +126,16 @@ async function focusForm(f, { loc, areas, focus, s }) {
 
 // What the event pop-up on the Calendar shows, for the next Practice here, less its type and location (the page says
 // those; the user asked). Practice Plan opens the plan in a pop-up (practices.js); Open in Calendar opens the event's.
-function nextPracticeHTML(e, plan, loc) {
+function nextPracticeHTML(e, plan, loc, areas) {
   if (!e) return `<section class="card"><h2>Next Practice</h2><p class="muted">No practice on the calendar yet.</p>
     <a class="button small" href="#/loc/${loc.id}/calendar">Open Calendar</a></section>`;
+  // The linked plan's Focus Areas (the user asked).
+  const focusAreas = plan ? byGroup(areas).filter(a => plan.area_ids.includes(a.id)) : [];
   return `<section class="card next-practice"><h2>Next Practice</h2>
     <h3>${esc(e.title)}${e.series_id ? ' <span class="chip soft">Repeats Weekly</span>' : ''}</h3>
     <p class="next-when"><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
     ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
+    ${focusAreas.length ? `<p class="next-areas"><b>Focus Areas</b> <span class="chips">${focusAreas.map(a => `<span class="chip strong">${esc(a.name)}</span>`).join('')}</span></p>` : ''}
     <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button>` : ''}
       <a class="button small" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
   </section>`;
@@ -142,14 +145,14 @@ function nextPracticeHTML(e, plan, loc) {
 
 function areaCardHTML({ rows, s }) {
   const { tagQs, list, wanted, lowest } = s;
-  if (!rows.length) return `<section class="card"><h2>By Area</h2><p class="muted">No check-ins to sum up${sumSince ? ' since that date' : ' yet'}.</p></section>`;
+  if (!rows.length) return `<section class="card"><h2>By Focus Area</h2><p class="muted">No check-ins to sum up${sumSince ? ' since that date' : ' yet'}.</p></section>`;
   const val = x => x ? `<span class="avg"><b>${avgText(x)}</b><small>${x.n}</small></span>` : '<span class="muted">—</span>';
   const count = k => `<span class="tcount"><span class="tbar"><i style="width:${Math.round(k / rows.length * 100)}%"></i></span><b>${k}</b></span>`;
   const glance = [
     wanted.length ? `<li><b>Most wanted (${esc(tagQs[0].prompt)}):</b> ${wanted.map(x => `${esc(x.a.name)} (${x.tagged[0]})`).join(', ')}</li>` : '',
     lowest.length ? `<li><b>Lowest rated:</b> ${lowest.map(x => `${esc(x.a.name)} (${avgText(x.coach || x.them)})`).join(', ')}</li>` : '',
   ].join('');
-  return `<section class="card"><h2>By Area</h2>
+  return `<section class="card"><h2>By Focus Area</h2>
     ${glance ? `<ul class="glance">${glance}</ul>` : ''}
     <div class="area-table" style="--cols:${2 + tagQs.length}">
       <span></span><small>Member</small><small>Coach</small>${tagQs.map(q => `<small>${esc(q.prompt)}</small>`).join('')}
@@ -197,10 +200,10 @@ function summaryText({ loc, members, rows, areas, questions, focus, s }) {
   const f = focus[0];
   if (f) {
     const names = byGroup(areas).filter(a => f.area_ids.includes(a.id)).map(a => a.name);
-    L.push(`TEAM FOCUS (${fmtDate(f.focus_date)}, ${f.author_name || 'staff'})`, plain(f.body.trim()), ...(names.length ? [`Areas: ${names.join(', ')}`] : []), '');
+    L.push(`TEAM FOCUS (${fmtDate(f.focus_date)}, ${f.author_name || 'staff'})`, plain(f.body.trim()), ...(names.length ? [`Focus Areas: ${names.join(', ')}`] : []), '');
   }
   if (rows.length) {
-    L.push(`BY AREA (Member average / Coach average${s.tagQs.map(q => ` / ${q.prompt}`).join('')})`);
+    L.push(`BY FOCUS AREA (Member average / Coach average${s.tagQs.map(q => ` / ${q.prompt}`).join('')})`);
     for (const [g, label] of Object.entries(AREA_GROUPS)) {
       const inG = s.list.filter(x => x.a.area_group === g);
       if (!inG.length) continue;
@@ -226,7 +229,7 @@ function summaryTable({ rows, areas, questions }) {
   const qs = questions.filter(q => q.active || rows.some(r => r.c.answers[q.id] || r.c.tags[q.id]?.length));
   const tagQs = qs.filter(q => q.tags || rows.some(r => r.c.tags[q.id]?.length));
   const rated = areas.filter(a => (a.rated && a.active) || rows.some(r => r.c.ratings[a.id] != null || r.c.coach_ratings[a.id] != null));
-  const head = ['Member', 'Check-In', 'By', ...qs.flatMap(q => tagQs.includes(q) ? [q.prompt, `${q.prompt}: Areas`] : [q.prompt]),
+  const head = ['Member', 'Check-In', 'By', ...qs.flatMap(q => tagQs.includes(q) ? [q.prompt, `${q.prompt}: Focus Areas`] : [q.prompt]),
     ...rated.flatMap(a => [`${a.name} (Member)`, `${a.name} (Coach)`])];
   const line = ({ m, c }) => [m.name, c.checkin_date, c.author_name,
     ...qs.flatMap(q => [c.answers[q.id], ...(tagQs.includes(q) ? [byGroup(areas).filter(a => (c.tags[q.id] || []).includes(a.id)).map(a => a.name).join(', ')] : [])]),

@@ -44,7 +44,7 @@ async function practicesPage() {
       <a class="button fill" href="#/practice/new">+ New Practice</a></div>
     ${list.length ? `<div class="row list-tools">
       <input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
-      ${used.length ? `<label class="inline">Area:<select id="pracArea" class="team-filter"><option value="">All Areas</option>
+      ${used.length ? `<label class="inline">Focus Area:<select id="pracArea" class="team-filter"><option value="">All Focus Areas</option>
         ${used.map(([a, n]) => `<option value="${a.id}"${a.id === practiceArea ? ' selected' : ''}>${esc(a.name)} (${n})</option>`).join('')}</select></label>` : ''}
     </div>
     <div class="practices" id="practices">${list.map(card).join('')}</div>
@@ -128,8 +128,8 @@ function practiceFieldsHTML(p, areas) {
       placeholder="E.g. Power Endurance Night" autocomplete="off"></label>
     <label>Summary <span class="muted">(optional)</span><textarea name="summary" rows="2" maxlength="600"
       placeholder="E.g. Short, hard efforts on the 40° wall, then core.">${esc(v.summary)}</textarea></label>
-    ${pickable.length ? `<div class="field"><span class="label">Areas <span class="muted">Focus area(s) for this practice</span></span>
-      ${areaChips('area', pickable, v.area_ids, 'Areas')}</div>` : ''}
+    ${pickable.length ? `<div class="field"><span class="label">Focus Areas <span class="muted">for this practice</span></span>
+      ${areaChips('area', pickable, v.area_ids, 'Focus areas')}</div>` : ''}
     <div class="row between blocks-head"><h2>Blocks</h2><span class="muted" data-total></span></div>
     <p class="hint">Every part of a block is optional. Drag the grip to reorder.</p>
     <div data-blocks>${blocks.map(blockEditHTML).join('')}</div>

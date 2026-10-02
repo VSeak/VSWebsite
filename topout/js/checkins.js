@@ -108,7 +108,7 @@ async function checkinForm(c, { m, checkins, circuits, areas, questions }) {
   const tagsOn = q => q.tags || v.tags[q.id]?.length;
   const tagAreas = q => byGroup(areas.filter(a => a.active || (v.tags[q.id] || []).includes(a.id)));
   const shownAreas = areas.filter(a => (a.rated && a.active) || v.ratings[a.id] != null || v.coach_ratings[a.id] != null);
-  const tagPick = q => areaChips('t_' + q.id, tagAreas(q), v.tags[q.id] || [], `Areas for ${q.prompt}`);
+  const tagPick = q => areaChips('t_' + q.id, tagAreas(q), v.tags[q.id] || [], `Focus areas for ${q.prompt}`);
   // The two sets of ratings: the member's own (labeled with their first name) and the coach's.
   const raters = [['ratings', m.first_name, 'r_'], ['coach_ratings', 'Coach', 'c_']];
   const pick = (a, [key, label, prefix]) => `<div class="rate-row"><span>${esc(label)}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}: ${esc(label)}">

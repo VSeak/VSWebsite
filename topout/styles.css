@@ -63,7 +63,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 1.5rem 16px 4rem; }
 button, .fill, .button { font: inherit; font-weight: 600; border-radius: 999px; padding: .55rem 1.05rem; border: 1.5px solid var(--line);
   background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
   gap: .35rem; line-height: 1.2; }
-button:hover { border-color: var(--ink-2); }
+button:hover, .button:hover { border-color: var(--ink-2); }
 button:disabled { opacity: .5; cursor: default; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
@@ -442,3 +442,4 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 .next-practice .next-when { margin-bottom: .25rem; }
 .next-practice .note-body { margin: 0; }
 .next-practice .next-actions { margin-top: 1rem; }
+.next-practice .next-areas { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .8rem 0 0; font-size: .92rem; }

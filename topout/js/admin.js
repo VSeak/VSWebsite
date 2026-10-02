@@ -171,13 +171,13 @@ async function settingsPage() {
       </div>
       <div class="col">
       <section class="card"><h2>Check-In Questions</h2>
-        <p class="hint">What a coach asks at a check-in, in this order. Every answer is optional. Area Tags lets the coach tag the answer
-          with areas, which the Team Summary counts. Hide one to leave it off new check-ins but keep old answers.</p>
+        <p class="hint">What a coach asks at a check-in, in this order. Every answer is optional. Focus Area Tags lets the coach tag the answer
+          with focus areas, which the Team Summary counts. Hide one to leave it off new check-ins but keep old answers.</p>
         ${questions.map(q => `<form class="set-row" data-kind="question" data-id="${q.id}" data-save>
           ${GRIP}
           <input name="name" maxlength="80" required value="${esc(q.prompt)}" aria-label="Question" data-need="Write the question.">
           <input name="hint" maxlength="120" value="${esc(q.hint)}" placeholder="Example answer (optional)" aria-label="Example answer">
-          <label class="check"><input type="checkbox" name="tags"${q.tags ? ' checked' : ''}> Area Tags</label>
+          <label class="check"><input type="checkbox" name="tags"${q.tags ? ' checked' : ''}> Focus Area Tags</label>
           <label class="check"><input type="checkbox" name="active"${q.active ? ' checked' : ''}> Shown</label>
           <button class="small primary">Save</button>
           ${questionUsed(q.id) ? '' : `<button type="button" class="small ghost danger" data-del="question" data-id="${q.id}">Delete</button>`}</form>`).join('')}
@@ -185,21 +185,21 @@ async function settingsPage() {
           <button class="primary">+ Add</button></form>
       </section>
 
-      <section class="card"><h2>Areas</h2>
-        <p class="hint">Rated areas get 1–5 ratings on a check-in, from the member and from the coach. Every area can tag an answer
-          (like Want to Improve); Tag Only areas are just for that. The group sorts the Team Summary into Physical, Skill and Mental.
-          Area Ratings: a line for each number, shown above the ratings on a check-in, so every coach (and member) rates the same way.
+      <section class="card"><h2>Focus Areas</h2>
+        <p class="hint">Rated focus areas get 1–5 ratings on a check-in, from the member and from the coach. Every focus area can tag an answer
+          (like Want to Improve); tag-only ones are just for that. The group sorts the Team Summary into Physical, Skill and Mental.
+          Focus Area Ratings: a line for each number, shown above the ratings on a check-in, so every coach (and member) rates the same way.
           Hide one to leave it off new check-ins but keep old ratings.</p>
         ${areas.map(a => `<form class="set-row" data-kind="area" data-id="${a.id}" data-save>
           ${GRIP}
-          <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the area.">
+          <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the focus area.">
           ${groupSelect(a.area_group)}
           <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
           <label class="check"><input type="checkbox" name="active"${a.active ? ' checked' : ''}> Shown</label>
-          ${a.rated ? `<button type="button" class="small ghost" data-guide="${a.id}">${a.guide.some(g => g.trim()) ? 'Area Ratings' : '+ Area Ratings'}</button>` : ''}
+          ${a.rated ? `<button type="button" class="small ghost" data-guide="${a.id}">${a.guide.some(g => g.trim()) ? 'Focus Area Ratings' : '+ Focus Area Ratings'}</button>` : ''}
           <button class="small primary">Save</button>
           <button type="button" class="small ghost danger" data-del="area" data-id="${a.id}">Delete</button></form>`).join('')}
-        <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New area" aria-label="New area" data-need="Name the area.">
+        <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New focus area" aria-label="New focus area" data-need="Name the focus area.">
           ${groupSelect()}<label class="check"><input type="checkbox" name="rated" checked> Rated</label>
           <button class="primary">+ Add</button></form>
       </section>
@@ -260,7 +260,7 @@ async function settingsPage() {
 // Area Ratings: what each number 1–5 means for one area, listed above its ratings on a check-in. A blank line falls
 // back to the general guide (RATING_GUIDE).
 async function guideForm(a) {
-  const f = await ask({ title: `${a.name}: Area Ratings`, ok: 'Save', wide: true,
+  const f = await ask({ title: `${a.name}: Focus Area Ratings`, ok: 'Save', wide: true,
     body: `<p class="hint">Describe what a coach would see at each level, so two coaches would pick the same number.
       A blank line uses the general guide (shown as the example).</p>
       ${[0, 1, 2, 3, 4].map(i => `<label>${i + 1}<textarea name="g${i}" rows="2" maxlength="200"

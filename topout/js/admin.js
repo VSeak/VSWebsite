@@ -276,9 +276,9 @@ function wireGrips(save) {
       if (e.button) return;
       e.preventDefault();
       const before = rowsOf(row).map(r => r.dataset.id), stop = new AbortController(), on = { signal: stop.signal };
-      grip.setPointerCapture(e.pointerId);
       row.classList.add('dragging');
-      grip.addEventListener('pointermove', ev => {
+      // Listened for on the window: moving the row in the page drops any pointer capture on the grip.
+      addEventListener('pointermove', ev => {
         // Put the row before the first other row whose middle is below the pointer, else last.
         const others = rowsOf(row).filter(r => r !== row);
         const next = others.find(r => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
@@ -287,8 +287,8 @@ function wireGrips(save) {
         if (ev.clientY < 60) scrollBy(0, -12); else if (ev.clientY > innerHeight - 60) scrollBy(0, 12);
       }, on);
       const end = () => { stop.abort(); row.classList.remove('dragging'); done(row, before); };
-      grip.addEventListener('pointerup', end, on);
-      grip.addEventListener('pointercancel', end, on);
+      addEventListener('pointerup', end, on);
+      addEventListener('pointercancel', end, on);
     };
     grip.onkeydown = e => {
       const dir = { ArrowUp: -1, ArrowDown: 1 }[e.key];

@@ -32,7 +32,7 @@ function teamStats(rows, areas, questions) {
 
 async function summaryTab(loc, head, t) {
   const [onTeam, areas, questions, focus, [next]] = await Promise.all([
-    sb.from('team_member_locations').select('member:team_members(id, name, first_name, left_on)').eq('location_id', loc.id).is('inactive_on', null).then(must),
+    sb.from('team_member_locations').select('member:team_members(id, name, first_name, left_on, intake_injuries)').eq('location_id', loc.id).is('inactive_on', null).then(must),
     sb.from('team_rating_areas').select('*').order('position').then(must),
     sb.from('team_checkin_questions').select('*').order('position').then(must),
     sb.from('team_focus').select('*').eq('location_id', loc.id).order('focus_date', { ascending: false }).order('created_at', { ascending: false }).then(must),
@@ -64,7 +64,7 @@ async function summaryTab(loc, head, t) {
       ${missing.length ? `No check-in${sumSince ? ' since then' : ' yet'}: ${missing.map(link).join(', ')}.` : ''}</p>
     <div class="member-grid">
       <div class="col">${focusCardHTML(ctx)}${areaCardHTML(ctx)}</div>
-      <div class="col">${nextPracticeHTML(next, plan, loc, areas)}${answersCardHTML(ctx)}</div>
+      <div class="col">${nextPracticeHTML(next, plan, loc, areas, members)}${answersCardHTML(ctx)}</div>
     </div>`, { keepScroll: true });
 
   $('#sumSince').addEventListener('change', e => { sumSince = e.target.value; redraw(); });
@@ -109,7 +109,7 @@ async function focusForm(f, { loc, areas, focus, s }) {
       <label>What the Team Works On<textarea name="body" rows="4" required data-need="Write what the team will work on."
         placeholder="E.g. Footwork drills to start every practice; a comp-style night each month before Boulderfest.">${esc(f?.body || '')}</textarea></label>
       <fieldset><legend>Focus Areas</legend>${areaChips('area', list, picked, 'Focus areas')}</fieldset>
-      <p class="hint">${wanted ? `Most wanted in check-ins: ${esc(wanted)}. ` : ''}Every coach at ${esc(loc.name)} sees this on the Summary tab.</p>` });
+      ${wanted ? `<p class="hint">Most wanted in check-ins: ${esc(wanted)}.</p>` : ''}` });
   if (!res) return;
   if (res.get('button') === 'delete') {
     if (!await confirmDelete('Delete Team Focus?', `The focus from ${fmtDate(f.focus_date)} will be gone for good.`)) return;
@@ -128,8 +128,15 @@ async function focusForm(f, { loc, areas, focus, s }) {
 
 // What the event pop-up on the Calendar shows, for the next Practice here, less its type and location (the page says
 // those; the user asked). Practice Plan opens the plan in a pop-up (practices.js); Open in Calendar opens the event's.
-function nextPracticeHTML(e, plan, loc, areas) {
+// Heads Up: active members whose intake lists injuries or limits, so the plan can work around them (the user asked).
+function headsUpHTML(members) {
+  const hurt = members.filter(m => m.intake_injuries?.trim());
+  return hurt.length ? `<div class="heads-up"><b>Heads Up: Injuries or Limits</b>
+    <ul>${hurt.map(m => `<li><a href="#/member/${m.id}">${esc(m.name)}</a>: ${esc(m.intake_injuries)}</li>`).join('')}</ul></div>` : '';
+}
+function nextPracticeHTML(e, plan, loc, areas, members) {
   if (!e) return `<section class="card"><h2>Next Practice</h2><p class="muted">No practice on the calendar yet.</p>
+    ${headsUpHTML(members)}
     <a class="button small" href="#/loc/${loc.id}/calendar">Open Calendar</a></section>`;
   // The linked plan's Focus Areas (the user asked).
   const focusAreas = plan ? byGroup(areas).filter(a => plan.area_ids.includes(a.id)) : [];
@@ -138,6 +145,7 @@ function nextPracticeHTML(e, plan, loc, areas) {
     <p class="next-when"><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
     ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
     ${focusAreas.length ? `<p class="next-areas"><b>Focus Areas</b> <span class="chips">${focusAreas.map(a => `<span class="chip strong">${esc(a.name)}</span>`).join('')}</span></p>` : ''}
+    ${headsUpHTML(members)}
     <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button>` : ''}
       <a class="button small" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
   </section>`;

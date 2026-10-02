@@ -449,4 +449,10 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 .next-practice .next-when { margin-bottom: .25rem; }
 .next-practice .note-body { margin: 0; }
 .next-practice .next-actions { margin-top: 1rem; }
+.heads-up { margin-top: .9rem; padding: .6rem .8rem; border-radius: 10px; background: var(--warn-soft); font-size: .92rem; overflow-wrap: anywhere; }
+.heads-up b { color: var(--warn); }
+.heads-up ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+.intake-recap { margin: .5rem 0; padding: .6rem .8rem; border-radius: 10px; background: var(--sunk); font-size: .92rem; overflow-wrap: anywhere; }
+.intake-recap p { margin: .15rem 0; }
+.intake-recap ul { margin: .2rem 0 0; padding-left: 1.1rem; }
 .next-practice .next-areas { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .8rem 0 0; font-size: .92rem; }

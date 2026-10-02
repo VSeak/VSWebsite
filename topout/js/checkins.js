@@ -95,7 +95,7 @@ async function checkinAction(btn, ctx) {
   checkinForm(c || null, ctx);
 }
 
-async function checkinForm(c, { m, checkins, circuits, areas, questions }) {
+async function checkinForm(c, { m, goals, checkins, circuits, areas, questions }) {
   // A new check-in starts as a copy of the latest one (grades, both ratings and notes, but not the answers), dated today.
   const last = checkins[0];
   const v = c || (last ? { ...last, checkin_date: today(), answers: {}, tags: {} }
@@ -114,10 +114,16 @@ async function checkinForm(c, { m, checkins, circuits, areas, questions }) {
   const pick = (a, [key, label, prefix]) => `<div class="rate-row"><span>${esc(label)}</span><span class="rate-pick" role="radiogroup" aria-label="${esc(a.name)}: ${esc(label)}">
     ${[1, 2, 3, 4, 5].map(i => `<label><input type="radio" name="${prefix}${a.id}" value="${i}"${v[key][a.id] === i ? ' checked' : ''}><span>${i}</span></label>`).join('')}</span></div>`;
   const pr = pronounWords(m.pronouns);
+  // A reminder from their intake and goals, to talk about progress against what they came for (the user asked).
+  const cur = goals.filter(g => g.status === 'current');
+  const recap = m.intake_wants.trim() || cur.length ? `<div class="intake-recap">
+      ${m.intake_wants.trim() ? `<p><b>What ${Cap(pr.subj)} ${pr.plural ? 'Want' : 'Wants'} From Adult Team:</b> ${esc(m.intake_wants)}</p>` : ''}
+      ${cur.length ? `<p><b>Current Goals</b></p><ul>${cur.map(g => `<li>${esc(g.body)}</li>`).join('')}</ul>` : ''}</div>` : '';
   const f = await ask({ title: c ? 'Edit Check-In' : `Check-In: ${m.first_name}`, ok: c ? 'Save Check-In' : 'Add Check-In', wide: true,
     body: `<label>Date<input type="date" name="checkin_date" required value="${v.checkin_date}" max="${today()}" data-need="Pick the date."
         data-range="A check-in can't be in the future."></label>
       <p class="hint">Record what's useful. Everything below is optional.${!c && last ? ` Ratings, grades and notes start from the last check-in (${fmtDate(last.checkin_date)}), so change what's new.` : ''}</p>
+      ${recap}
       ${shownQs.length ? `<h3 class="sec">Questions</h3>${shownQs.map(q => `<div class="q-block"><label>${esc(q.prompt)}<textarea name="a_${q.id}" rows="2"
         placeholder="${esc(q.hint)}">${esc(v.answers[q.id] || '')}</textarea></label>${tagsOn(q) ? tagPick(q) : ''}</div>`).join('')}` : ''}
       <h3 class="sec">Grades</h3>

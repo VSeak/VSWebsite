@@ -94,11 +94,20 @@ function exitFieldsHTML(m, x) {
     <label>Would ${Cap(pr.subj)} Come Back?<select name="come_back">${Object.entries(COME_BACK).map(([k, l]) =>
       `<option value="${k}"${k === v.come_back ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
 }
+// Why they joined and what they wanted (their intake), next to why they left: it often explains the leave (the user asked).
+function joinedForHTML(m) {
+  const pr = pronounWords(m.pronouns);
+  if (!m.intake_why?.trim() && !m.intake_wants?.trim()) return '';
+  return `<div class="intake-recap">
+    ${m.intake_why?.trim() ? `<p><b>Why ${Cap(pr.subj)} Joined:</b> ${esc(m.intake_why)}</p>` : ''}
+    ${m.intake_wants?.trim() ? `<p><b>What ${Cap(pr.subj)} Wanted:</b> ${esc(m.intake_wants)}</p>` : ''}</div>`;
+}
 function exitCardHTML(m, x) {
   const pr = pronounWords(m.pronouns);
   return `<section class="card">
     <div class="row between"><h2>Exit Intake</h2>${exitEmpty(x) ? '<span class="tag">Not Filled In</span>' : ''}</div>
     <p class="hint">Why ${esc(m.first_name)} left Adult Team, from a chat with ${pr.obj}. Every field is optional.${x?.author_name ? ` Added by ${esc(x.author_name)}.` : ''}${x?.edited_at ? ` Updated ${fmtWhen(x.edited_at)}.` : ''}</p>
+    ${joinedForHTML(m)}
     <form id="exitForm" class="stack" data-save>${exitFieldsHTML(m, x)}<button class="primary">Save Exit Intake</button></form></section>`;
 }
 // One exit, read-only: on the member page (earlier times they left) and on Why Members Left.
@@ -268,6 +277,7 @@ function bindMember(ctx) {
         <label>Last Day<input type="date" name="left_on" value="${today()}" required data-need="Pick the day."></label>
         <h3>Exit Intake</h3>
         <p class="hint">Why ${pr.subj} left, if you know. Every field is optional; you can fill it in later on ${pr.pos} page.</p>
+        ${joinedForHTML(m)}
         ${exitFieldsHTML(m, null)}` });
     // The database (team_member_left) marks every team inactive, including ones this coach can't see.
     // The exit row is saved even when empty, so the page has one to fill in later.

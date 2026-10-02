@@ -26,21 +26,29 @@ async function deletePractice(p, then) {
 async function practicesPage() {
   const t = ++navToken;
   view(loading);
-  const [list, areas, uses] = await Promise.all([
+  const [list, areas, uses, locs] = await Promise.all([
     sb.from('team_practices').select('id, name, summary, area_ids, blocks').order('name').then(must),
     loadAreas(),
-    sb.from('team_events').select('practice_id, event_date').not('practice_id', 'is', null).then(must),
+    sb.from('team_events').select('practice_id, event_date, location_ids').not('practice_id', 'is', null).then(must),
+    sb.from('team_locations').select('id, name, position').order('position').then(must),
   ]);
   if (t !== navToken) return;
-  // When each was last used and is next on the calendar (only the events this coach can see).
+  // When and where each was last used and is next on the calendar (only the events this coach can see).
+  // Where: the event's locations in Home's order, none for an Every Location event; events on the same day are merged.
   const now = today();
+  const useAt = (evs, d) => {
+    const ids = evs.filter(e => e.event_date === d).flatMap(e => e.location_ids || []);
+    return locs.filter(l => ids.includes(l.id)).map(l => l.name).join(' + ');
+  };
   list.forEach(p => {
-    const ds = uses.filter(u => u.practice_id === p.id).map(u => u.event_date);
+    const evs = uses.filter(u => u.practice_id === p.id), ds = evs.map(u => u.event_date);
     p.last = ds.filter(d => d < now).sort().pop() || '';
     p.next = ds.filter(d => d >= now).sort()[0] || '';
+    p.lastAt = p.last ? useAt(evs, p.last) : '';
+    p.nextAt = p.next ? useAt(evs, p.next) : '';
   });
-  const useDate = d => d === now ? 'Today' : d.slice(0, 4) === now.slice(0, 4) ? fmtShort(d) : fmtDate(d);
-  const useLine = p => [p.last ? `Last used ${useDate(p.last)}` : 'Not used yet', p.next ? `Next: ${useDate(p.next)}` : ''].filter(Boolean).join(' · ');
+  const useDate = (d, at) => (d === now ? 'Today' : d.slice(0, 4) === now.slice(0, 4) ? fmtShort(d) : fmtDate(d)) + (at ? ` at ${esc(at)}` : '');
+  const useLine = p => [p.last ? `Last used ${useDate(p.last, p.lastAt)}` : 'Not used yet', p.next ? `Next: ${useDate(p.next, p.nextAt)}` : ''].filter(Boolean).join(' · ');
   const used = byGroup(areas).map(a => [a, list.filter(p => p.area_ids.includes(a.id)).length]).filter(([, n]) => n);
   practiceAreas = practiceAreas.filter(id => used.some(([a]) => a.id === id));
   // The name is the link, stretched over the card (.practice-go::after), so Delete can sit inside it.

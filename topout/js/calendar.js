@@ -104,11 +104,11 @@ async function showEvent(e, loc, locs) {
   const plan = hasPlan(e.kind) && calPractices.find(p => p.id === e.practice_id);
   const f = await ask({ title: e.title, ok: edit ? 'Edit' : 'Close', cancel: edit,
     extra: edit ? { value: 'delete', label: 'Delete' } : null,
-    onOpen: form => form.querySelector('[data-close]')?.addEventListener('click', () => $('#dlg').close()),
+    onOpen: form => form.querySelector('[data-plan]')?.addEventListener('click', () => practiceDialog(plan.id)),   // the plan, in its own pop-up
     body: `<p class="event-meta wrap"><span class="kind k-${e.kind}">${KINDS[e.kind]}</span> <span class="chip">${esc(locsText(e, locs))}</span>
         ${e.series_id ? '<span class="chip soft">Repeats Weekly</span>' : ''}</p>
       <p><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
-      ${plan ? `<p><a class="button small" href="#/practice/${plan.id}" data-close>Practice Plan: ${esc(plan.name)}</a></p>` : ''}
+      ${plan ? `<p><button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button></p>` : ''}
       ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
       <p class="hint">Added by ${esc(e.author_name || 'staff')}${e.edited_at ? ` · edited ${fmtWhen(e.edited_at)}` : ''}</p>` });
   if (!f || !edit) return;

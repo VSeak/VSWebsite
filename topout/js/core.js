@@ -146,12 +146,12 @@ document.addEventListener('input', e => {
 // cancel: false for a notice with just OK. wide: a bigger dialog (the check-in form).
 // extra: another button beside OK, e.g. Delete; its value comes back as FormData's 'button'.
 // onOpen(form) runs once the dialog is showing (to wire up its fields).
-function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = false, extra = null, onOpen = null, okClass = '' }) {
+function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = false, extra = null, onOpen = null, okClass = '', cancelLabel = 'Cancel' }) {
   const d = $('#dlg');
   d.className = wide ? 'wide' : '';
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
     <div class="row end">${extra ? `<button value="${extra.value}" formnovalidate class="ghost danger push-left">${esc(extra.label)}</button>` : ''}
-    ${cancel ? '<button value="cancel" formnovalidate class="ghost">Cancel</button>' : ''}
+    ${cancel ? `<button value="cancel" formnovalidate class="ghost">${esc(cancelLabel)}</button>` : ''}
     <button value="ok" class="${okClass || (warn ? 'risky' : 'fill')}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
@@ -168,7 +168,10 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = 
       else resolve(null);
     }, { once: true });
     d.addEventListener('cancel', () => resolve(null), { once: true });
-    d.addEventListener('close', () => resolve(null), { once: true });   // closed another way (a link in it); after OK this does nothing
+    // Closed another way (a link in it); after OK this does nothing. The close event comes late, so one from the dialog
+    // before (when a pop-up opens another, like the calendar's Practice Plan) arrives once this one is up: skip it.
+    const onClose = () => { if (d.open && f.isConnected) return; d.removeEventListener('close', onClose); resolve(null); };
+    d.addEventListener('close', onClose);
     d.showModal();
     onOpen?.(f);
   });
@@ -275,13 +278,13 @@ const GRIP = `<button type="button" class="grip" data-grip title="Drag to reorde
   <svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="2" cy="2" r="1.6"/><circle cx="8" cy="2" r="1.6"/>
   <circle cx="2" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="2" cy="14" r="1.6"/><circle cx="8" cy="14" r="1.6"/></g></svg></button>`;
 let gripFocus = null;   // a row id whose grip gets focus back after a redraw (set by a page that redraws in moved)
-function wireGrips(moved) {
+function wireGrips(moved, root = app) {
   const rowsOf = row => [...row.parentElement.querySelectorAll(`:scope > [data-kind="${row.dataset.kind}"][data-id]`)];
   const done = (row, before) => {
     const after = rowsOf(row).map(r => r.dataset.id);
     if (after.join() !== before.join()) moved(row.dataset.kind, after);
   };
-  for (const grip of app.querySelectorAll('[data-grip]')) {
+  for (const grip of root.querySelectorAll('[data-grip]')) {
     const row = grip.closest('[data-kind][data-id]');
     grip.onpointerdown = e => {
       if (e.button) return;
@@ -312,6 +315,6 @@ function wireGrips(moved) {
       done(row, before);
     };
   }
-  if (gripFocus) app.querySelector(`[data-id="${gripFocus}"] [data-grip]`)?.focus();
+  if (gripFocus) root.querySelector(`[data-id="${gripFocus}"] [data-grip]`)?.focus();
   gripFocus = null;
 }

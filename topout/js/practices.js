@@ -84,24 +84,20 @@ async function practicePage(id, sub) {
     <p class="muted">It may have been deleted.</p></section>`);
   if (sub === 'edit') return practiceEditor(p, areas);
 
-  // Each block with how long it takes (no clock times: the user wants lengths only).
-  const blocks = p.blocks.map(b => `<li class="block-view"><div class="block-when">${+b.minutes ? `<b>${fmtMinutes(+b.minutes)}</b>` : ''}</div>
-    <div class="block-what"><h3>${esc(b.title || 'Block')}</h3>${b.notes ? `<div class="note-body">${para(b.notes)}</div>` : ''}</div></li>`).join('');
   view(`${crumbs([['Home', '#/'], ['Practices', '#/practices'], [p.name]])}
     <div class="page-head"><div><h1 class="big">${esc(p.name)}</h1><p class="muted">${practiceMeta(p)}</p></div>
       <div class="row"><button type="button" class="ghost danger" id="delPractice">Delete</button><button type="button" id="dupPractice">Duplicate</button><a class="button" href="#/practice/${p.id}/edit">Edit</a></div></div>
     <div class="practice-layout">
       <section class="card">
         <h2>Plan</h2>
-        ${p.blocks.length ? `<ol class="blocks">${blocks}</ol>`
+        ${p.blocks.length ? `<ol class="blocks">${practiceBlocksHTML(p)}</ol>`
           : `<p class="muted">No blocks yet. <a href="#/practice/${p.id}/edit">Add some</a>.</p>`}
       </section>
       <aside class="side">
-        ${p.summary || p.area_ids.length ? `<section class="card"><h2>About</h2>${p.summary ? `<div class="note-body">${para(p.summary)}</div>` : ''}
-          ${p.area_ids.length ? `<span class="chips">${practiceAreaChips(p, areas)}</span>` : ''}</section>` : ''}
+        ${p.summary || p.area_ids.length ? `<section class="card"><h2>About</h2>${practiceAboutHTML(p, areas)}</section>` : ''}
         ${events.length ? `<section class="card"><h2>On the Calendar</h2>${events.map(e =>
           `<p class="cal-use">${dayBlock(e.event_date)}<span>${fmtDay(e.event_date)}${e.start_time ? ' · ' + fmtTime(e.start_time) : ''}</span></p>`).join('')}</section>` : ''}
-        <p class="hint">Added by ${esc(p.author_name || 'staff')}${p.edited_at ? ` · edited ${fmtWhen(p.edited_at)}` : ''}</p>
+        <p class="hint">${practiceByline(p)}</p>
       </aside>
     </div>`);
   $('#delPractice').onclick = () => deletePractice(p, () => goTo('#/practices'));
@@ -114,80 +110,96 @@ async function practicePage(id, sub) {
   });
 }
 
-// Add or edit a practice. Blocks reorder by their grips (wireGrips); the hidden order field makes a reorder, add or
-// remove count as an unsaved change.
+// Each block with how long it takes (no clock times: the user wants lengths only). The page and the pop-up share these.
+const practiceBlocksHTML = p => p.blocks.map(b => `<li class="block-view"><div class="block-when">${+b.minutes ? `<b>${fmtMinutes(+b.minutes)}</b>` : ''}</div>
+  <div class="block-what"><h3>${esc(b.title || 'Block')}</h3>${b.notes ? `<div class="note-body">${para(b.notes)}</div>` : ''}</div></li>`).join('');
+const practiceAboutHTML = (p, areas) => `${p.summary ? `<div class="note-body">${para(p.summary)}</div>` : ''}
+  ${p.area_ids.length ? `<span class="chips">${practiceAreaChips(p, areas)}</span>` : ''}`;
+const practiceByline = p => `Added by ${esc(p.author_name || 'staff')}${p.edited_at ? ` · edited ${fmtWhen(p.edited_at)}` : ''}`;
+
+// The editor's fields, shared by the editor page and the pop-up. Blocks reorder by their grips (wireGrips); the hidden
+// order field makes a reorder, add or remove count as an unsaved change.
+function practiceFieldsHTML(p, areas) {
+  const v = p || { name: '', summary: '', area_ids: [], blocks: [] };
+  const blocks = v.blocks.length ? v.blocks : p ? [] : [{ title: 'Warm-Up', minutes: 15 }, { title: '' }];
+  // Areas to pick: the shown ones, plus any hidden one it already has.
+  const pickable = areas.filter(a => a.active || v.area_ids.includes(a.id));
+  return `<label>Name<input name="name" maxlength="120" required value="${esc(v.name)}" data-need="Name the practice."
+      placeholder="E.g. Power Endurance Night" autocomplete="off"></label>
+    <label>Summary <span class="muted">(optional)</span><textarea name="summary" rows="2" maxlength="600"
+      placeholder="E.g. Short, hard efforts on the 40° wall, then core.">${esc(v.summary)}</textarea></label>
+    ${pickable.length ? `<div class="field"><span class="label">Areas <span class="muted">Focus area(s) for this practice</span></span>
+      ${areaChips('area', pickable, v.area_ids, 'Areas')}</div>` : ''}
+    <div class="row between blocks-head"><h2>Blocks</h2><span class="muted" data-total></span></div>
+    <p class="hint">Every part of a block is optional. Drag the grip to reorder.</p>
+    <div data-blocks>${blocks.map(blockEditHTML).join('')}</div>
+    <button type="button" class="small" data-add-block>+ Add Block</button>
+    <input name="order" hidden aria-hidden="true" tabindex="-1">`;
+}
+const blockEditHTML = (b = {}) => `<div class="block-edit" data-kind="block" data-id="${b.id || crypto.randomUUID()}">
+  <div class="block-top">${GRIP}
+    <input name="b_title" maxlength="80" value="${esc(b.title || '')}" placeholder="Block, e.g. Warm-Up" aria-label="Block title">
+    <label class="mins"><input type="number" name="b_min" min="1" max="600" step="1" inputmode="numeric" value="${b.minutes || ''}"
+      aria-label="Minutes" data-range="1 to 600 minutes."> min</label>
+    <button type="button" class="small ghost danger" data-remove>Remove</button></div>
+  <textarea name="b_notes" rows="2" maxlength="4000" placeholder="What to do, coaching cues (optional)">${esc(b.notes || '')}</textarea></div>`;
+
+// Add Block, Remove, the total and the grips, inside one form (the editor page's or the pop-up's).
+function wirePracticeForm(form) {
+  const box = form.querySelector('[data-blocks]'), add = form.querySelector('[data-add-block]'), order = form.elements.order;
+  const rows = () => [...box.querySelectorAll('.block-edit')];
+  order.value = order.defaultValue = rows().map(r => r.dataset.id).join();
+  const changed = () => {
+    order.value = rows().map(r => r.dataset.id).join();
+    const n = rows().reduce((s, r) => s + (+r.querySelector('[name="b_min"]').value || 0), 0);
+    form.querySelector('[data-total]').textContent = n ? 'Total ' + fmtMinutes(n) : '';
+    add.hidden = rows().length >= PRACTICE_MAX_BLOCKS;
+    markUnsaved();
+  };
+  changed();
+  wireGrips(changed, form);
+  form.addEventListener('input', e => { if (e.target.name === 'b_min') changed(); });
+  add.onclick = () => {
+    box.insertAdjacentHTML('beforeend', blockEditHTML());
+    wireGrips(changed, form);
+    changed();
+    rows().at(-1).querySelector('[name="b_title"]').focus();
+  };
+  form.addEventListener('click', e => {
+    const rm = e.target.closest('[data-remove]');
+    if (rm) { rm.closest('.block-edit').remove(); changed(); }
+  });
+}
+
+// The row to save. A block with nothing in it is left out.
+function readPractice(form) {
+  const f = new FormData(form);
+  return { name: f.get('name').trim(), summary: f.get('summary').trim(), area_ids: f.getAll('area'),
+    blocks: [...form.querySelectorAll('.block-edit')].map(r => ({ id: r.dataset.id, title: r.querySelector('[name="b_title"]').value.trim(),
+      minutes: +r.querySelector('[name="b_min"]').value || null, notes: r.querySelector('[name="b_notes"]').value.trim() }))
+      .filter(b => b.title || b.minutes || b.notes) };
+}
+
+// Add or edit a practice on its own page.
 async function practiceEditor(p, areas) {
   const t = ++navToken;
   if (!areas) { view(loading); areas = await loadAreas(); if (t !== navToken) return; }
-  const v = p || { name: '', summary: '', area_ids: [], blocks: [] };
-  const blocks = v.blocks.length ? v.blocks : p ? [] : [{ title: 'Warm-Up', minutes: 15 }, { title: '' }];
-  const newBlock = (b = {}) => `<div class="block-edit" data-kind="block" data-id="${b.id || crypto.randomUUID()}">
-    <div class="block-top">${GRIP}
-      <input name="b_title" maxlength="80" value="${esc(b.title || '')}" placeholder="Block, e.g. Warm-Up" aria-label="Block title">
-      <label class="mins"><input type="number" name="b_min" min="1" max="600" step="1" inputmode="numeric" value="${b.minutes || ''}"
-        aria-label="Minutes" data-range="1 to 600 minutes."> min</label>
-      <button type="button" class="small ghost danger" data-remove>Remove</button></div>
-    <textarea name="b_notes" rows="2" maxlength="4000" placeholder="What to do, coaching cues (optional)">${esc(b.notes || '')}</textarea></div>`;
-  // Areas to pick: the shown ones, plus any hidden one it already has.
-  const pickable = areas.filter(a => a.active || v.area_ids.includes(a.id));
   const back = p ? `#/practice/${p.id}` : '#/practices';
   view(`${crumbs([['Home', '#/'], ['Practices', '#/practices'], ...(p ? [[p.name, back], ['Edit']] : [['New Practice']])])}
     <div class="page-head"><h1 class="big">${p ? 'Edit Practice' : 'New Practice'}</h1></div>
     <form class="card practice-form" id="pracForm" data-save>
-      <label>Name<input name="name" maxlength="120" required value="${esc(v.name)}" data-need="Name the practice."
-        placeholder="E.g. Power Endurance Night" autocomplete="off"></label>
-      <label>Summary <span class="muted">(optional)</span><textarea name="summary" rows="2" maxlength="600"
-        placeholder="E.g. Short, hard efforts on the 40° wall, then core.">${esc(v.summary)}</textarea></label>
-      ${pickable.length ? `<div class="field"><span class="label">Areas <span class="muted">Focus area(s) for this practice</span></span>
-        ${areaChips('area', pickable, v.area_ids, 'Areas')}</div>` : ''}
-      <div class="row between blocks-head"><h2>Blocks</h2><span class="muted" id="pracTotal"></span></div>
-      <p class="hint">Every part of a block is optional. Drag the grip to reorder.</p>
-      <div id="blocks">${blocks.map(newBlock).join('')}</div>
-      <button type="button" id="addBlock" class="small">+ Add Block</button>
-      <input name="order" hidden aria-hidden="true" tabindex="-1">
+      ${practiceFieldsHTML(p, areas)}
       <div class="row end form-foot">
         ${p ? '<button type="button" id="delPractice" class="ghost danger push-left">Delete Practice</button>' : ''}
         <a class="button ghost" href="${back}">Cancel</a>
         <button class="primary">${p ? 'Save Practice' : 'Add Practice'}</button></div>
     </form>`);
-
-  const form = $('#pracForm'), box = $('#blocks');
-  const rows = () => [...box.querySelectorAll('.block-edit')];
-  const order = form.elements.order;
-  order.value = order.defaultValue = rows().map(r => r.dataset.id).join();
-  const changed = () => {
-    order.value = rows().map(r => r.dataset.id).join();
-    const n = rows().reduce((s, r) => s + (+r.querySelector('[name="b_min"]').value || 0), 0);
-    $('#pracTotal').textContent = n ? 'Total ' + fmtMinutes(n) : '';
-    $('#addBlock').hidden = rows().length >= PRACTICE_MAX_BLOCKS;
-    markUnsaved();
-  };
-  changed();
-  wireGrips(changed);
-  app.oninput = e => { if (e.target.name === 'b_min') changed(); };
-  $('#addBlock').onclick = () => {
-    box.insertAdjacentHTML('beforeend', newBlock());
-    wireGrips(changed);
-    changed();
-    rows().at(-1).querySelector('[name="b_title"]').focus();
-  };
-  app.onclick = e => {
-    const rm = e.target.closest('[data-remove]');
-    if (rm) { rm.closest('.block-edit').remove(); changed(); }
-  };
-  $('#delPractice')?.addEventListener('click', async () => {
-    deletePractice(p, () => goTo('#/practices'));
-  });
-  app.onsubmit = e => {
+  const form = $('#pracForm');
+  wirePracticeForm(form);
+  $('#delPractice')?.addEventListener('click', () => deletePractice(p, () => goTo('#/practices')));
+  form.onsubmit = e => {
     e.preventDefault();
-    const f = new FormData(form);
-    const row = {
-      name: f.get('name').trim(), summary: f.get('summary').trim(), area_ids: f.getAll('area'),
-      // A block with nothing in it is left out.
-      blocks: rows().map(r => ({ id: r.dataset.id, title: r.querySelector('[name="b_title"]').value.trim(),
-        minutes: +r.querySelector('[name="b_min"]').value || null, notes: r.querySelector('[name="b_notes"]').value.trim() }))
-        .filter(b => b.title || b.minutes || b.notes),
-    };
+    const row = readPractice(form);
     busy(e.submitter, async () => {
       const saved = p ? await sb.from('team_practices').update(row).eq('id', p.id).select('id').single().then(must)
         : await sb.from('team_practices').insert(row).select('id').single().then(must);
@@ -195,4 +207,37 @@ async function practiceEditor(p, areas) {
       goTo('#/practice/' + saved.id);
     });
   };
+}
+
+// ---------- A practice in a pop-up ----------
+// Practice Plan on the Summary's Next Practice or on a calendar event opens this, so a coach reads or changes the plan
+// without leaving the location (the user asked). Edit swaps in the editor's fields. After a save the page redraws
+// (it reads the practice again, so a new name shows) and the pop-up opens again with what was saved.
+
+async function practiceDialog(id) {
+  $('#dlg').close();   // the event pop-up it was opened from (ask() has one dialog)
+  const got = await busy(null, () => Promise.all([sb.from('team_practices').select('*').eq('id', id).maybeSingle().then(must), loadAreas()]));
+  if (!got) return;
+  const [p, areas] = got;
+  if (!p) return flash('That practice was deleted.', 'error');
+  const look = await ask({ title: p.name, ok: 'Edit', cancelLabel: 'Close', wide: true,
+    onOpen: form => form.querySelector('[data-close]').addEventListener('click', () => $('#dlg').close()),
+    body: `<p class="muted">${practiceMeta(p)}</p>${practiceAboutHTML(p, areas)}
+      ${p.blocks.length ? `<ol class="blocks">${practiceBlocksHTML(p)}</ol>` : '<p class="muted">No blocks yet.</p>'}
+      <p class="hint">${practiceByline(p)} · <a href="#/practice/${p.id}" data-close>Open Practice Page</a></p>` });
+  if (!look) return;
+  let form;
+  const res = await ask({ title: 'Edit Practice', ok: 'Save Practice', wide: true, extra: { value: 'delete', label: 'Delete' },
+    body: `<div class="practice-form in-dialog">${practiceFieldsHTML(p, areas)}</div>`,
+    onOpen: f => { form = f; wirePracticeForm(f); } });
+  if (!res) return;
+  if (res.get('button') === 'delete') return deletePractice(p, () => redraw());
+  const row = readPractice(form);
+  const saved = await busy(null, async () => {
+    await sb.from('team_practices').update(row).eq('id', p.id).then(must);
+    flash('Practice saved.');
+    redraw();
+    return true;
+  });
+  if (saved) practiceDialog(p.id);
 }

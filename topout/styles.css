@@ -442,3 +442,7 @@ dialog .row.end { margin-top: .4rem; flex-wrap: wrap; position: sticky; bottom: 
 
 /* A required field: a small red * after its label (markRequired in core.js). */
 .req { color: var(--danger); font-weight: 700; margin-left: .15em; }
+
+/* Summary: Next Practice (room between the notes, the buttons and the byline) */
+.next-practice .note-body { margin-bottom: .9rem; }
+.next-practice .next-actions { margin: .9rem 0 .7rem; }

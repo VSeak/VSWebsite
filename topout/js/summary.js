@@ -29,7 +29,7 @@ function teamStats(rows, areas, questions) {
 }
 
 async function summaryTab(loc, head, t) {
-  const [onTeam, areas, questions, focus, [next], locs] = await Promise.all([
+  const [onTeam, areas, questions, focus, [next]] = await Promise.all([
     sb.from('team_member_locations').select('member:team_members(id, name, first_name, left_on)').eq('location_id', loc.id).is('inactive_on', null).then(must),
     sb.from('team_rating_areas').select('*').order('position').then(must),
     sb.from('team_checkin_questions').select('*').order('position').then(must),
@@ -37,7 +37,6 @@ async function summaryTab(loc, head, t) {
     // The next Practice here (not other kinds of event), for the Next Practice card.
     sb.from('team_events').select('*').eq('kind', 'practice').or(`location_ids.is.null,location_ids.cs.{${loc.id}}`)
       .gte('event_date', today()).order('event_date').order('start_time', { nullsFirst: true }).limit(1).then(must),
-    sb.from('team_locations').select('id, name').then(must),
   ]);
   const members = onTeam.map(x => x.member).filter(m => m && !m.left_on).sort((a, b) => a.name.localeCompare(b.name));
   const plan = next?.practice_id ? await sb.from('team_practices').select('id, name').eq('id', next.practice_id).maybeSingle().then(r => r.data) : null;
@@ -63,7 +62,7 @@ async function summaryTab(loc, head, t) {
       ${missing.length ? `No check-in${sumSince ? ' since then' : ' yet'}: ${missing.map(link).join(', ')}.` : ''}</p>
     <div class="member-grid">
       <div class="col">${focusCardHTML(ctx)}${areaCardHTML(ctx)}</div>
-      <div class="col">${nextPracticeHTML(next, plan, loc, locs)}${answersCardHTML(ctx)}</div>
+      <div class="col">${nextPracticeHTML(next, plan, loc)}${answersCardHTML(ctx)}</div>
     </div>`, { keepScroll: true });
 
   $('#sumSince').addEventListener('change', e => { sumSince = e.target.value; redraw(); });
@@ -72,6 +71,8 @@ async function summaryTab(loc, head, t) {
   $('#copyTable').onclick = () => copyText(summaryTable(ctx), 'Table copied. Paste it into a spreadsheet.');
   app.onclick = e => {
     const by = e.target.closest('[data-by]'), fb = e.target.closest('[data-focus]');
+    const pl = e.target.closest('[data-plan]');
+    if (pl) practiceDialog(pl.dataset.plan);
     if (e.target.closest('[data-cal-open]')) calOpen = { id: next.id, date: next.event_date };   // the calendar opens on it
     if (by) { sumBy = by.dataset.by; redraw(); }
     if (fb) focusForm(focus.find(f => f.id === fb.dataset.focus) || null, ctx);
@@ -123,17 +124,16 @@ async function focusForm(f, { loc, areas, focus, s }) {
 
 // ---------- Next Practice ----------
 
-// What the event pop-up on the Calendar shows, for the next Practice here. Open in Calendar opens that pop-up (to edit it).
-function nextPracticeHTML(e, plan, loc, locs) {
+// What the event pop-up on the Calendar shows, for the next Practice here, less its type and location (the page says
+// those; the user asked). Practice Plan opens the plan in a pop-up (practices.js); Open in Calendar opens the event's.
+function nextPracticeHTML(e, plan, loc) {
   if (!e) return `<section class="card"><h2>Next Practice</h2><p class="muted">No practice on the calendar yet.</p>
     <a class="button small" href="#/loc/${loc.id}/calendar">Open Calendar</a></section>`;
   return `<section class="card next-practice"><h2>Next Practice</h2>
-    <h3>${esc(e.title)}</h3>
-    <p class="event-meta wrap"><span class="kind k-${e.kind}">${KINDS[e.kind]}</span> <span class="chip">${esc(locsText(e, locs))}</span>
-      ${e.series_id ? '<span class="chip soft">Repeats Weekly</span>' : ''}</p>
+    <h3>${esc(e.title)}${e.series_id ? ' <span class="chip soft">Repeats Weekly</span>' : ''}</h3>
     <p><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
     ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
-    <div class="row wrap">${plan ? `<a class="button small" href="#/practice/${plan.id}">Practice Plan: ${esc(plan.name)}</a>` : ''}
+    <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button>` : ''}
       <a class="button small ghost" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
     <p class="hint">Added by ${esc(e.author_name || 'staff')}${e.edited_at ? ` · edited ${fmtWhen(e.edited_at)}` : ''}</p>
   </section>`;

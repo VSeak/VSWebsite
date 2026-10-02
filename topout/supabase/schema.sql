@@ -321,8 +321,8 @@ end $$;
 -- Add Member's same-name check, for members the person adding can't see (on teams at locations they don't coach).
 -- It says only where they are and whether they've left, and the id for team_join_location (the id alone doesn't open them).
 create function public.team_same_name(p_first text, p_last text)
-returns table (member_id uuid, locations text, left_team boolean) language sql stable security definer set search_path = '' as $$
-  select m.id, coalesce(string_agg(l.name, ', ' order by l.position, l.name), ''), m.left_on is not null
+returns table (member_id uuid, pronouns text, locations text, left_team boolean) language sql stable security definer set search_path = '' as $$
+  select m.id, m.pronouns, coalesce(string_agg(l.name, ', ' order by l.position, l.name), ''), m.left_on is not null
   from public.team_members m
   left join public.team_member_locations ml on ml.member_id = m.id
   left join public.team_locations l on l.id = ml.location_id

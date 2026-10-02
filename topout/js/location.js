@@ -161,27 +161,28 @@ async function addMember(loc) {
 async function notADuplicate(first, last, loc) {
   const like = s => s.replace(/[\%_]/g, '\$&');
   const [seen, locs, unseen] = await Promise.all([
-    sb.from('team_members').select('id, name, joined_on, left_on, teams:team_member_locations(location_id)')
+    sb.from('team_members').select('id, name, pronouns, joined_on, left_on, teams:team_member_locations(location_id)')
       .ilike('first_name', like(first)).ilike('last_name', like(last)).then(must),
     sb.from('team_locations').select('id, name').then(must),
     sb.rpc('team_same_name', { p_first: first, p_last: last }).then(must),
   ]);
   const same = [
-    ...seen.map(m => ({ id: m.id, name: m.name, here: m.teams.some(t => t.location_id === loc.id), link: true,
+    ...seen.map(m => ({ id: m.id, name: m.name, pronouns: m.pronouns, here: m.teams.some(t => t.location_id === loc.id), link: true,
       where: [m.teams.map(t => locs.find(l => l.id === t.location_id)?.name).filter(Boolean).join(', '),
         m.joined_on ? `joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? 'left the team' : ''] })),
-    ...unseen.map(u => ({ id: u.member_id, name: `${first} ${last}`, here: false,
+    ...unseen.map(u => ({ id: u.member_id, name: `${first} ${last}`, pronouns: u.pronouns, here: false,
       where: [u.locations || 'no team', u.left_team ? 'left the team' : ''] })),
   ];
   if (!same.length) return true;
-  const row = m => `<li><span>${m.link ? `<a href="#/member/${m.id}">${esc(m.name)}</a>` : esc(m.name)}
-      <span class="muted">(${esc(m.where.filter(Boolean).join(', '))})</span></span>
+  // Name (pronouns), where they are on the line under it, then the button below (the hint says "below their name").
+  const row = m => `<li><span>${m.link ? `<a href="#/member/${m.id}">${esc(m.name)}</a>` : esc(m.name)}${m.pronouns ? ` <span class="muted">(${esc(m.pronouns)})</span>` : ''}</span>
+    <span class="muted small-text">${esc(m.where.filter(Boolean).join(' · '))}</span>
     ${m.here ? `<span class="tag">Already on ${esc(loc.name)}</span>`
-      : `<button type="button" class="small" data-join="${m.id}">Add to ${esc(loc.name)}</button>`}</li>`;
-  return !!await ask({ title: 'Same Name Already Here', ok: 'Add Anyway',
+      : `<button type="button" class="small fill" data-join="${m.id}">Add to ${esc(loc.name)}</button>`}</li>`;
+  return !!await ask({ title: 'This Person May Exist on Another Team', ok: 'Add New Person',
     body: `<p>${same.length === 1 ? 'There is already a team member' : `There are already ${same.length} team members`} with this name:</p>
       <ul class="dupes">${same.map(row).join('')}</ul>
-      <p class="hint">If it's the same person, add them to ${esc(loc.name)} here. Add Anyway if it's someone else.</p>`,
+      <p class="hint">If it's the same person, click the button below their name to add them to ${esc(loc.name)}. Click Add New Person if it's someone else.</p>`,
     onOpen: form => form.addEventListener('click', e => {
       if (e.target.closest('a')) return $('#dlg').close();
       const b = e.target.closest('[data-join]');

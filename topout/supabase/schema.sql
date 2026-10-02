@@ -430,6 +430,20 @@ $$;
 create trigger team_member_left after update of left_on on public.team_members
   for each row when (old.left_on is null and new.left_on is not null) execute function public.team_member_left();
 
+-- Only an admin marks someone as left; coaches can still bring them back (clear left_on). The SQL Editor isn't blocked.
+create function public.team_only_admin_leaves() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is not null and not public.team_is_admin() then
+    raise exception 'Only an admin can mark someone as left.' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+create trigger team_only_admin_leaves before update of left_on on public.team_members
+  for each row when (new.left_on is not null and new.left_on is distinct from old.left_on)
+  execute function public.team_only_admin_leaves();
+
 -- There must always be an admin, so nobody locks everyone out of the Staff page.
 create function public.team_keep_an_admin() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -553,7 +567,7 @@ create policy "admin: everything" on public.team_locations for all to authentica
 create policy "staff: read" on public.team_members for select to authenticated using (public.team_can_member(id));
 create policy "staff: change" on public.team_members for update to authenticated
   using (public.team_can_member(id)) with check (public.team_can_member(id));
-create policy "staff: delete" on public.team_members for delete to authenticated using (public.team_can_member(id));
+create policy "admins: delete" on public.team_members for delete to authenticated using (public.team_is_admin());   -- Delete Member is admins only
 
 -- Teams: anyone who sees the member sees all their teams; a coach adds, takes off or marks inactive only their own locations.
 create policy "staff: read" on public.team_member_locations for select to authenticated using (public.team_can_member(member_id));
@@ -698,7 +712,7 @@ create trigger person_push after insert or update of email, first_name, last_nam
 create trigger person_push after insert or update of email, first_name, last_name, pronouns on public.students
   for each row execute function public.person_push();
 revoke execute on function public.person_pull(), public.person_push() from public, anon, authenticated;
-revoke execute on function public.team_member_left() from public, anon, authenticated;
+revoke execute on function public.team_member_left(), public.team_only_admin_leaves() from public, anon, authenticated;
 
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),

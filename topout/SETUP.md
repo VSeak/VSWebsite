@@ -42,4 +42,4 @@ Sign in with your usual email and password. You'll see the two locations. Then:
 
 - **One sign-in, separate access.** A Sit Start student or coach can't open Top Out unless they're on Top Out's Staff page, and the other way around. Being on both lists means one email and one password for both.
 - **Removing staff** takes away their Top Out access but keeps their login (they may use Sit Start). Their notes and check-ins stay, signed with their name.
-- **Left the Team** keeps a member's history, marks every team Inactive and moves them to Former. **Back on Team** asks which location they rejoin. Run `supabase/migrations/2026-10-02-left-team-inactive.sql` once if your `schema.sql` predates it. Delete Member is only for someone added by mistake.
+- **Left the Team** keeps a member's history, marks every team Inactive and moves them to Former. **Back on Team** asks which location they rejoin. Only admins can use Left the Team or Delete Member. Run `supabase/migrations/2026-10-02-left-team-inactive.sql` and `2026-10-02-admin-leave-delete.sql` once if your `schema.sql` predates them. Delete Member is only for someone added by mistake.

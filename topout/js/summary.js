@@ -5,7 +5,9 @@
 // Copy Summary (text for an email or a message) and Copy Table (tab-separated: pastes into a spreadsheet as cells) are
 // for coaches who aren't on the app yet.
 
-let sumSince = '';          // '' = each member's latest check-in, whenever it was
+// Check-Ins Since starts on the 1st of the month 6 months back (10/10/2026 → 4/1/2026; the user asked). '' (Show Latest) =
+// each member's latest check-in, whenever it was.
+let sumSince = (d => iso(new Date(d.getFullYear(), d.getMonth() - 6, 1)))(new Date());
 let sumBy = 'question';     // answers grouped by 'question' or by 'member'
 
 const avgText = x => x ? x.avg.toFixed(1) : '—';

@@ -194,7 +194,7 @@ async function settingsPage() {
             <button class="small primary">Save</button>
             <button type="button" class="small ghost danger" data-del="question" data-id="${q.id}">Delete</button></div></form>`).join('')}
         <form class="row add-row" data-kind="question" data-save><input name="name" maxlength="80" required placeholder="New question" aria-label="New question" data-need="Write the question.">
-          <input name="hint" maxlength="120" placeholder="Example answer (optional)" aria-label="Example answer">
+          <input name="hint" class="hint-in" maxlength="120" placeholder="Example answer (optional)" aria-label="Example answer">
           <button class="primary">+ Add</button></form>
       </section>
 

@@ -355,6 +355,8 @@ h3.sec + .hint, h3.sec + .q-block { margin-top: 0; }
 .circuit-row > input[name="name"] { flex: 1 1 4rem; min-width: 4rem; }
 .circuit-row .vrange input { width: 3.2rem; }
 .set-btns { display: inline-flex; gap: .4rem; margin-left: auto; }
+/* New question: the question gets its own line, so the example answer has room for its placeholder. */
+.add-row:has(.hint-in) > input[name="name"] { flex-basis: 100%; }
 .add-row input.short-in { flex: none; width: 7rem; min-width: 0; }
 /* Lifted above the next row's top line so the bottom of the orange edge isn't covered. */
 .set-row.unsaved { position: relative; z-index: 1; margin: 3px 0; border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));

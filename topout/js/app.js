@@ -280,11 +280,13 @@ async function homePage() {
 
 async function addLocation() {
   const f = await ask({ title: 'Add Location', ok: 'Add Location',
-    body: `<label>Name<input name="name" maxlength="60" required data-need="Name the location." placeholder="E.g. Bloomington" autocomplete="off"></label>` });
+    body: `<label>Name<input name="name" maxlength="60" required data-need="Name the location." placeholder="E.g. Bloomington" autocomplete="off"></label>
+      <label>Shorthand<input name="short_name" maxlength="10" placeholder="E.g. BBP" autocomplete="off"></label>
+      <p class="hint">What people at the gym call it. Chips and short lines use it; leave it blank to use the name.</p>` });
   if (!f) return;
   await busy(null, async () => {
     const { data: last } = await sb.from('team_locations').select('position').order('position', { ascending: false }).limit(1).maybeSingle();
-    const row = await sb.from('team_locations').insert({ name: f.get('name').trim(), position: (last?.position || 0) + 1 }).select('id').single().then(must);
+    const row = await sb.from('team_locations').insert({ name: f.get('name').trim(), short_name: f.get('short_name').trim(), position: (last?.position || 0) + 1 }).select('id').single().then(must);
     flash('Location added. Assign coaches to it on the Staff page.');
     goTo('#/loc/' + row.id);
   });

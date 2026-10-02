@@ -341,6 +341,12 @@ h3.sec + .hint, h3.sec + .q-block { margin-top: 0; }
 /* Lifted above the next row's top line so the bottom of the orange edge isn't covered. */
 .set-row.unsaved { position: relative; z-index: 1; margin: 3px 0; border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));
   padding-left: .5rem; padding-right: .5rem; }
+/* Drag to reorder (wireGrips). touch-action: none so a finger on the grip drags the row instead of scrolling the page. */
+.grip { flex: none; padding: .45rem .3rem; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: grab; touch-action: none; }
+.grip:hover { color: var(--ink); background: var(--sunk); }
+.set-row.dragging { position: relative; z-index: 2; border-radius: 12px; background: var(--card); padding-left: .5rem; padding-right: .5rem;
+  box-shadow: 0 0 0 1.5px var(--ink-2), 0 8px 22px rgba(27, 35, 64, .18); cursor: grabbing; }
+.set-row.dragging .grip { cursor: grabbing; color: var(--ink); }
 .vrange { display: inline-flex; align-items: center; gap: .2rem; font-weight: 700; color: var(--muted); }
 .vrange input { width: 3.6rem; padding: .4rem; }
 

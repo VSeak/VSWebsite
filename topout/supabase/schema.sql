@@ -183,7 +183,7 @@ create table public.team_checkins (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.team_members (id) on delete cascade,
   checkin_date date not null default current_date,
-  circuit_id uuid references public.team_circuits (id) on delete restrict,
+  circuit_id uuid references public.team_circuits (id) on delete set null,
   tb2_grade smallint check (tb2_grade between 0 and 17),
   tb2_angle smallint check (tb2_angle between 0 and 70),
   kilter_grade smallint check (kilter_grade between 0 and 17),
@@ -522,7 +522,7 @@ create trigger team_protect_owner before update or delete on public.team_staff
   for each row execute function public.team_protect_owner();
 
 -- Deleting an area takes its ratings and tags off the check-ins that use it and takes it off any Team Focus (the user
--- wanted every area deletable; hiding it keeps old ratings). A question with answers can be hidden but not deleted.
+-- wanted every area deletable; hiding it keeps old ratings). Deleting a question takes its answers and tags off them too.
 create function public.team_area_cleanup() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -542,17 +542,17 @@ $$;
 create trigger team_area_cleanup before delete on public.team_rating_areas
   for each row execute function public.team_area_cleanup();
 
-create function public.team_question_in_use() returns trigger
+create function public.team_question_cleanup() returns trigger
 language plpgsql security definer set search_path = '' as $$
+declare
+  k text := old.id::text;
 begin
-  if exists (select 1 from public.team_checkins where answers ? old.id::text or tags ? old.id::text) then
-    raise exception 'Check-ins have answers to this question. Hide it instead.';
-  end if;
+  update public.team_checkins set answers = answers - k, tags = tags - k where answers ? k or tags ? k;
   return old;
 end;
 $$;
-create trigger team_question_in_use before delete on public.team_checkin_questions
-  for each row execute function public.team_question_in_use();
+create trigger team_question_cleanup before delete on public.team_checkin_questions
+  for each row execute function public.team_question_cleanup();
 
 -- A goal's done_at is the day it left current (the page can change it for an achieved goal).
 create function public.team_goal_done() returns trigger

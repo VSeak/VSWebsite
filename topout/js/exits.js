@@ -1,6 +1,7 @@
 // ---------- Why Members Left: #/exits ----------
 // Every Exit Intake (team_exits) for the members you can see: how often each reason comes up, would they come back,
-// then each exit. A Location: filter and Left Since. Someone who came back after leaving shows Back on Team.
+// then each exit. A Location: filter and Left Since. Someone who came back after leaving shows Back on Team. Admins can
+// delete an exit (the user asked; the "admins: delete" policy); the member's Left the Team date stays.
 
 let exitsLoc = '';      // a location id or ''
 let exitsSince = '';    // a date or '' (all time)
@@ -29,7 +30,8 @@ async function exitsPage() {
       <span class="muted small-text">Left ${fmtDate(x.left_on)}${where(x.member) ? ` · ${esc(where(x.member))}` : ''}</span></div>
     ${x.member.left_on !== x.left_on ? `<span class="tag">${x.member.left_on ? 'Left Again Later' : 'Back on Team'}</span>` : ''}
     ${joinedForHTML(x.member, x)}
-    ${exitSummaryHTML(x, x.member)}</article>`;
+    ${exitSummaryHTML(x, x.member)}
+    ${me.isAdmin ? `<div class="row end"><button type="button" class="small ghost danger" data-del-exit="${x.id}">Delete Exit Intake</button></div>` : ''}</article>`;
 
   view(`${crumbs([['Home', '#/'], ['Why Members Left']])}
     <div class="page-head"><div><h1 class="big">Why Members Left</h1>
@@ -56,4 +58,11 @@ async function exitsPage() {
   $('#exitsLoc')?.addEventListener('change', e => { exitsLoc = e.target.value; redraw(); });
   $('#exitsSince').addEventListener('change', e => { exitsSince = e.target.value; redraw(); });
   $('#exitsAll')?.addEventListener('click', () => { exitsSince = ''; redraw(); });
+  app.onclick = async e => {
+    const del = e.target.closest('[data-del-exit]');
+    if (!del) return;
+    const x = exits.find(r => r.id === del.dataset.delExit);
+    if (!await confirmDelete(`Delete ${esc(x.member.name)}’s Exit Intake from ${fmtDate(x.left_on)}?`, 'Why they left comes off this page and their member page. Their Left the Team date stays. This can’t be undone.')) return;
+    busy(del, async () => { await sb.from('team_exits').delete().eq('id', x.id).then(must); flash('Deleted.'); redraw(); });
+  };
 }

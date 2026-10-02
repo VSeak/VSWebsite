@@ -134,9 +134,18 @@ async function settingsPage() {
   ]);
   if (t !== navToken) return;
   const nMembers = id => members.filter(m => m.location_id === id).length;
-  const circUsed = id => used.some(c => c.circuit_id === id);
-  const areaUses = id => used.filter(c => c.ratings[id] != null || c.coach_ratings[id] != null || Object.values(c.tags).some(t => t.includes(id))).length;
-  const questionUsed = id => used.some(c => c.answers[id] != null || c.tags[id] != null);
+  const USES = {
+    circuit: id => used.filter(c => c.circuit_id === id).length,
+    area: id => used.filter(c => c.ratings[id] != null || c.coach_ratings[id] != null || Object.values(c.tags).some(t => t.includes(id))).length,
+    question: id => used.filter(c => c.answers[id] != null || c.tags[id] != null).length,
+  };
+  // What comes off the check-ins that use it (the database does it: on delete set null, team_area_cleanup, team_question_cleanup).
+  const LOSES = {
+    circuit: n => `It comes off ${n === 1 ? 'that check-in' : 'them'} as the hardest circuit.`,
+    area: n => `Its ratings and tags come off ${n === 1 ? 'that check-in' : 'them'}, and it comes off any Team Focus.`,
+    question: n => `Its answers and tags come off ${n === 1 ? 'that check-in' : 'them'}.`,
+  };
+  const KEEP = { circuit: '', area: ' To keep old ratings, untick Shown instead.', question: ' To keep old answers, untick Shown instead.' };
   const groupSelect = (val = 'skill') => `<select name="area_group" aria-label="Group">${Object.entries(AREA_GROUPS).map(([k, v]) =>
     `<option value="${k}"${k === val ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
   view(`${crumbs([['Home', '#/'], ['Settings']])}
@@ -153,19 +162,20 @@ async function settingsPage() {
           <button class="small primary">Save</button>
           ${nMembers(l.id) ? '' : `<button type="button" class="small ghost danger" data-del="loc" data-id="${l.id}">Delete</button>`}</form>`).join('')}
         <form class="row add-row" data-kind="loc" data-save><input name="name" maxlength="60" required placeholder="New location" aria-label="New location" data-need="Name the location.">
+          <input name="short_name" class="short-in" maxlength="10" placeholder="Shorthand" aria-label="Shorthand">
           <button class="primary">+ Add</button></form>
       </section>
 
       <section class="card"><h2>Circuit Colors</h2>
         <p class="hint">Easiest first. The V range helps compare progress. Leave the top empty for an open-ended range, like V11+.
-          A color used by a check-in can be renamed but not deleted.</p>
+          Deleting a color clears it from the check-ins that picked it.</p>
         ${circuits.map(c => `<form class="set-row circuit-row" data-kind="circuit" data-id="${c.id}" data-save>
           ${GRIP}
           <input type="color" name="color" value="${esc(c.color.toLowerCase())}" aria-label="Color">
           <input name="name" maxlength="30" required value="${esc(c.name)}" aria-label="Name" data-need="Name the color.">
           <span class="vrange">V<input type="number" name="v_min" min="0" max="17" value="${c.v_min ?? ''}" aria-label="Lowest V grade">–V<input type="number" name="v_max" min="0" max="17" value="${c.v_max ?? ''}" aria-label="Highest V grade"></span>
-          <button class="small primary">Save</button>
-          ${circUsed(c.id) ? '' : `<button type="button" class="small ghost danger" data-del="circuit" data-id="${c.id}">Delete</button>`}</form>`).join('')}
+          <span class="set-btns"><button class="small primary">Save</button>
+          <button type="button" class="small ghost danger" data-del="circuit" data-id="${c.id}">Delete</button></span></form>`).join('')}
         <form class="row add-row" data-kind="circuit" data-save><input type="color" name="color" value="#888888" aria-label="Color">
           <input name="name" maxlength="30" required placeholder="New color" aria-label="New color" data-need="Name the color."><button class="primary">+ Add</button></form>
       </section>
@@ -177,12 +187,14 @@ async function settingsPage() {
         ${questions.map(q => `<form class="set-row" data-kind="question" data-id="${q.id}" data-save>
           ${GRIP}
           <input name="name" maxlength="80" required value="${esc(q.prompt)}" aria-label="Question" data-need="Write the question.">
-          <input name="hint" maxlength="120" value="${esc(q.hint)}" placeholder="Example answer (optional)" aria-label="Example answer">
-          <label class="check"><input type="checkbox" name="tags"${q.tags ? ' checked' : ''}> Focus Area Tags</label>
-          <label class="check"><input type="checkbox" name="active"${q.active ? ' checked' : ''}> Shown</label>
-          <button class="small primary">Save</button>
-          ${questionUsed(q.id) ? '' : `<button type="button" class="small ghost danger" data-del="question" data-id="${q.id}">Delete</button>`}</form>`).join('')}
+          <div class="set-line"><input name="hint" maxlength="120" value="${esc(q.hint)}" placeholder="Example answer (optional)" aria-label="Example answer"></div>
+          <div class="set-line">
+            <label class="check"><input type="checkbox" name="tags"${q.tags ? ' checked' : ''}> Focus Area Tags</label>
+            <label class="check"><input type="checkbox" name="active"${q.active ? ' checked' : ''}> Shown</label>
+            <button class="small primary">Save</button>
+            <button type="button" class="small ghost danger" data-del="question" data-id="${q.id}">Delete</button></div></form>`).join('')}
         <form class="row add-row" data-kind="question" data-save><input name="name" maxlength="80" required placeholder="New question" aria-label="New question" data-need="Write the question.">
+          <input name="hint" maxlength="120" placeholder="Example answer (optional)" aria-label="Example answer">
           <button class="primary">+ Add</button></form>
       </section>
 
@@ -195,11 +207,12 @@ async function settingsPage() {
           ${GRIP}
           <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the focus area.">
           ${groupSelect(a.area_group)}
-          <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
-          <label class="check"><input type="checkbox" name="active"${a.active ? ' checked' : ''}> Shown</label>
-          ${a.rated ? `<button type="button" class="small ghost" data-guide="${a.id}">${a.guide.some(g => g.trim()) ? 'Focus Area Ratings' : '+ Focus Area Ratings'}</button>` : ''}
-          <button class="small primary">Save</button>
-          <button type="button" class="small ghost danger" data-del="area" data-id="${a.id}">Delete</button></form>`).join('')}
+          <div class="set-line">
+            <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
+            <label class="check"><input type="checkbox" name="active"${a.active ? ' checked' : ''}> Shown</label>
+            <button type="button" class="small ghost" data-guide="${a.id}"${a.rated ? '' : ' hidden'}>${a.guide.some(g => g.trim()) ? 'Focus Area Ratings' : '+ Focus Area Ratings'}</button>
+            <button class="small primary">Save</button>
+            <button type="button" class="small ghost danger" data-del="area" data-id="${a.id}">Delete</button></div></form>`).join('')}
         <form class="row add-row" data-kind="area" data-save><input name="name" maxlength="40" required placeholder="New focus area" aria-label="New focus area" data-need="Name the focus area.">
           ${groupSelect()}<label class="check"><input type="checkbox" name="rated" checked> Rated</label>
           <button class="primary">+ Add</button></form>
@@ -222,7 +235,7 @@ async function settingsPage() {
         if (row.v_max != null && row.v_max < row.v_min) return fieldError(form.elements.v_max, 'The top can’t be below the bottom.');
       }
     }
-    if (kind === 'loc' && id) row.short_name = f.get('short_name').trim();
+    if (kind === 'loc') row.short_name = f.get('short_name').trim();
     if (kind === 'area') {
       row.area_group = f.get('area_group');
       row.rated = !!f.get('rated');
@@ -230,7 +243,8 @@ async function settingsPage() {
     }
     if (kind === 'question') {
       row.prompt = row.name; delete row.name;
-      if (id) Object.assign(row, { hint: f.get('hint').trim(), tags: !!f.get('tags'), active: !!f.get('active') });
+      row.hint = f.get('hint').trim();
+      if (id) Object.assign(row, { tags: !!f.get('tags'), active: !!f.get('active') });
     }
     busy(e.submitter, async () => {
       if (id) await sb.from(TABLE[kind]).update(row).eq('id', id).then(must);
@@ -247,13 +261,17 @@ async function settingsPage() {
       : sb.from(TABLE[kind]).update({ position: k + 1 }).eq('id', id).then(must))));
     redraw();
   });
+  // Ticking Rated shows Focus Area Ratings at once (it saves on its own, so it needn't wait for Save).
+  app.onchange = e => {
+    if (e.target.name === 'rated' && e.target.form.dataset.id) e.target.form.querySelector('[data-guide]').hidden = !e.target.checked;
+  };
   app.onclick = async e => {
     const del = e.target.closest('[data-del]'), gd = e.target.closest('[data-guide]');
     if (gd) return guideForm(areas.find(a => a.id === gd.dataset.guide));
     if (del) {
-      const item = LIST[del.dataset.del].find(x => x.id === del.dataset.id);
-      const n = del.dataset.del === 'area' ? areaUses(item.id) : 0;
-      if (!await confirmDelete(`Delete ${item.name || item.prompt}?`, n ? `${n} ${n === 1 ? 'check-in uses' : 'check-ins use'} it. Its ratings and tags come off ${n === 1 ? 'that check-in' : 'them'}, and it comes off any Team Focus. This can't be undone. To keep old ratings, untick Shown instead.` : 'It will be gone for good.')) return;
+      const kind = del.dataset.del, item = LIST[kind].find(x => x.id === del.dataset.id);
+      const n = USES[kind] ? USES[kind](item.id) : 0;
+      if (!await confirmDelete(`Delete ${item.name || item.prompt}?`, n ? `${n} ${n === 1 ? 'check-in uses' : 'check-ins use'} it. ${LOSES[kind](n)} This can't be undone.${KEEP[kind]}` : 'It will be gone for good.')) return;
       busy(del, async () => { await sb.from(TABLE[del.dataset.del]).delete().eq('id', item.id).then(must); flash('Deleted.'); redraw(); });
     }
   };

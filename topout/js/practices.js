@@ -119,7 +119,7 @@ async function practiceEditor(p, areas) {
         placeholder="E.g. Power Endurance Night" autocomplete="off"></label>
       <label>Summary <span class="muted">(optional)</span><textarea name="summary" rows="2" maxlength="600"
         placeholder="E.g. Short, hard efforts on the 40° wall, then core.">${esc(v.summary)}</textarea></label>
-      ${pickable.length ? `<div class="field"><span class="label">Areas <span class="muted">(what it works on, to find it by)</span></span>
+      ${pickable.length ? `<div class="field"><span class="label">Areas <span class="muted">Focus area(s) for this practice</span></span>
         ${areaChips('area', pickable, v.area_ids, 'Areas')}</div>` : ''}
       <div class="row between blocks-head"><h2>Blocks</h2><span class="muted" id="pracTotal"></span></div>
       <p class="hint">Every part of a block is optional. Drag the grip to reorder.</p>

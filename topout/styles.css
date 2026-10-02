@@ -477,9 +477,9 @@ label.switch > input::before { content: ''; position: absolute; top: 3px; left: 
 label.switch > input:checked { background: var(--accent); }
 label.switch > input:checked::before { transform: translateX(1.05rem); }
 label.switch > input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* A dialog with two saves (alt): the buttons are centered, and on a narrow screen share the lines evenly instead of leaving gaps. */
-dialog .row.end.many { justify-content: center; }
+/* A dialog with two saves (alt): Cancel on the left, the saves on the right; on a narrow screen they share the lines evenly. */
+dialog .row.end.many > button[value="cancel"] { margin-right: auto; }
 @media (max-width: 560px) { dialog .row.end.many > button { flex: 1 1 auto; } }
 /* A one-off's Practice Plan button: (This Event Only) on its own line, so a long name doesn't wrap into it. */
-.plan-one-off { border-radius: 14px; }
+.plan-one-off { border-radius: 14px; flex-direction: column; gap: .1rem; }
 .plan-one-off > span { display: block; font-weight: 500; font-size: .85em; color: var(--muted); }

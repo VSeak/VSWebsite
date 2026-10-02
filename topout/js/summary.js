@@ -5,7 +5,7 @@
 // Copy Summary (text for an email or a message) and Copy Table (tab-separated: pastes into a spreadsheet as cells) are
 // for coaches who aren't on the app yet.
 
-// Check-Ins Since starts on the 1st of the month 6 months back (10/10/2026 → 4/1/2026; the user asked). '' (Show Latest) =
+// Check-Ins Since starts on the 1st of the month 6 months back (10/10/2026 → 4/1/2026; the user asked). '' (Show Latest Check-Ins) =
 // each member's latest check-in, whenever it was.
 let sumSince = (d => iso(new Date(d.getFullYear(), d.getMonth() - 6, 1)))(new Date());
 let sumBy = 'question';     // answers grouped by 'question' or by 'member'
@@ -56,7 +56,7 @@ async function summaryTab(loc, head, t) {
   view(`${head}
     <div class="row between list-tools">
       <span class="row wrap"><label class="inline">Check-Ins Since:<input type="date" id="sumSince" value="${sumSince}" max="${today()}"></label>
-        ${sumSince ? '<button type="button" class="small ghost" id="sumAll">Show Latest</button>' : ''}</span>
+        ${sumSince ? '<button type="button" class="small ghost" id="sumAll">Show Latest Check-Ins</button>' : ''}</span>
       <span class="row wrap"><button type="button" class="small" id="copySum">Copy Summary</button>
         <button type="button" class="small" id="copyTable">Copy Table</button></span>
     </div>

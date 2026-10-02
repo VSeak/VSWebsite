@@ -5,6 +5,8 @@
 
 let practiceSearch = '';
 let practiceAreas = [];        // the list's Focus Area pills: area ids picked (a practice shows if it has any of them)
+let practiceSort = 'name';     // the list's Sort: a key of PRACTICE_SORTS
+const PRACTICE_SORTS = { name: 'Name', recent: 'Recently Used', longest: 'Longest First', shortest: 'Shortest First' };
 const PRACTICE_MAX_BLOCKS = 40;
 
 const blockMinutes = b => b.blocks.reduce((n, x) => n + (+x.minutes || 0), 0);
@@ -24,17 +26,28 @@ async function deletePractice(p, then) {
 async function practicesPage() {
   const t = ++navToken;
   view(loading);
-  const [list, areas] = await Promise.all([
+  const [list, areas, uses] = await Promise.all([
     sb.from('team_practices').select('id, name, summary, area_ids, blocks').order('name').then(must),
     loadAreas(),
+    sb.from('team_events').select('practice_id, event_date').not('practice_id', 'is', null).then(must),
   ]);
   if (t !== navToken) return;
+  // When each was last used and is next on the calendar (only the events this coach can see).
+  const now = today();
+  list.forEach(p => {
+    const ds = uses.filter(u => u.practice_id === p.id).map(u => u.event_date);
+    p.last = ds.filter(d => d < now).sort().pop() || '';
+    p.next = ds.filter(d => d >= now).sort()[0] || '';
+  });
+  const useDate = d => d === now ? 'Today' : d.slice(0, 4) === now.slice(0, 4) ? fmtShort(d) : fmtDate(d);
+  const useLine = p => [p.last ? `Last used ${useDate(p.last)}` : 'Not used yet', p.next ? `Next: ${useDate(p.next)}` : ''].filter(Boolean).join(' · ');
   const used = byGroup(areas).map(a => [a, list.filter(p => p.area_ids.includes(a.id)).length]).filter(([, n]) => n);
   practiceAreas = practiceAreas.filter(id => used.some(([a]) => a.id === id));
   // The name is the link, stretched over the card (.practice-go::after), so Delete can sit inside it.
-  const card = p => `<article class="card practice" data-area="${p.area_ids.join(' ')}" data-find="${esc((p.name + ' ' + p.summary).toLowerCase())}">
+  const card = p => `<article class="card practice" data-id="${p.id}" data-area="${p.area_ids.join(' ')}" data-find="${esc((p.name + ' ' + p.summary).toLowerCase())}">
     <div class="row between"><h2><a class="practice-go" href="#/practice/${p.id}">${esc(p.name)}</a></h2>${ICON_ARROW}</div>
     <p class="muted small-text">${practiceMeta(p)}</p>
+    <p class="muted small-text practice-used">${useLine(p)}</p>
     ${p.summary ? `<p class="practice-sum">${esc(p.summary)}</p>` : ''}
     <div class="row between practice-foot"><span class="chips">${practiceAreaChips(p, areas)}</span>
       <button type="button" class="small ghost danger" data-del="${p.id}">Delete</button></div></article>`;
@@ -43,7 +56,9 @@ async function practicesPage() {
       <p class="muted">List of practices to use for team practice. Feel free to create a new practice if it doesn't exist yet!</p></div>
       <a class="button fill" href="#/practice/new">+ New Practice</a></div>
     ${list.length ? `<div class="prac-tools">
-      <input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
+      <div class="row prac-top"><input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
+        <select id="pracSort" class="team-filter" aria-label="Sort practices">${Object.entries(PRACTICE_SORTS).map(([k, l]) =>
+          `<option value="${k}"${k === practiceSort ? ' selected' : ''}>Sort: ${l}</option>`).join('')}</select></div>
       ${used.length ? `<div class="chips prac-areas" id="pracAreas" role="group" aria-label="Filter by focus area">
         ${used.map(([a, n]) => `<label class="chip-check"><input type="checkbox" value="${a.id}"${practiceAreas.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)} (${n})</span></label>`).join('')}
         <button type="button" class="small ghost" id="pracClear"${practiceAreas.length ? '' : ' hidden'}>Clear</button></div>` : ''}
@@ -63,9 +78,23 @@ async function practicesPage() {
     $('#noMatch').hidden = !!n;
     if ($('#pracClear')) $('#pracClear').hidden = !practiceAreas.length;
   };
+  // Recently Used: last used first, then the ones only coming up, then never used; ties by name.
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const sorts = {
+    name: byName,
+    recent: (a, b) => (b.last || '').localeCompare(a.last || '') || (!a.next - !b.next) || byName(a, b),
+    longest: (a, b) => blockMinutes(b) - blockMinutes(a) || byName(a, b),
+    shortest: (a, b) => (blockMinutes(a) || Infinity) - (blockMinutes(b) || Infinity) || byName(a, b),
+  };
+  const sort = () => {
+    const box = $('#practices');
+    [...list].sort(sorts[practiceSort] || byName).forEach(p => box.append(box.querySelector(`[data-id="${p.id}"]`)));
+  };
   if (!list.length) return;
+  sort();
   filter();
   $('#pracSearch').addEventListener('input', e => { practiceSearch = e.target.value; filter(); });
+  $('#pracSort').addEventListener('change', e => { practiceSort = e.target.value; sort(); });
   $('#pracAreas')?.addEventListener('change', () => {
     practiceAreas = [...app.querySelectorAll('#pracAreas input:checked')].map(i => i.value); filter();
   });

@@ -134,10 +134,10 @@ function detailsHTML(m, locs) {
     </form>
     <div class="row wrap danger-zone">
       ${m.left_on ? '<button type="button" class="ghost" id="rejoin">Back on Team</button>'
-        : `<button type="button" class="ghost" id="leave"${me.isAdmin ? '' : ' disabled title="Only an admin can mark someone as left."'}>Left the Team</button>`}
-      <button type="button" class="ghost danger" id="delMember">Delete Member</button>
+        : `<button type="button" class="ghost" id="leave"${me.isAdmin ? '' : ' disabled'}>Left the Team</button>`}
+      <button type="button" class="ghost danger" id="delMember"${me.isAdmin ? '' : ' disabled'}>Delete Member</button>
     </div>
-    <p class="hint">Left the Team (admins only) keeps their history, makes every team Inactive and moves them to Former. Delete is for someone added by mistake.</p>
+    <p class="hint">Left the Team keeps their history, makes every team Inactive and moves them to Former. Delete is for someone added by mistake.${me.isAdmin ? '' : ' Only an admin can do either.'}</p>
   </section>`;
 }
 

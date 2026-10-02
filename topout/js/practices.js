@@ -78,7 +78,7 @@ async function practicePage(id, sub) {
     <div class="block-what"><h3>${esc(b.title || 'Block')}</h3>${b.notes ? `<div class="note-body">${para(b.notes)}</div>` : ''}</div></li>`).join('');
   view(`${crumbs([['Home', '#/'], ['Practices', '#/practices'], [p.name]])}
     <div class="page-head"><div><h1 class="big">${esc(p.name)}</h1><p class="muted">${practiceMeta(p)}</p></div>
-      <a class="button" href="#/practice/${p.id}/edit">Edit</a></div>
+      <div class="row"><button type="button" id="dupPractice">Duplicate</button><a class="button" href="#/practice/${p.id}/edit">Edit</a></div></div>
     <div class="practice-layout">
       <section class="card">
         <h2>Plan</h2>
@@ -93,6 +93,13 @@ async function practicePage(id, sub) {
         <p class="hint">Added by ${esc(p.author_name || 'staff')}${p.edited_at ? ` · edited ${fmtWhen(p.edited_at)}` : ''}</p>
       </aside>
     </div>`);
+  // Duplicate: a copy named "<name> (Copy)", signed by whoever made it, opened in the editor to rename and change.
+  $('#dupPractice').onclick = e => busy(e.currentTarget, async () => {
+    const copy = await sb.from('team_practices').insert({ name: `${p.name} (Copy)`.slice(0, 120), summary: p.summary, area_ids: p.area_ids,
+      blocks: p.blocks.map(b => ({ ...b, id: crypto.randomUUID() })) }).select('id').single().then(must);
+    flash('Copy made. Rename it and change what you like.');
+    goTo(`#/practice/${copy.id}/edit`);
+  });
 }
 
 // Add or edit a practice. Blocks reorder by their grips (wireGrips); the hidden order field makes a reorder, add or

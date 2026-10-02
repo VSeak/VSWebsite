@@ -258,7 +258,9 @@ const ROUTE_GRADES = ['5.5', '5.6', '5.7', '5.8', '5.9', ...[10, 11, 12, 13, 14,
 const circuitRange = c => c.v_min == null ? '' : c.v_max == null ? `V${c.v_min}+` : c.v_min === c.v_max ? `V${c.v_min}` : `V${c.v_min}–V${c.v_max}`;
 // A color dot and the circuit's name. The dot has an edge so white and pale colors still show.
 const swatch = color => `<span class="swatch" style="--sw:${esc(color)}"></span>`;
-const circuitChip = c => c ? `<span class="chip">${swatch(c.color)}${esc(c.name)}</span>` : '';
+// A location's shorthand (MBP), for chips and short lines; its name if it has none. Headings, picks and buttons use the name.
+const locShort = l => l ? l.short_name || l.name : '';
+const circuitChip = c =>c ? `<span class="chip">${swatch(c.color)}${esc(c.name)}</span>` : '';
 
 // ---------- Sign-in links ----------
 

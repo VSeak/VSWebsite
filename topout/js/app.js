@@ -226,7 +226,7 @@ async function homePage() {
   teamTab = 'active';   // a location or Team Members opened from Home starts on Active
   view(loading);
   const [locs, members, events] = await Promise.all([
-    sb.from('team_locations').select('id, name').order('position').order('name').then(must),
+    sb.from('team_locations').select('id, name, short_name').order('position').order('name').then(must),
     sb.from('team_member_locations').select('location_id, member:team_members!inner(left_on)').is('member.left_on', null).is('inactive_on', null).then(must),
     sb.from('team_events').select('id, location_ids, kind, title, event_date, end_date, start_time, end_time')
       .or(`event_date.gte.${today()},end_date.gte.${today()}`).order('event_date').order('start_time', { nullsFirst: true }).limit(40).then(must),
@@ -234,7 +234,7 @@ async function homePage() {
   if (t !== navToken) return;
   const count = id => members.filter(m => m.location_id === id).length;
   const isAt = (e, id) => !e.location_ids || e.location_ids.includes(id);
-  const locNames = e => e.location_ids ? locs.filter(l => isAt(e, l.id)).map(l => l.name).join(', ') : 'All Locations';
+  const locNames = e => e.location_ids ? locs.filter(l => isAt(e, l.id)).map(locShort).join(', ') : 'All Locations';
   const nextAt = id => events.find(e => isAt(e, id));
   const card = l => {
     const n = count(l.id), next = nextAt(l.id);

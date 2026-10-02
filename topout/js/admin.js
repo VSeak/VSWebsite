@@ -11,13 +11,13 @@ async function staffPage() {
   view(loading);
   const [staff, locs] = await Promise.all([
     sb.rpc('team_staff_list').then(must),
-    sb.from('team_locations').select('id, name').order('position').then(must),
+    sb.from('team_locations').select('id, name, short_name').order('position').then(must),
   ]);
   if (t !== navToken) return;
   const card = s => {
     const st = staffStatus(s);
     // The locations ticked for them. An admin with none ticked still sees every location, so no warning for them.
-    const where = locs.filter(l => s.location_ids.includes(l.id)).map(l => l.name);
+    const where = locs.filter(l => s.location_ids.includes(l.id)).map(locShort);
     return `<button type="button" class="person" data-staff="${s.id}"><span class="ini">${esc(initials(s.name || s.email))}</span>
       <span class="person-main"><b>${esc(s.name || s.email)}${pronounsTag(s.pronouns)}${s.owner ? ' <span class="tag">Owner</span>' : ''}</b>
         <span class="muted small-text">${esc(s.email)}</span>
@@ -144,10 +144,11 @@ async function settingsPage() {
     <div class="settings-grid">
       <div class="col">
       <section class="card"><h2>Locations</h2>
-        <p class="hint">The Location Cards on the Home page display in this order. A location with members can't be deleted: take them off that team or delete them first.</p>
+        <p class="hint">The Location Cards on the Home page display in this order. Shorthand is what people at the gym call it (like MBP); chips and short lines use it. A location with members can't be deleted: take them off that team or delete them first.</p>
         ${locs.map(l => `<form class="set-row" data-kind="loc" data-id="${l.id}" data-save>
           ${GRIP}
           <input name="name" maxlength="60" required value="${esc(l.name)}" aria-label="Location name" data-need="Name the location.">
+          <input name="short_name" class="short-in" maxlength="10" value="${esc(l.short_name || '')}" placeholder="Shorthand" aria-label="Shorthand">
           <span class="muted small-text">${nMembers(l.id)} ${nMembers(l.id) === 1 ? "member" : "members"}</span>
           <button class="small primary">Save</button>
           ${nMembers(l.id) ? '' : `<button type="button" class="small ghost danger" data-del="loc" data-id="${l.id}">Delete</button>`}</form>`).join('')}
@@ -221,6 +222,7 @@ async function settingsPage() {
         if (row.v_max != null && row.v_max < row.v_min) return fieldError(form.elements.v_max, 'The top can’t be below the bottom.');
       }
     }
+    if (kind === 'loc' && id) row.short_name = f.get('short_name').trim();
     if (kind === 'area') {
       row.area_group = f.get('area_group');
       row.rated = !!f.get('rated');

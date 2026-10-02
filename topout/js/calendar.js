@@ -19,7 +19,7 @@ const addDays = (d, n) => { const x = day(d); x.setDate(x.getDate() + n); return
 const addMonths = (d, n) => { const x = day(d); x.setMonth(x.getMonth() + n); return iso(x); };
 // Where else an event is, beside the location being shown.
 const alsoAt = (e, loc, locs) => !e.location_ids ? 'All Locations'
-  : e.location_ids.filter(id => id !== loc.id).map(id => locs.find(l => l.id === id)?.name).filter(Boolean).map(n => 'Also ' + n).join(', ');
+  : e.location_ids.filter(id => id !== loc.id).map(id => locShort(locs.find(l => l.id === id))).filter(Boolean).map(n => 'Also ' + n).join(', ');
 
 async function calendarTab(loc, head, t) {
   // Coming to the calendar starts at this month. A redraw (a picked day, another month, a save) keeps the place.
@@ -31,7 +31,7 @@ async function calendarTab(loc, head, t) {
   const [events, locs, practices] = await Promise.all([
     sb.from('team_events').select('*').or(`location_ids.is.null,location_ids.cs.{${loc.id}}`)
       .gte('event_date', addDays(from, -60)).order('event_date').order('start_time', { nullsFirst: true }).limit(1000).then(must),
-    sb.from('team_locations').select('id, name').order('position').order('name').then(must),
+    sb.from('team_locations').select('id, name, short_name').order('position').order('name').then(must),
     sb.from('team_practices').select('id, name').order('name').then(r => r.data || []),   // the calendar still works if it can't be read
   ]);
   if (t !== navToken) return;
@@ -96,7 +96,7 @@ async function calendarTab(loc, head, t) {
   }
 }
 
-const locsText = (e, locs) => !e.location_ids ? 'All Locations' : e.location_ids.map(id => locs.find(l => l.id === id)?.name).filter(Boolean).join(', ');
+const locsText = (e, locs) => !e.location_ids ? 'All Locations' : e.location_ids.map(id => locShort(locs.find(l => l.id === id))).filter(Boolean).join(', ');
 
 // An event's details, with Edit and Delete for someone who can change it.
 async function showEvent(e, loc, locs) {

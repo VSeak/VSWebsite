@@ -30,7 +30,7 @@ async function practicesPage() {
     sb.from('team_practices').select('id, name, summary, area_ids, blocks').order('name').then(must),
     loadAreas(),
     sb.from('team_events').select('practice_id, event_date, location_ids').not('practice_id', 'is', null).then(must),
-    sb.from('team_locations').select('id, name, position').order('position').then(must),
+    sb.from('team_locations').select('id, name, short_name, position').order('position').then(must),
   ]);
   if (t !== navToken) return;
   // When and where each was last used and is next on the calendar (only the events this coach can see).
@@ -38,7 +38,7 @@ async function practicesPage() {
   const now = today();
   const useAt = (evs, d) => {
     const ids = evs.filter(e => e.event_date === d).flatMap(e => e.location_ids || []);
-    return locs.filter(l => ids.includes(l.id)).map(l => l.name).join(' + ');
+    return locs.filter(l => ids.includes(l.id)).map(locShort).join(' + ');
   };
   list.forEach(p => {
     const evs = uses.filter(u => u.practice_id === p.id), ds = evs.map(u => u.event_date);

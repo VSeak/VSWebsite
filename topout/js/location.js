@@ -13,7 +13,7 @@ async function locationPage(id, sub) {
   if (tabs) tabs.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === location.hash));
   else view(loading);
   const [loc, coaches] = await Promise.all([
-    sb.from('team_locations').select('id, name').eq('id', id).maybeSingle().then(must),
+    sb.from('team_locations').select('id, name, short_name').eq('id', id).maybeSingle().then(must),
     sb.from('team_staff_locations').select('staff:team_staff(name, email, roles)').eq('location_id', id).then(must),
   ]);
   if (t !== navToken) return;
@@ -46,7 +46,7 @@ async function loadMembers() {
       .order('first_name').order('last_name').then(must),
     sb.from('team_checkins').select('member_id, checkin_date, circuit_id').order('checkin_date', { ascending: false }).then(must),
     sb.from('team_circuits').select('id, name, color').then(must),
-    sb.from('team_locations').select('id, name').order('position').order('name').then(must),
+    sb.from('team_locations').select('id, name, short_name').order('position').order('name').then(must),
   ]);
   for (const m of members) inactiveOn(m);
   const latest = {};
@@ -111,7 +111,7 @@ async function teamTabView(loc, head, t) {
   // The other teams they're active on (a coach may not see that location's name): Also on X, or Now at X once moved from here.
   const also = m => m.left_on ? '' : (m.inactive[loc.id] ? `<span class="chip soft">Moved ${fmtShort(m.inactive[loc.id])}</span>` : '')
     + m.teams.filter(id => id !== loc.id && !m.inactive[id]).map(id =>
-      `<span class="chip soft">${m.inactive[loc.id] ? 'Now at' : 'Also on'} ${esc(locs.find(l => l.id === id)?.name || 'another team')}</span>`).join('');
+      `<span class="chip soft">${m.inactive[loc.id] ? 'Now at' : 'Also on'} ${esc(locShort(locs.find(l => l.id === id)) || 'another team')}</span>`).join('');
   membersView(head, members.filter(m => m.teams.includes(loc.id)), { latest, circuits, teamChips: also, moved: m => !!m.inactive[loc.id],
     tools: '<button type="button" id="addMember" class="fill">+ Add Member</button>',
     empty: `<section class="card empty"><h2>No Team Members Yet</h2><p class="muted">Add the first member of the ${esc(loc.name)} team.</p></section>` });
@@ -128,7 +128,7 @@ async function membersPage() {
   if (membersTeam && membersTeam !== 'several' && !locs.some(l => l.id === membersTeam)) membersTeam = '';
   const list = members.filter(m => !membersTeam || (membersTeam === 'several' ? m.teams.length > 1 : m.teams.includes(membersTeam)));
   const teams = m => locs.filter(l => m.teams.includes(l.id)).map(l => m.inactive[l.id]
-      ? `<span class="chip soft">${esc(l.name)} (Inactive)</span>` : `<span class="chip strong">${esc(l.name)}</span>`).join('')
+      ? `<span class="chip soft">${esc(locShort(l))} (Inactive)</span>` : `<span class="chip strong">${esc(locShort(l))}</span>`).join('')
     + (m.teams.some(id => !locs.some(l => l.id === id)) ? '<span class="chip soft">Another team</span>' : '');
   // Moved: picked a location, inactive there; all of them, inactive on every team they're on.
   const moved = m => membersTeam && membersTeam !== 'several' ? !!m.inactive[membersTeam] : m.teams.every(id => m.inactive[id]);
@@ -172,7 +172,7 @@ async function notADuplicate(first, last, loc) {
   const [seen, locs, unseen] = await Promise.all([
     sb.from('team_members').select('id, name, pronouns, joined_on, left_on, teams:team_member_locations(location_id, inactive_on)')
       .ilike('first_name', like(first)).ilike('last_name', like(last)).then(must),
-    sb.from('team_locations').select('id, name').then(must),
+    sb.from('team_locations').select('id, name, short_name').then(must),
     sb.rpc('team_same_name', { p_first: first, p_last: last }).then(must),
   ]);
   const same = [

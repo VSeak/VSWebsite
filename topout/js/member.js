@@ -18,7 +18,7 @@ async function memberPage(id) {
     sb.from('team_circuits').select('*').order('position').then(must),
     sb.from('team_rating_areas').select('*').order('position').then(must),
     sb.from('team_checkin_questions').select('*').order('position').then(must),
-    sb.from('team_locations').select('id, name').order('position').then(must),
+    sb.from('team_locations').select('id, name, short_name').order('position').then(must),
     sb.from('team_exits').select('*').eq('member_id', id).order('left_on', { ascending: false }).then(r => r.data || []),   // still works before the migration
   ]);
   if (t !== navToken) return;

@@ -11,7 +11,7 @@ async function exitsPage() {
   const [exits, locs] = await Promise.all([
     sb.from('team_exits').select('*, member:team_members(id, name, pronouns, left_on, intake_why, intake_wants, teams:team_member_locations(location_id))')
       .order('left_on', { ascending: false }).then(must),
-    sb.from('team_locations').select('id, name').order('position').then(must),
+    sb.from('team_locations').select('id, name, short_name').order('position').then(must),
   ]);
   if (t !== navToken) return;
   if (exitsLoc && !locs.some(l => l.id === exitsLoc)) exitsLoc = '';
@@ -23,7 +23,7 @@ async function exitsPage() {
     .sort((a, b) => b[1] - a[1]);
   const none = list.filter(x => !x.reasons.length).length;
   const back = Object.entries(COME_BACK).filter(([k]) => k).map(([k, l]) => [l, list.filter(x => x.come_back === k).length]);
-  const where = m => locs.filter(l => m.teams.some(tm => tm.location_id === l.id)).map(l => l.name).join(', ');
+  const where = m => locs.filter(l => m.teams.some(tm => tm.location_id === l.id)).map(locShort).join(', ');
   const row = x => `<article class="exit">
     <div class="row between wrap"><h3><a href="#/member/${x.member.id}">${esc(x.member.name)}</a>${pronounsTag(x.member.pronouns)}</h3>
       <span class="muted small-text">Left ${fmtDate(x.left_on)}${where(x.member) ? ` · ${esc(where(x.member))}` : ''}</span></div>

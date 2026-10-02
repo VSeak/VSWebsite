@@ -348,6 +348,7 @@ h3.sec + .hint, h3.sec + .q-block { margin-top: 0; }
 .set-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; padding: .5rem 0; border-top: 1px solid var(--line); }
 .set-row > input[name="name"] { flex: 1 1 8rem; }
 .set-row > input[name="hint"] { flex: 2 1 12rem; }
+.set-row > .short-in { width: 7rem; flex: none; }
 .set-row select, .add-row select { width: auto; flex: none; }
 /* Lifted above the next row's top line so the bottom of the orange edge isn't covered. */
 .set-row.unsaved { position: relative; z-index: 1; margin: 3px 0; border-radius: 12px; box-shadow: 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent-soft) 40%, var(--card));

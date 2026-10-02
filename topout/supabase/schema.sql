@@ -27,6 +27,7 @@ create table public.team_locations (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(trim(name)) between 1 and 60),
   name_key text generated always as (lower(trim(name))) stored unique,
+  short_name text not null default '' check (length(short_name) <= 10),   -- shorthand (MBP); '' = use the name
   position int not null default 0,   -- order of the cards on Home
   created_at timestamptz not null default now()
 );
@@ -754,7 +755,7 @@ grant execute on function public.team_my_id(), public.team_my_roles(), public.te
   to authenticated;
 
 -- 7. The two starting locations.
-insert into public.team_locations (name, position) values ('Minneapolis', 1), ('St. Paul', 2);
+insert into public.team_locations (name, short_name, position) values ('Minneapolis', 'MBP', 1), ('St. Paul', 'SPBP', 2);
 
 -- 8. Make yourself an admin, a coach and the owner. Change this to the email you'll sign in with.
 insert into public.team_staff (email, roles, owner) values (lower('you@example.com'), '{admin,coach}', true);

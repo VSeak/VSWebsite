@@ -106,6 +106,8 @@ function route() {
   const go = page === 'loc' && id ? locationPage(id, sub)
     : page === 'member' && id ? memberPage(id)
     : page === 'members' ? membersPage()
+    : page === 'practices' ? practicesPage()
+    : page === 'practice' && id ? practicePage(id, sub)
     : me.isAdmin && page === 'staff' ? staffPage()
     : me.isAdmin && page === 'settings' ? settingsPage()
     : homePage();
@@ -259,6 +261,7 @@ async function homePage() {
         </section>
         <div class="tiles">
           <a class="card tile" href="#/members"><div><h2>Team Members</h2><p class="muted">Everyone on ${me.isAdmin ? 'a team' : 'your teams'} and which teams they're on.</p></div>${ICON_ARROW}</a>
+          <a class="card tile" href="#/practices"><div><h2>Practices</h2><p class="muted">Practice plans every coach shares, block by block.</p></div>${ICON_ARROW}</a>
         ${me.isAdmin ? `
           <a class="card tile" href="#/staff"><div><h2>Staff</h2><p class="muted">Admins and coaches, and where they coach.</p></div>${ICON_ARROW}</a>
           <a class="card tile" href="#/settings"><div><h2>Settings</h2><p class="muted">Locations, circuit colors, areas and check-in questions.</p></div>${ICON_ARROW}</a>` : ''}

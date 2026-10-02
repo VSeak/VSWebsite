@@ -243,3 +243,52 @@ async function sendLink(email, firstName = '') {
   const data = { topout: true, staff: true, ...(me.firstName && { sent_by: me.firstName }), ...(firstName && { first_name: firstName }) };
   return mailer.auth.signInWithOtp({ email, options: { shouldCreateUser: true, data, emailRedirectTo: (CONFIG.siteUrl || BASE) + '?setpw=1' } });
 }
+
+// ---------- Drag to reorder ----------
+// A row with data-kind and data-id starts with GRIP; its siblings of the same kind are the list. Pointer events rather
+// than HTML drag and drop, so a finger works as well as a mouse; with the grip focused, the up and down arrow keys
+// move the row one place. moved(kind, ids in the new order) runs after a change. Used by Settings and the practice editor.
+const GRIP = `<button type="button" class="grip" data-grip title="Drag to reorder" aria-label="Move: drag, or use the up and down arrow keys">
+  <svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="2" cy="2" r="1.6"/><circle cx="8" cy="2" r="1.6"/>
+  <circle cx="2" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="2" cy="14" r="1.6"/><circle cx="8" cy="14" r="1.6"/></g></svg></button>`;
+let gripFocus = null;   // a row id whose grip gets focus back after a redraw (set by a page that redraws in moved)
+function wireGrips(moved) {
+  const rowsOf = row => [...row.parentElement.querySelectorAll(`:scope > [data-kind="${row.dataset.kind}"][data-id]`)];
+  const done = (row, before) => {
+    const after = rowsOf(row).map(r => r.dataset.id);
+    if (after.join() !== before.join()) moved(row.dataset.kind, after);
+  };
+  for (const grip of app.querySelectorAll('[data-grip]')) {
+    const row = grip.closest('[data-kind][data-id]');
+    grip.onpointerdown = e => {
+      if (e.button) return;
+      e.preventDefault();
+      const before = rowsOf(row).map(r => r.dataset.id), stop = new AbortController(), on = { signal: stop.signal };
+      row.classList.add('dragging');
+      // Listened for on the window: moving the row in the page drops any pointer capture on the grip.
+      addEventListener('pointermove', ev => {
+        // Put the row before the first other row whose middle is below the pointer, else last.
+        const others = rowsOf(row).filter(r => r !== row);
+        const next = others.find(r => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+        if (next && row.nextElementSibling !== next) next.before(row);
+        if (!next && others.length) others.at(-1).after(row);
+        if (ev.clientY < 60) scrollBy(0, -12); else if (ev.clientY > innerHeight - 60) scrollBy(0, 12);
+      }, on);
+      const end = () => { stop.abort(); row.classList.remove('dragging'); done(row, before); };
+      addEventListener('pointerup', end, on);
+      addEventListener('pointercancel', end, on);
+    };
+    grip.onkeydown = e => {
+      const dir = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+      if (!dir) return;
+      e.preventDefault();
+      const rows = rowsOf(row), before = rows.map(r => r.dataset.id), other = rows[rows.indexOf(row) + dir];
+      if (!other) return;
+      // Move the neighbour, not this row, so the grip keeps focus.
+      if (dir < 0) row.after(other); else row.before(other);
+      done(row, before);
+    };
+  }
+  if (gripFocus) app.querySelector(`[data-id="${gripFocus}"] [data-grip]`)?.focus();
+  gripFocus = null;
+}

@@ -139,10 +139,6 @@ async function settingsPage() {
   const questionUsed = id => used.some(c => c.answers[id] != null || c.tags[id] != null);
   const groupSelect = (val = 'skill') => `<select name="area_group" aria-label="Group">${Object.entries(AREA_GROUPS).map(([k, v]) =>
     `<option value="${k}"${k === val ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
-  const grip = `<button type="button" class="grip" data-grip title="Drag to reorder" aria-label="Move: drag, or use the up and down arrow keys">
-    <svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="2" cy="2" r="1.6"/><circle cx="8" cy="2" r="1.6"/>
-    <circle cx="2" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="2" cy="14" r="1.6"/><circle cx="8" cy="14" r="1.6"/></g></svg></button>`;
-
   view(`${crumbs([['Home', '#/'], ['Settings']])}
     <div class="page-head"><h1 class="big">Settings</h1></div>
     <div class="settings-grid">
@@ -150,7 +146,7 @@ async function settingsPage() {
       <section class="card"><h2>Locations</h2>
         <p class="hint">The Location Cards on the Home page display in this order. A location with members can't be deleted: take them off that team or delete them first.</p>
         ${locs.map(l => `<form class="set-row" data-kind="loc" data-id="${l.id}" data-save>
-          ${grip}
+          ${GRIP}
           <input name="name" maxlength="60" required value="${esc(l.name)}" aria-label="Location name" data-need="Name the location.">
           <span class="muted small-text">${nMembers(l.id)} ${nMembers(l.id) === 1 ? "member" : "members"}</span>
           <button class="small primary">Save</button>
@@ -163,7 +159,7 @@ async function settingsPage() {
         <p class="hint">Easiest first. The V range helps compare progress. Leave the top empty for an open-ended range, like V11+.
           A color used by a check-in can be renamed but not deleted.</p>
         ${circuits.map(c => `<form class="set-row circuit-row" data-kind="circuit" data-id="${c.id}" data-save>
-          ${grip}
+          ${GRIP}
           <input type="color" name="color" value="${esc(c.color.toLowerCase())}" aria-label="Color">
           <input name="name" maxlength="30" required value="${esc(c.name)}" aria-label="Name" data-need="Name the color.">
           <span class="vrange">V<input type="number" name="v_min" min="0" max="17" value="${c.v_min ?? ''}" aria-label="Lowest V grade">–V<input type="number" name="v_max" min="0" max="17" value="${c.v_max ?? ''}" aria-label="Highest V grade"></span>
@@ -178,7 +174,7 @@ async function settingsPage() {
         <p class="hint">What a coach asks at a check-in, in this order. Every answer is optional. Area Tags lets the coach tag the answer
           with areas, which the Team Summary counts. Hide one to leave it off new check-ins but keep old answers.</p>
         ${questions.map(q => `<form class="set-row" data-kind="question" data-id="${q.id}" data-save>
-          ${grip}
+          ${GRIP}
           <input name="name" maxlength="80" required value="${esc(q.prompt)}" aria-label="Question" data-need="Write the question.">
           <input name="hint" maxlength="120" value="${esc(q.hint)}" placeholder="Example answer (optional)" aria-label="Example answer">
           <label class="check"><input type="checkbox" name="tags"${q.tags ? ' checked' : ''}> Area Tags</label>
@@ -195,7 +191,7 @@ async function settingsPage() {
           Area Ratings: a line for each number, shown above the ratings on a check-in, so every coach (and member) rates the same way.
           Hide one to leave it off new check-ins but keep old ratings.</p>
         ${areas.map(a => `<form class="set-row" data-kind="area" data-id="${a.id}" data-save>
-          ${grip}
+          ${GRIP}
           <input name="name" maxlength="40" required value="${esc(a.name)}" aria-label="Name" data-need="Name the area.">
           ${groupSelect(a.area_group)}
           <label class="check"><input type="checkbox" name="rated"${a.rated ? ' checked' : ''}> Rated</label>
@@ -243,6 +239,8 @@ async function settingsPage() {
   };
   // Renumber the list in its new order (positions may have gaps or ties), writing only the rows that changed.
   wireGrips(async (kind, order) => {
+    gripFocus = document.activeElement?.closest('[data-grip]') ? document.activeElement.closest('[data-id]').dataset.id : null;   // moved with the keys
+    app.querySelectorAll('[data-grip]').forEach(g => { g.disabled = true; });
     await busy(null, () => Promise.all(order.map((id, k) => LIST[kind].find(x => x.id === id).position === k + 1 ? null
       : sb.from(TABLE[kind]).update({ position: k + 1 }).eq('id', id).then(must))));
     redraw();
@@ -257,52 +255,6 @@ async function settingsPage() {
       busy(del, async () => { await sb.from(TABLE[del.dataset.del]).delete().eq('id', item.id).then(must); flash('Deleted.'); redraw(); });
     }
   };
-}
-
-// Drag to reorder: each Settings row starts with a grip. Pointer events rather than HTML drag and drop, so a finger
-// works as well as a mouse; with the grip focused, the up and down arrow keys move the row one place.
-let gripFocus = null;   // the row moved with the keys, so its grip gets focus back after the redraw
-function wireGrips(save) {
-  const rowsOf = row => [...row.parentElement.querySelectorAll(`:scope > .set-row[data-kind="${row.dataset.kind}"]`)];
-  const done = (row, before) => {
-    const after = rowsOf(row).map(r => r.dataset.id);
-    if (after.join() === before.join()) return;
-    app.querySelectorAll('[data-grip]').forEach(g => { g.disabled = true; });
-    save(row.dataset.kind, after);
-  };
-  for (const grip of app.querySelectorAll('[data-grip]')) {
-    const row = grip.closest('.set-row');
-    grip.onpointerdown = e => {
-      if (e.button) return;
-      e.preventDefault();
-      const before = rowsOf(row).map(r => r.dataset.id), stop = new AbortController(), on = { signal: stop.signal };
-      row.classList.add('dragging');
-      // Listened for on the window: moving the row in the page drops any pointer capture on the grip.
-      addEventListener('pointermove', ev => {
-        // Put the row before the first other row whose middle is below the pointer, else last.
-        const others = rowsOf(row).filter(r => r !== row);
-        const next = others.find(r => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
-        if (next && row.nextElementSibling !== next) next.before(row);
-        if (!next && others.length) others.at(-1).after(row);
-        if (ev.clientY < 60) scrollBy(0, -12); else if (ev.clientY > innerHeight - 60) scrollBy(0, 12);
-      }, on);
-      const end = () => { stop.abort(); row.classList.remove('dragging'); done(row, before); };
-      addEventListener('pointerup', end, on);
-      addEventListener('pointercancel', end, on);
-    };
-    grip.onkeydown = e => {
-      const dir = { ArrowUp: -1, ArrowDown: 1 }[e.key];
-      if (!dir) return;
-      e.preventDefault();
-      const rows = rowsOf(row), before = rows.map(r => r.dataset.id), i = rows.indexOf(row), other = rows[i + dir];
-      if (!other) return;
-      if (dir < 0) other.before(row); else other.after(row);
-      gripFocus = row.dataset.id;
-      done(row, before);
-    };
-  }
-  if (gripFocus) app.querySelector(`.set-row[data-id="${gripFocus}"] [data-grip]`)?.focus();
-  gripFocus = null;
 }
 
 // Area Ratings: what each number 1–5 means for one area, listed above its ratings on a check-in. A blank line falls

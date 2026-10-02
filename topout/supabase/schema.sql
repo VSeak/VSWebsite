@@ -217,9 +217,24 @@ create table public.team_focus (
 );
 create index on public.team_focus (location_id, focus_date desc);
 
+-- Practices: practice plans every coach shares (like Sit Start's Exercises & Drills). blocks: [{id, title, minutes, notes}]
+-- in order, every field optional. area_ids: the Areas it works on (to filter by).
+create table public.team_practices (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(trim(name)) > 0),
+  summary text not null default '',
+  area_ids uuid[] not null default '{}',
+  blocks jsonb not null default '[]' check (jsonb_typeof(blocks) = 'array'),
+  author_id uuid references auth.users (id) on delete set null,
+  author_name text not null default '',
+  created_at timestamptz not null default now(),
+  edited_at timestamptz
+);
+
 -- The calendar. location_ids: the locations it shows at, or null = every location (only admins add those).
 -- kind: competition, practice (an agenda: what to work on that day), open_house, other.
 -- series_id: the events made by one Repeats Weekly, changed or deleted together.
+-- practice_id: a practice's plan from Practices.
 create table public.team_events (
   id uuid primary key default gen_random_uuid(),
   location_ids uuid[] check (location_ids is null or cardinality(location_ids) > 0),
@@ -232,6 +247,7 @@ create table public.team_events (
   end_time time check (end_time > start_time),
   place text not null default '' check (length(place) <= 200),
   notes text not null default '',
+  practice_id uuid references public.team_practices (id) on delete set null,
   author_id uuid references auth.users (id) on delete set null,
   author_name text not null default '',
   created_at timestamptz not null default now(),
@@ -381,6 +397,8 @@ create trigger team_stamp_author before insert or update on public.team_checkins
   for each row execute function public.team_stamp_author();
 create trigger team_stamp_author before insert or update on public.team_events
   for each row execute function public.team_stamp_author();
+create trigger team_stamp_author before insert or update on public.team_practices
+  for each row execute function public.team_stamp_author();
 create trigger team_stamp_author before insert or update on public.team_focus
   for each row execute function public.team_stamp_author();
 
@@ -449,6 +467,7 @@ begin
                      where jsonb_array_length(e.value - k) > 0), '{}')
   where c.ratings ? k or c.coach_ratings ? k or exists (select 1 from jsonb_each(c.tags) e where e.value ? k);
   update public.team_focus set area_ids = array_remove(area_ids, old.id) where old.id = any (area_ids);
+  update public.team_practices set area_ids = array_remove(area_ids, old.id) where old.id = any (area_ids);
   return old;
 end;
 $$;
@@ -496,6 +515,7 @@ alter table public.team_checkins enable row level security;
 alter table public.team_events enable row level security;
 alter table public.team_checkin_questions enable row level security;
 alter table public.team_focus enable row level security;
+alter table public.team_practices enable row level security;
 
 -- Staff read each other (coworkers' names); admins change them.
 create policy "staff: read" on public.team_staff for select to authenticated using ((select public.team_is_staff()));
@@ -558,6 +578,10 @@ create policy "admin: everything" on public.team_checkin_questions for all to au
 -- Team Focus: any coach at the location.
 create policy "staff: everything" on public.team_focus for all to authenticated
   using (public.team_can_location(location_id)) with check (public.team_can_location(location_id));
+
+-- Practices: shared, so every staff member reads, adds, changes and deletes them, wherever they coach.
+create policy "staff: everything" on public.team_practices for all to authenticated
+  using ((select public.team_is_staff())) with check ((select public.team_is_staff()));
 
 -- Calendar: staff read the events at their locations and every-location events; they change an event only when
 -- they have all its locations. Admins change any (and only they add every-location ones).

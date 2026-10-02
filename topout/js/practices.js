@@ -4,7 +4,7 @@
 // on the calendar can link to one (team_events.practice_id).
 
 let practiceSearch = '';
-let practiceArea = '';         // the list's Area: filter, an area id or ''
+let practiceAreas = [];        // the list's Focus Area pills: area ids picked (a practice shows if it has any of them)
 const PRACTICE_MAX_BLOCKS = 40;
 
 const blockMinutes = b => b.blocks.reduce((n, x) => n + (+x.minutes || 0), 0);
@@ -30,7 +30,7 @@ async function practicesPage() {
   ]);
   if (t !== navToken) return;
   const used = byGroup(areas).map(a => [a, list.filter(p => p.area_ids.includes(a.id)).length]).filter(([, n]) => n);
-  if (practiceArea && !used.some(([a]) => a.id === practiceArea)) practiceArea = '';
+  practiceAreas = practiceAreas.filter(id => used.some(([a]) => a.id === id));
   // The name is the link, stretched over the card (.practice-go::after), so Delete can sit inside it.
   const card = p => `<article class="card practice" data-area="${p.area_ids.join(' ')}" data-find="${esc((p.name + ' ' + p.summary).toLowerCase())}">
     <div class="row between"><h2><a class="practice-go" href="#/practice/${p.id}">${esc(p.name)}</a></h2>${ICON_ARROW}</div>
@@ -42,10 +42,11 @@ async function practicesPage() {
     <div class="page-head"><div><h1 class="big">Practices</h1>
       <p class="muted">List of practices to use for team practice. Feel free to create a new practice if it doesn't exist yet!</p></div>
       <a class="button fill" href="#/practice/new">+ New Practice</a></div>
-    ${list.length ? `<div class="row list-tools">
+    ${list.length ? `<div class="prac-tools">
       <input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
-      ${used.length ? `<label class="inline">Focus Area:<select id="pracArea" class="team-filter"><option value="">All Focus Areas</option>
-        ${used.map(([a, n]) => `<option value="${a.id}"${a.id === practiceArea ? ' selected' : ''}>${esc(a.name)} (${n})</option>`).join('')}</select></label>` : ''}
+      ${used.length ? `<div class="chips prac-areas" id="pracAreas" role="group" aria-label="Filter by focus area">
+        ${used.map(([a, n]) => `<label class="chip-check"><input type="checkbox" value="${a.id}"${practiceAreas.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)} (${n})</span></label>`).join('')}
+        <button type="button" class="small ghost" id="pracClear"${practiceAreas.length ? '' : ' hidden'}>Clear</button></div>` : ''}
     </div>
     <div class="practices" id="practices">${list.map(card).join('')}</div>
     <p class="muted" id="noMatch" hidden>No practices match.</p>`
@@ -55,15 +56,22 @@ async function practicesPage() {
     const q = practiceSearch.trim().toLowerCase();
     let n = 0;
     app.querySelectorAll('#practices .practice').forEach(p => {
-      p.hidden = (!!q && !p.dataset.find.includes(q)) || (!!practiceArea && !p.dataset.area.split(' ').includes(practiceArea));
+      const has = p.dataset.area.split(' ');
+      p.hidden = (!!q && !p.dataset.find.includes(q)) || (practiceAreas.length > 0 && !practiceAreas.some(id => has.includes(id)));
       n += !p.hidden;
     });
     $('#noMatch').hidden = !!n;
+    if ($('#pracClear')) $('#pracClear').hidden = !practiceAreas.length;
   };
   if (!list.length) return;
   filter();
   $('#pracSearch').addEventListener('input', e => { practiceSearch = e.target.value; filter(); });
-  $('#pracArea')?.addEventListener('change', e => { practiceArea = e.target.value; filter(); });
+  $('#pracAreas')?.addEventListener('change', () => {
+    practiceAreas = [...app.querySelectorAll('#pracAreas input:checked')].map(i => i.value); filter();
+  });
+  $('#pracClear')?.addEventListener('click', () => {
+    app.querySelectorAll('#pracAreas input').forEach(i => { i.checked = false; }); practiceAreas = []; filter();
+  });
   app.onclick = e => {
     const del = e.target.closest('[data-del]');
     if (del) deletePractice(list.find(p => p.id === del.dataset.del), () => redraw());

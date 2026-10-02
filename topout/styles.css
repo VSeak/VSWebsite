@@ -168,6 +168,9 @@ h1.big { font-size: clamp(1.9rem, 5vw, 2.6rem); font-weight: 700; margin: 0; let
 .count { color: var(--muted); font-weight: 500; }
 .list-tools { margin-bottom: .9rem; flex-wrap: wrap; }
 .team-filter { width: auto; }
+.prac-tools { margin-bottom: 1rem; }
+.prac-tools .search { margin-bottom: .55rem; }
+.prac-areas { align-items: center; margin-top: 0; }
 
 /* Home */
 .home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.4rem; align-items: start; }

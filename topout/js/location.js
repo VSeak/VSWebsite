@@ -1,4 +1,4 @@
-// ---------- A location: #/loc/<id> (Team), #/loc/<id>/summary (summary.js) and #/loc/<id>/calendar. Every team member: #/members ----------
+// ---------- A location: #/loc/<id> (Summary, summary.js; also #/loc/<id>/summary), #/loc/<id>/calendar and #/loc/<id>/team. Every team member: #/members ----------
 // A member is on one team (location) or several (team_member_locations). A coach sees the members of their teams.
 
 let teamTab = 'active';     // Active or Former members, kept while moving around
@@ -22,17 +22,17 @@ async function locationPage(id, sub) {
   if (!loc) return view(`${crumbs([['Home', '#/'], ['Not Found']])}<section class="card"><h2>Location Not Found</h2>
     <p class="muted">It may have been removed, or you aren't assigned to it.</p></section>`);
   lastLoc = loc.id;
-  const tab = ['calendar', 'summary'].includes(sub) ? sub : 'team';
+  const tab = ['calendar', 'team'].includes(sub) ? sub : 'summary';   // a location opens on its Summary
   const names = coaches.map(c => c.staff).filter(s => s?.roles.includes('coach')).map(s => s.name || s.email).sort();
   const tabLink = (key, label, href) => `<a href="${href}" class="${tab === key ? 'on' : ''}" ${tab === key ? 'aria-current="page"' : ''}>${label}</a>`;
   // The current Team Focus (summary.js) shows under the name, except on the Summary tab, which shows it in full.
   const head = `${crumbs([['Home', '#/'], [loc.name]])}
     <div class="page-head"><div><h1 class="big">${esc(loc.name)}</h1>
       <p class="muted">${names.length ? `Coaches: ${names.map(esc).join(', ')}` : 'No coaches assigned yet.'}</p></div></div>
-    ${focus && tab !== 'summary' ? `<a class="focus-strip" href="#/loc/${id}/summary"><b>Team Focus</b><span>${esc(firstLine(focus.body))}</span>
+    ${focus && tab !== 'summary' ? `<a class="focus-strip" href="#/loc/${id}"><b>Team Focus</b><span>${esc(firstLine(focus.body))}</span>
       <small>${fmtShort(focus.focus_date)}</small></a>` : ''}
-    <nav class="tabs" aria-label="Location" data-loc="${id}">${tabLink('team', 'Team', `#/loc/${id}`)}${tabLink('summary', 'Summary', `#/loc/${id}/summary`)}
-      ${tabLink('calendar', 'Calendar', `#/loc/${id}/calendar`)}</nav>`;
+    <nav class="tabs" aria-label="Location" data-loc="${id}">${tabLink('summary', 'Summary', `#/loc/${id}`)}${tabLink('calendar', 'Calendar', `#/loc/${id}/calendar`)}
+      ${tabLink('team', 'Team', `#/loc/${id}/team`)}</nav>`;
   return tab === 'calendar' ? calendarTab(loc, head, t) : tab === 'summary' ? summaryTab(loc, head, t) : teamTabView(loc, head, t);
 }
 

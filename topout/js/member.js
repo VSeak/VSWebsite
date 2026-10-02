@@ -27,7 +27,7 @@ async function memberPage(id) {
   // Breadcrumbs go back to the list they came from: Team Members, or a location they're on (else their first team).
   const mine = locs.filter(l => m.teams.includes(l.id));
   const loc = mine.find(l => l.id === lastLoc) || mine[0];
-  m.backTo = loc && lastLoc !== 'members' ? `#/loc/${loc.id}` : '#/members';
+  m.backTo = loc && lastLoc !== 'members' ? `#/loc/${loc.id}/team` : '#/members';
   const ctx = { m, goals, notes, checkins, circuits, areas, questions, locs };
   const status = [mine.map(l => m.inactive[l.id] ? `${l.name} (inactive)` : l.name).join(', '), m.joined_on ? `Joined ${fmtMonthYear(m.joined_on)}` : '', m.left_on ? `Left ${fmtDate(m.left_on)}` : '']
     .filter(Boolean).map(esc).join(' · ');

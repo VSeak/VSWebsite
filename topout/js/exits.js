@@ -28,7 +28,7 @@ async function exitsPage() {
     <div class="row between wrap"><h3><a href="#/member/${x.member.id}">${esc(x.member.name)}</a>${pronounsTag(x.member.pronouns)}</h3>
       <span class="muted small-text">Left ${fmtDate(x.left_on)}${where(x.member) ? ` · ${esc(where(x.member))}` : ''}</span></div>
     ${x.member.left_on !== x.left_on ? `<span class="tag">${x.member.left_on ? 'Left Again Later' : 'Back on Team'}</span>` : ''}
-    ${joinedForHTML(x.member)}
+    ${joinedForHTML(x.member, x)}
     ${exitSummaryHTML(x, x.member)}</article>`;
 
   view(`${crumbs([['Home', '#/'], ['Why Members Left']])}

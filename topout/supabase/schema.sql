@@ -243,6 +243,8 @@ create table public.team_exits (
   details text not null default '',     -- in their words
   better text not null default '',      -- what we could have done better
   come_back text not null default '' check (come_back in ('', 'yes', 'maybe', 'no')),
+  joined_why text not null default '',    -- the member's intake when this row was made (team_exit_snapshot)
+  joined_wants text not null default '',
   author_id uuid references auth.users (id) on delete set null,
   author_name text not null default '',
   created_at timestamptz not null default now(),
@@ -425,6 +427,22 @@ create trigger team_stamp_author before insert or update on public.team_focus
   for each row execute function public.team_stamp_author();
 create trigger team_stamp_author before insert or update on public.team_exits
   for each row execute function public.team_stamp_author();
+
+-- An exit keeps a copy of the intake (why they joined, what they wanted) from when it was made; a later Save Intake doesn't change it.
+create function public.team_exit_snapshot() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    select m.intake_why, m.intake_wants into new.joined_why, new.joined_wants from public.team_members m where m.id = new.member_id;
+  else
+    new.joined_why := old.joined_why;
+    new.joined_wants := old.joined_wants;
+  end if;
+  return new;
+end;
+$$;
+create trigger team_exit_snapshot before insert or update on public.team_exits
+  for each row execute function public.team_exit_snapshot();
 
 -- A deleted location comes off its events; an event that was only there goes too.
 create function public.team_drop_event_location() returns trigger
@@ -740,7 +758,7 @@ create trigger person_push after insert or update of email, first_name, last_nam
 create trigger person_push after insert or update of email, first_name, last_name, pronouns on public.students
   for each row execute function public.person_push();
 revoke execute on function public.person_pull(), public.person_push() from public, anon, authenticated;
-revoke execute on function public.team_member_left(), public.team_only_admin_leaves() from public, anon, authenticated;
+revoke execute on function public.team_member_left(), public.team_only_admin_leaves(), public.team_exit_snapshot() from public, anon, authenticated;
 
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),

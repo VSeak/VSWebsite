@@ -6,6 +6,7 @@
 let practiceSearch = '';
 let practiceAreas = [];        // the list's Focus Area pills: area ids picked (a practice shows if it has any of them)
 let practiceSort = 'name';     // the list's Sort: a key of PRACTICE_SORTS
+let practiceOneOffs = false;   // Show One-Offs: the list shows only the one-offs (Save to This Event Only copies) instead
 const PRACTICE_SORTS = { name: 'Name', recent: 'Recently Used', longest: 'Longest First', shortest: 'Shortest First' };
 const PRACTICE_MAX_BLOCKS = 40;
 
@@ -26,14 +27,18 @@ async function deletePractice(p, then) {
 async function practicesPage() {
   const t = ++navToken;
   view(loading);
-  const [list, areas, uses, locs] = await Promise.all([
-    sb.from('team_practices').select('id, name, summary, area_ids, blocks').order('name').then(must),
+  const [all, areas, uses, locs] = await Promise.all([
+    sb.from('team_practices').select('*').order('name').then(must),
     loadAreas(),
     sb.from('team_events').select('practice_id, event_date, location_ids').not('practice_id', 'is', null).then(must),
     sb.from('team_locations').select('id, name, short_name, position').order('position').then(must),
   ]);
   if (t !== navToken) return;
-  // When and where each was last used and is next on the calendar (only the events this coach can see).
+  const oneOffs = all.filter(p => p.event_only);
+  if (!oneOffs.length) practiceOneOffs = false;
+  const list = all.filter(p => !!p.event_only === practiceOneOffs);
+  // When and where each was last used and is next on the calendar (only the events this coach can see; an original counts
+  // its one-offs' events too).
   // Where: the event's locations in Home's order, none for an Every Location event; events on the same day are merged.
   const now = today();
   const useAt = (evs, d) => {
@@ -41,7 +46,8 @@ async function practicesPage() {
     return locs.filter(l => ids.includes(l.id)).map(locShort).join(' + ');
   };
   list.forEach(p => {
-    const evs = uses.filter(u => u.practice_id === p.id), ds = evs.map(u => u.event_date);
+    const ids = [p.id, ...oneOffs.filter(o => o.based_on === p.id && !p.event_only).map(o => o.id)];
+    const evs = uses.filter(u => ids.includes(u.practice_id)), ds = evs.map(u => u.event_date);
     p.last = ds.filter(d => d < now).sort().pop() || '';
     p.next = ds.filter(d => d >= now).sort()[0] || '';
     p.lastAt = p.last ? useAt(evs, p.last) : '';
@@ -51,10 +57,12 @@ async function practicesPage() {
   const useLine = p => [p.last ? `Last used ${useDate(p.last, p.lastAt)}` : 'Not used yet', p.next ? `Next: ${useDate(p.next, p.nextAt)}` : ''].filter(Boolean).join(' · ');
   const used = byGroup(areas).map(a => [a, list.filter(p => p.area_ids.includes(a.id)).length]).filter(([, n]) => n);
   practiceAreas = practiceAreas.filter(id => used.some(([a]) => a.id === id));
+  const orig = p => all.find(o => o.id === p.based_on);
   // The name is the link, stretched over the card (.practice-go::after), so Delete can sit inside it.
   const card = p => `<article class="card practice" data-id="${p.id}" data-area="${p.area_ids.join(' ')}" data-find="${esc((p.name + ' ' + p.summary).toLowerCase())}">
     <div class="row between"><h2><a class="practice-go" href="#/practice/${p.id}">${esc(p.name)}</a></h2>${ICON_ARROW}</div>
     <p class="muted small-text">${practiceMeta(p)}</p>
+    ${p.event_only ? `<p class="small-text"><span class="chip soft">This Event Only</span>${orig(p) ? ` <span class="muted">Changed from ${esc(orig(p).name)}</span>` : ''}</p>` : ''}
     <p class="muted small-text practice-used">${useLine(p)}</p>
     ${p.summary ? `<p class="practice-sum">${esc(p.summary)}</p>` : ''}
     <div class="row between practice-foot"><span class="chips">${practiceAreaChips(p, areas)}</span>
@@ -63,10 +71,11 @@ async function practicesPage() {
     <div class="page-head"><div><h1 class="big">Practices</h1>
       <p class="muted">List of practices to use for team practice. Feel free to create a new practice if it doesn't exist yet!</p></div>
       <a class="button fill" href="#/practice/new">+ New Practice</a></div>
-    ${list.length ? `<div class="prac-tools">
+    ${all.length ? `<div class="prac-tools">
       <input type="search" id="pracSearch" class="search" placeholder="Search practices" value="${esc(practiceSearch)}" aria-label="Search practices">
       <select id="pracSort" class="team-filter" aria-label="Sort practices">${Object.entries(PRACTICE_SORTS).map(([k, l]) =>
         `<option value="${k}"${k === practiceSort ? ' selected' : ''}>Sort: ${l}</option>`).join('')}</select>
+      ${oneOffs.length ? `<label class="check"><input type="checkbox" id="pracOneOffs"${practiceOneOffs ? ' checked' : ''}> Show One-Offs (${oneOffs.length})</label>` : ''}
       ${used.length ? `<div class="chips prac-areas" id="pracAreas" role="group" aria-label="Filter by focus area">
         ${used.map(([a, n]) => `<label class="chip-check"><input type="checkbox" value="${a.id}"${practiceAreas.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)} (${n})</span></label>`).join('')}
         <button type="button" class="small ghost" id="pracClear"${practiceAreas.length ? '' : ' hidden'}>Clear</button></div>` : ''}
@@ -98,11 +107,12 @@ async function practicesPage() {
     const box = $('#practices');
     [...list].sort(sorts[practiceSort] || byName).forEach(p => box.append(box.querySelector(`[data-id="${p.id}"]`)));
   };
-  if (!list.length) return;
+  if (!all.length) return;
   sort();
   filter();
   $('#pracSearch').addEventListener('input', e => { practiceSearch = e.target.value; filter(); });
   $('#pracSort').addEventListener('change', e => { practiceSort = e.target.value; sort(); });
+  $('#pracOneOffs')?.addEventListener('change', e => { practiceOneOffs = e.target.checked; practiceAreas = []; redraw(); });
   $('#pracAreas')?.addEventListener('change', () => {
     practiceAreas = [...app.querySelectorAll('#pracAreas input:checked')].map(i => i.value); filter();
   });
@@ -119,18 +129,23 @@ async function practicePage(id, sub) {
   if (id === 'new') return practiceEditor(null);
   const t = ++navToken;
   view(loading);
+  // On the Calendar: its events and its one-offs' (read leniently, so it works before the one-offs migration).
+  const copies = await sb.from('team_practices').select('id').eq('based_on', id).then(r => (r.data || []).map(c => c.id));
   const [p, areas, events] = await Promise.all([
     sb.from('team_practices').select('*').eq('id', id).maybeSingle().then(must),
     loadAreas(),
-    sb.from('team_events').select('event_date, start_time').eq('practice_id', id).gte('event_date', today()).order('event_date').limit(4).then(must),
+    sb.from('team_events').select('event_date, start_time').in('practice_id', [id, ...copies]).gte('event_date', today()).order('event_date').limit(4).then(must),
   ]);
   if (t !== navToken) return;
   if (!p) return view(`${crumbs([['Home', '#/'], ['Practices', '#/practices']])}<section class="card empty"><h2>Practice Not Found</h2>
     <p class="muted">It may have been deleted.</p></section>`);
   if (sub === 'edit') return practiceEditor(p, areas);
+  const orig = p.based_on ? await sb.from('team_practices').select('id, name').eq('id', p.based_on).maybeSingle().then(r => r.data) : null;
+  if (t !== navToken) return;
 
   view(`${crumbs([['Home', '#/'], ['Practices', '#/practices'], [p.name]])}
-    <div class="page-head"><div><h1 class="big">${esc(p.name)}</h1><p class="muted">${practiceMeta(p)}</p></div>
+    <div class="page-head"><div><h1 class="big">${esc(p.name)}</h1><p class="muted">${practiceMeta(p)}</p>
+      ${p.event_only ? `<p><span class="chip soft">This Event Only</span>${orig ? ` Changed from <a href="#/practice/${orig.id}">${esc(orig.name)}</a>` : ''}</p>` : ''}</div>
       <div class="row"><button type="button" class="ghost danger" id="delPractice">Delete</button><button type="button" id="dupPractice">Duplicate</button><a class="button" href="#/practice/${p.id}/edit">Edit</a></div></div>
     <div class="practice-layout">
       <section class="card">
@@ -258,31 +273,61 @@ async function practiceEditor(p, areas) {
 // Practice Plan on the Summary's Next Practice or on a calendar event opens this, so a coach reads or changes the plan
 // without leaving the location (the user asked). Edit swaps in the editor's fields. After a save the page redraws
 // (it reads the practice again, so a new name shows) and the pop-up opens again with what was saved.
+// ev = the event it was opened from ({ id, canEdit }). Then Save to This Event Only (team_event_practice: a one-off
+// copy linked to just that event, or the event's own one-off changed in place) sits beside Save to Original Practice,
+// which changes the library practice for every event that uses it (a red line says how many; the user asked).
+// Saving a one-off to the original also links the event back to the original (the unused one-off is then deleted).
 
-async function practiceDialog(id) {
+async function practiceDialog(id, ev = null) {
   $('#dlg').close();   // the event pop-up it was opened from (ask() has one dialog)
-  const got = await busy(null, () => Promise.all([sb.from('team_practices').select('*').eq('id', id).maybeSingle().then(must), loadAreas()]));
+  const got = await busy(null, async () => {
+    const p = await sb.from('team_practices').select('*').eq('id', id).maybeSingle().then(must);
+    const orig = p?.event_only && p.based_on ? await sb.from('team_practices').select('*').eq('id', p.based_on).maybeSingle().then(must) : p;
+    const uses = orig ? await sb.from('team_events').select('id, event_date').eq('practice_id', orig.id).then(must) : [];
+    return [p, orig, uses, await loadAreas()];
+  });
   if (!got) return;
-  const [p, areas] = got;
+  const [p, orig, uses, areas] = got;
   if (!p) return flash('That practice was deleted.', 'error');
+  const oneOff = p.event_only;
   const look = await ask({ title: p.name, ok: 'Edit', cancelLabel: 'Close', wide: true,
-    onOpen: form => form.querySelector('[data-close]').addEventListener('click', () => $('#dlg').close()),
-    body: `<p class="muted">${practiceMeta(p)}</p>${practiceAboutHTML(p, areas)}
+    onOpen: form => form.querySelectorAll('[data-close]').forEach(a => a.addEventListener('click', () => $('#dlg').close())),
+    body: `${oneOff ? `<p class="one-off-note"><span class="chip soft">This Event Only</span>${orig
+        ? ` Changed from <a href="#/practice/${orig.id}" data-close>${esc(orig.name)}</a>` : ''}</p>` : ''}
+      <p class="muted">${practiceMeta(p)}</p>${practiceAboutHTML(p, areas)}
       ${p.blocks.length ? `<ol class="blocks">${practiceBlocksHTML(p)}</ol>` : '<p class="muted">No blocks yet.</p>'}
       <p class="hint">${practiceByline(p)} · <a href="#/practice/${p.id}" data-close>Open Practice Page</a></p>` });
   if (!look) return;
+
+  // Which saves there are: for this event only (when they can change the event) and to the original (when there is one).
+  const forEvent = !!ev?.canEdit, toOrig = !!orig && (!oneOff || forEvent);
+  const n = uses.length, ahead = uses.filter(u => u.event_date >= today()).length;
+  const warn = toOrig ? `<p class="field-error orig-warn">${ev ? 'Save to Original Practice changes' : 'Saving changes'} ${esc(orig.name)} in Practices${n
+    ? ` and on ${n === 1 ? 'the 1 event that uses' : `all ${n} events that use`} it${ahead ? ` (${ahead} coming up)` : ''}` : ''}.</p>` : '';
+  const saves = forEvent
+    ? { ok: 'Save to This Event Only', alt: toOrig ? { value: 'orig', label: 'Save to Original Practice', class: 'risky' } : null }
+    : { ok: toOrig && ev ? 'Save to Original Practice' : 'Save Practice', okClass: n > 1 ? 'risky' : '' };
   let form;
-  const res = await ask({ title: 'Edit Practice', ok: 'Save Practice', wide: true, extra: { value: 'delete', label: 'Delete' },
-    body: `<div class="practice-form in-dialog">${practiceFieldsHTML(p, areas)}</div>`,
+  const res = await ask({ title: 'Edit Practice', wide: true, extra: { value: 'delete', label: 'Delete' }, ...saves,
+    body: `${warn}<div class="practice-form in-dialog">${practiceFieldsHTML(p, areas)}</div>`,
     onOpen: f => { form = f; wirePracticeForm(f); } });
   if (!res) return;
   if (res.get('button') === 'delete') return deletePractice(p, () => redraw());
   const row = readPractice(form);
   const saved = await busy(null, async () => {
-    await sb.from('team_practices').update(row).eq('id', p.id).then(must);
-    flash('Practice saved.');
+    let to;
+    if (forEvent && res.get('button') !== 'orig') {
+      to = await sb.rpc('team_event_practice', { p_event: ev.id, p_name: row.name, p_summary: row.summary,
+        p_area_ids: row.area_ids, p_blocks: row.blocks }).then(must);
+      flash('Saved for this event only. The original practice is unchanged.');
+    } else {
+      to = toOrig ? orig.id : p.id;
+      await sb.from('team_practices').update(row).eq('id', to).then(must);
+      if (oneOff && ev) await sb.from('team_events').update({ practice_id: to }).eq('id', ev.id).then(must);
+      flash(n > 1 ? `Practice saved for all ${n} events.` : 'Practice saved.');
+    }
     redraw();
-    return true;
+    return to;
   });
-  if (saved) practiceDialog(p.id);
+  if (saved) practiceDialog(saved, ev);
 }

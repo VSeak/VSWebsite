@@ -145,13 +145,15 @@ document.addEventListener('input', e => {
 // One <dialog>. Returns the form's FormData when confirmed, or null. Settles on submit, not close.
 // cancel: false for a notice with just OK. wide: a bigger dialog (the check-in form).
 // extra: another button beside OK, e.g. Delete; its value comes back as FormData's 'button'.
+// alt: a second way to say OK ({ value, label }, just left of OK); like extra, but the form must be valid.
 // onOpen(form) runs once the dialog is showing (to wire up its fields).
-function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = false, extra = null, onOpen = null, okClass = '', cancelLabel = 'Cancel' }) {
+function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = false, extra = null, alt = null, onOpen = null, okClass = '', cancelLabel = 'Cancel' }) {
   const d = $('#dlg');
   d.className = wide ? 'wide' : '';
   d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body}
     <div class="row end">${extra ? `<button value="${extra.value}" formnovalidate class="ghost danger push-left">${esc(extra.label)}</button>` : ''}
     ${cancel ? `<button value="cancel" formnovalidate class="ghost">${esc(cancelLabel)}</button>` : ''}
+    ${alt ? `<button value="${alt.value}" class="${alt.class || 'ghost'}">${esc(alt.label)}</button>` : ''}
     <button value="ok" class="${okClass || (warn ? 'risky' : 'fill')}">${esc(ok)}</button></div></form>`;
   return new Promise(resolve => {
     const f = d.querySelector('form');
@@ -164,7 +166,7 @@ function ask({ title, body = '', ok = 'OK', warn = false, cancel = true, wide = 
     f.addEventListener('submit', e => {
       const v = e.submitter?.value;
       if (v === 'ok') resolve(new FormData(f));
-      else if (extra && v === extra.value) { const fd = new FormData(); fd.set('button', v); resolve(fd); }
+      else if ((extra && v === extra.value) || (alt && v === alt.value)) { const fd = new FormData(f); fd.set('button', v); resolve(fd); }
       else resolve(null);
     }, { once: true });
     d.addEventListener('cancel', () => resolve(null), { once: true });

@@ -41,7 +41,7 @@ async function summaryTab(loc, head, t) {
       .gte('event_date', today()).order('event_date').order('start_time', { nullsFirst: true }).limit(1).then(must),
   ]);
   const members = onTeam.map(x => x.member).filter(m => m && !m.left_on).sort((a, b) => a.name.localeCompare(b.name));
-  const plan = next?.practice_id ? await sb.from('team_practices').select('id, name, area_ids').eq('id', next.practice_id).maybeSingle().then(r => r.data) : null;
+  const plan = next?.practice_id ? await sb.from('team_practices').select('*').eq('id', next.practice_id).maybeSingle().then(r => r.data) : null;
   const checkins = members.length ? await sb.from('team_checkins').select('*').in('member_id', members.map(m => m.id))
     .order('checkin_date', { ascending: false }).order('created_at', { ascending: false }).then(must) : [];
   if (t !== navToken) return;
@@ -74,7 +74,7 @@ async function summaryTab(loc, head, t) {
   app.onclick = e => {
     const by = e.target.closest('[data-by]'), fb = e.target.closest('[data-focus]');
     const pl = e.target.closest('[data-plan]');
-    if (pl) practiceDialog(pl.dataset.plan);
+    if (pl) practiceDialog(pl.dataset.plan, { id: next.id, canEdit: true });   // the database refuses This Event Only if they can't change it
     if (e.target.closest('[data-cal-open]')) calOpen = { id: next.id, date: next.event_date };   // the calendar opens on it
     if (by) { sumBy = by.dataset.by; redraw(); }
     if (fb) focusForm(focus.find(f => f.id === fb.dataset.focus) || null, ctx);
@@ -146,7 +146,7 @@ function nextPracticeHTML(e, plan, loc, areas, members) {
     ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
     ${focusAreas.length ? `<p class="next-areas"><b>Focus Areas</b> <span class="chips">${focusAreas.map(a => `<span class="chip strong">${esc(a.name)}</span>`).join('')}</span></p>` : ''}
     ${headsUpHTML(members)}
-    <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button>` : ''}
+    <div class="row wrap next-actions">${plan ? `<button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}${plan.event_only ? ' (This Event Only)' : ''}</button>` : ''}
       <a class="button small" href="#/loc/${loc.id}/calendar" data-cal-open>Open in Calendar</a></div>
   </section>`;
 }

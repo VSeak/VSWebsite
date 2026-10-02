@@ -32,7 +32,8 @@ async function calendarTab(loc, head, t) {
     sb.from('team_events').select('*').or(`location_ids.is.null,location_ids.cs.{${loc.id}}`)
       .gte('event_date', addDays(from, -60)).order('event_date').order('start_time', { nullsFirst: true }).limit(1000).then(must),
     sb.from('team_locations').select('id, name, short_name').order('position').order('name').then(must),
-    sb.from('team_practices').select('id, name').order('name').then(r => r.data || []),   // the calendar still works if it can't be read
+    // The calendar still works if it can't be read (or before the one-offs migration: then without event_only).
+    sb.from('team_practices').select('id, name, event_only').order('name').then(r => r.data || sb.from('team_practices').select('id, name').order('name').then(r => r.data || [])),
   ]);
   if (t !== navToken) return;
   calPractices = practices;
@@ -104,11 +105,11 @@ async function showEvent(e, loc, locs) {
   const plan = hasPlan(e.kind) && calPractices.find(p => p.id === e.practice_id);
   const f = await ask({ title: e.title, ok: edit ? 'Edit' : 'Close', cancel: edit,
     extra: edit ? { value: 'delete', label: 'Delete' } : null,
-    onOpen: form => form.querySelector('[data-plan]')?.addEventListener('click', () => practiceDialog(plan.id)),   // the plan, in its own pop-up
+    onOpen: form => form.querySelector('[data-plan]')?.addEventListener('click', () => practiceDialog(plan.id, { id: e.id, canEdit: edit })),   // the plan, in its own pop-up
     body: `<p class="event-meta wrap"><span class="kind k-${e.kind}">${KINDS[e.kind]}</span> <span class="chip">${esc(locsText(e, locs))}</span>
         ${e.series_id ? '<span class="chip soft">Repeats Weekly</span>' : ''}</p>
       <p><strong>${esc(eventWhen(e))}</strong>${e.place ? `<br>${esc(e.place)}` : ''}</p>
-      ${plan ? `<p><button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}</button></p>` : ''}
+      ${plan ? `<p><button type="button" class="small" data-plan="${plan.id}">Practice Plan: ${esc(plan.name)}${plan.event_only ? ' (This Event Only)' : ''}</button></p>` : ''}
       ${e.notes ? `<div class="note-body">${para(e.notes)}</div>` : ''}
       <p class="hint">Added by ${esc(e.author_name || 'staff')}${e.edited_at ? ` · edited ${fmtWhen(e.edited_at)}` : ''}</p>` });
   if (!f || !edit) return;
@@ -158,8 +159,8 @@ async function editEvent(e, loc, locs) {
         `<option value="${k}"${k === v.kind ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Place <span class="muted">(optional)</span><input name="place" maxlength="200" value="${esc(v.place)}" autocomplete="off"></label></div>
       ${calPractices.length ? `<label id="evPlan"${hasPlan(v.kind) ? '' : ' hidden'}>Practice Plan <span class="muted">(optional, from Practices)</span>
-        <select name="practice_id"><option value="">None</option>${calPractices.map(p =>
-          `<option value="${p.id}"${p.id === v.practice_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+        <select name="practice_id"><option value="">None</option>${calPractices.filter(p => !p.event_only || p.id === v.practice_id).map(p =>
+          `<option value="${p.id}"${p.id === v.practice_id ? ' selected' : ''}>${esc(p.name)}${p.event_only ? ' (This Event Only)' : ''}</option>`).join('')}</select></label>` : ''}
       <div class="two"><label>Date<input type="date" name="event_date" required value="${v.event_date}" data-need="Pick the date."></label>
         <label id="evLast">Last Day <span class="muted">(if several days)</span><input type="date" name="end_date" value="${v.end_date || ''}" min="${v.event_date}"
           data-range="The last day can't be before the first."></label></div>

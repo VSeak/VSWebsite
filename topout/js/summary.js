@@ -138,7 +138,7 @@ function headsUpHTML(members) {
 function nextPracticeHTML(e, plan, loc, areas, members) {
   if (!e) return `<section class="card"><h2>Next Practice</h2><p class="muted">No practice on the calendar yet.</p>
     ${headsUpHTML(members)}
-    <a class="button small" href="#/loc/${loc.id}/calendar">Open Calendar</a></section>`;
+    <div class="row wrap next-actions"><a class="button small" href="#/loc/${loc.id}/calendar">Open Calendar</a></div></section>`;
   // The linked plan's Focus Areas (the user asked).
   const focusAreas = plan ? byGroup(areas).filter(a => plan.area_ids.includes(a.id)) : [];
   return `<section class="card next-practice"><h2>Next Practice</h2>

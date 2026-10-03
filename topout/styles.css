@@ -505,3 +505,10 @@ html:has(#dlg[open]), html:has(#dlg[open]) body { overflow: hidden; }
   .tag-group > small { flex-basis: 100%; min-width: 0; }
   .tag-pick { gap: .6rem; }
 }
+
+/* Check-In Answers: the answers past the first few, under Show All N Answers / Show Fewer. */
+details.said-more { margin: -.4rem 0 .6rem; }
+details.said-more > summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--accent-text); list-style: none; padding: .3rem 0; }
+details.said-more > summary::-webkit-details-marker { display: none; }
+details.said-more .when-open, details.said-more[open] .when-shut { display: none; }
+details.said-more[open] .when-open { display: inline; }

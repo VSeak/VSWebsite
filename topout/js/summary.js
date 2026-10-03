@@ -9,6 +9,7 @@
 // each member's latest check-in, whenever it was.
 let sumSince = (d => iso(new Date(d.getFullYear(), d.getMonth() - 6, 1)))(new Date());
 let sumBy = 'question';     // answers grouped by 'question' or by 'member'
+const SAID_SHOWN = 5;       // answers shown per question on Check-In Answers before Show All
 
 const avgText = x => x ? x.avg.toFixed(1) : '—';
 const firstLine = s => { const l = s.trim().split('\n')[0].replace(/\*\*/g, ''); return l.length > 90 ? l.slice(0, 88).trimEnd() + '…' : l; };
@@ -182,19 +183,26 @@ function answersCardHTML({ rows, areas, questions }) {
   const chips = tags => tags.length ? ` <span class="chips">${tags.map(a => `<span class="chip">${esc(a.name)}</span>`).join('')}</span>` : '';
   const who = m => `<a href="#/member/${m.id}">${esc(m.name)}</a>`;
   let body = '<p class="muted">No answers yet. They come from the questions on each check-in.</p>';
+  // A team can be 30 people (the user asked for a limit): By Question shows the first SAID_SHOWN answers to each question
+  // and folds the rest under Show All; By Member folds each member to one line.
+  const li = x => `<li><b>${who(x.m)}</b>${x.text ? ` <span>${para(x.text)}</span>` : ''}${chips(x.tags)}</li>`;
   if (said.length && sumBy === 'question') body = questions.map(q => {
     const items = said.flatMap(r => r.answers.filter(x => x.q.id === q.id).map(x => ({ m: r.m, ...x })));
-    return items.length ? `<h3>${esc(q.prompt)}</h3><ul class="said">${items.map(x =>
-      `<li><b>${who(x.m)}</b>${x.text ? ` <span>${para(x.text)}</span>` : ''}${chips(x.tags)}</li>`).join('')}</ul>` : '';
+    const rest = items.slice(SAID_SHOWN);
+    return items.length ? `<h3>${esc(q.prompt)} <span class="muted small-text">(${items.length})</span></h3>
+      <ul class="said">${items.slice(0, SAID_SHOWN).map(li).join('')}</ul>
+      ${rest.length ? `<details class="said-more"><summary><span class="when-shut">Show All ${items.length} Answers</span><span class="when-open">Show Fewer</span></summary>
+        <ul class="said">${rest.map(li).join('')}</ul></details>` : ''}` : '';
   }).join('');
-  else if (said.length) body = said.map(r => `<h3>${who(r.m)} <span class="muted small-text">${fmtDate(r.c.checkin_date)} · by ${esc(r.c.author_name || 'staff')}</span></h3>
-    <ul class="said">${r.answers.map(x => `<li><b>${esc(x.q.prompt)}</b>${x.text ? ` <span>${para(x.text)}</span>` : ''}${chips(x.tags)}</li>`).join('')}</ul>`).join('');
+  else if (said.length) body = said.map(r => `<details class="history"><summary><b>${esc(r.m.name)}</b>
+      <span class="muted small-text">${fmtDate(r.c.checkin_date)} · by ${esc(r.c.author_name || 'staff')}</span></summary>
+    <ul class="said">${r.answers.map(x => `<li><b>${esc(x.q.prompt)}</b>${x.text ? ` <span>${para(x.text)}</span>` : ''}${chips(x.tags)}</li>`).join('')}</ul></details>`).join('');
   return `<section class="card"><div class="row between wrap"><h2>Check-In Answers</h2>
       <div class="seg" role="group" aria-label="Group answers by">
         <button type="button" data-by="question" class="${sumBy === 'question' ? 'on' : ''}">By Question</button>
         <button type="button" data-by="member" class="${sumBy === 'member' ? 'on' : ''}">By Member</button></div></div>
     <p class="hint">What each member told you on their latest check-in, in their words, with the focus areas you tagged.
-      By Question lines up the team's answers to each question; By Member shows one person's at a time.</p>
+      By Question shows the first ${SAID_SHOWN} answers to each question (Show All for the rest); By Member lists each member, tap one to read theirs.</p>
     ${body}</section>`;
 }
 

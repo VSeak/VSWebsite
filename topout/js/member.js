@@ -175,7 +175,7 @@ function coachNotesHTML({ notes }) {
 
 function detailsHTML(m, locs) {
   const hidden = m.teams.filter(id => !locs.some(l => l.id === id)).length;   // teams at locations this coach can't see
-  return `<section class="card"><h2>Details</h2>
+  return `<section class="card" data-fold><h2>Details</h2>
     <form id="detailsForm" class="stack" data-save>
       <div class="two"><label>First Name<input name="first_name" maxlength="60" required value="${esc(m.first_name)}" data-need="Enter their first name."></label>
         <label>Last Name<input name="last_name" maxlength="60" required value="${esc(m.last_name)}" data-need="Enter their last name."></label></div>

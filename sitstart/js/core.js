@@ -369,8 +369,8 @@ function installBanner(how) {
   if (!matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) > 600) return;   // phones only
   try { if (Date.now() < +localStorage.getItem(INSTALL_LATER)) return; } catch {}
   $('p', bar).innerHTML = how === 'ios'
-    ? `Add ${esc(CONFIG.siteName)} to your home screen: tap Share ${SHARE_ICON} then <b>Add to Home Screen</b>. You'll sign in once more there.`
-    : `Get ${esc(CONFIG.siteName)} on your home screen. It opens full screen, like an app.`;
+    ? `Install the ${esc(CONFIG.siteName)} web app on your phone!<br><small>Tap Share ${SHARE_ICON} then <b>Add to Home Screen</b>.</small>`
+    : `Install the ${esc(CONFIG.siteName)} web app on your phone!`;
   $('[data-install="go"]', bar).hidden = how === 'ios';
   bar.hidden = false;
 }

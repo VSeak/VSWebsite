@@ -48,8 +48,41 @@ function view(html, { keepScroll = false } = {}) {
   app.oninput = app.onchange = app.onclick = app.onsubmit = null;
   app.innerHTML = html;
   markUnsaved();   // Save buttons start greyed out
+  foldCards();
   if (!keepScroll) window.scrollTo(0, 0);
 }
+
+// Every card with a heading folds up when its title is tapped (the user asked). What a coach folds is remembered on this
+// device by the card's title (numbers in it ignored), so Circuit Colors stays folded. data-fold starts a card folded (a filled-in
+// Intake); that one is remembered per page, for this visit only. data-nofold: a card whose title changes (the calendar's).
+let foldSaved = {};
+try { foldSaved = JSON.parse(localStorage.getItem('topout.fold') || '{}'); } catch {}
+const foldVisit = {};
+function foldCards() {
+  for (const card of app.querySelectorAll('section.card:not(.empty, [data-nofold])')) {
+    const first = card.firstElementChild;
+    const head = first?.matches('h2') ? first : first?.matches('.row') && first.firstElementChild?.matches('h2') ? first : null;
+    if (!head || card.childElementCount < 2) continue;
+    const h2 = head.matches('h2') ? head : head.firstElementChild;
+    const title = h2.textContent.trim().replace(/\d+/g, '#');
+    const byPage = card.hasAttribute('data-fold'), key = byPage ? location.hash + '|' + title : title;
+    const folded = (byPage ? foldVisit : foldSaved)[key] ?? byPage;
+    head.classList.add('fold-head');
+    h2.innerHTML = `<button type="button" class="fold-btn" aria-expanded="${!folded}">${h2.innerHTML}</button>`;
+    card.classList.toggle('folded', folded);
+    card.dataset.foldKey = key;
+  }
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('.fold-btn'); if (!b) return;
+  const card = b.closest('.card'), folded = card.classList.toggle('folded'), key = card.dataset.foldKey;
+  b.setAttribute('aria-expanded', !folded);
+  if (card.hasAttribute('data-fold')) foldVisit[key] = folded;
+  else {
+    if (folded) foldSaved[key] = true; else delete foldSaved[key];
+    try { localStorage.setItem('topout.fold', JSON.stringify(foldSaved)); } catch {}
+  }
+});
 
 let flashTimer;
 function flash(msg, kind = 'ok') {

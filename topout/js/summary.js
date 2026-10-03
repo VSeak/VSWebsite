@@ -175,7 +175,7 @@ function areaCardHTML({ rows, s }) {
   </section>`;
 }
 
-// ---------- What They Said ----------
+// ---------- Check-In Answers (was What They Said) ----------
 
 function answersCardHTML({ rows, areas, questions }) {
   const said = rows.map(r => ({ ...r, answers: answered(r.c, questions, areas) })).filter(r => r.answers.length);
@@ -189,10 +189,12 @@ function answersCardHTML({ rows, areas, questions }) {
   }).join('');
   else if (said.length) body = said.map(r => `<h3>${who(r.m)} <span class="muted small-text">${fmtDate(r.c.checkin_date)} · by ${esc(r.c.author_name || 'staff')}</span></h3>
     <ul class="said">${r.answers.map(x => `<li><b>${esc(x.q.prompt)}</b>${x.text ? ` <span>${para(x.text)}</span>` : ''}${chips(x.tags)}</li>`).join('')}</ul>`).join('');
-  return `<section class="card"><div class="row between wrap"><h2>What They Said</h2>
+  return `<section class="card"><div class="row between wrap"><h2>Check-In Answers</h2>
       <div class="seg" role="group" aria-label="Group answers by">
         <button type="button" data-by="question" class="${sumBy === 'question' ? 'on' : ''}">By Question</button>
         <button type="button" data-by="member" class="${sumBy === 'member' ? 'on' : ''}">By Member</button></div></div>
+    <p class="hint">What each member told you on their latest check-in, in their words, with the focus areas you tagged.
+      By Question lines up the team's answers to each question; By Member shows one person's at a time.</p>
     ${body}</section>`;
 }
 

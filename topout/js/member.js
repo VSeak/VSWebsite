@@ -60,7 +60,7 @@ const COMPS = { '': 'Not Asked Yet', yes: 'Yes', maybe: 'Maybe', no: 'No' };
 // The labels use the member's pronouns: Why She Joined, What They Want.
 function intakeHTML(m) {
   const empty = !m.intake_why.trim() && !m.intake_wants.trim(), pr = pronounWords(m.pronouns);
-  return `<section class="card${empty ? ' overdue' : ''}">
+  return `<section class="card${empty ? ' overdue"' : '" data-fold'}>
     <div class="row between"><h2>Intake</h2>${empty ? '<span class="tag warn">Needs Intake</span>' : ''}</div>
     <p class="hint">What ${esc(m.first_name)} wants out of Adult Team, from a chat with ${pr.obj}.${m.intake_updated_at ? ` Updated ${fmtWhen(m.intake_updated_at)}.` : ''}</p>
     <form id="intakeForm" class="stack" data-save>
@@ -107,7 +107,7 @@ function joinedForHTML(m, x) {
 }
 function exitCardHTML(m, x) {
   const pr = pronounWords(m.pronouns);
-  return `<section class="card">
+  return `<section class="card"${exitEmpty(x) ? '' : ' data-fold'}>
     <div class="row between"><h2>Exit Intake</h2>${exitEmpty(x) ? '<span class="tag">Not Filled In</span>' : ''}</div>
     <p class="hint">Why ${esc(m.first_name)} left Adult Team, from a chat with ${pr.obj}. Every field is optional.${x?.edited_at ? ` Updated ${fmtWhen(x.edited_at)}.` : ''}</p>
     ${joinedForHTML(m, x)}

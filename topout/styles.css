@@ -486,3 +486,22 @@ dialog .row.end.many > button[value="cancel"] { margin-right: auto; }
 /* A one-off's Practice Plan button: (This Event Only) on its own line, so a long name doesn't wrap into it. */
 .plan-one-off { border-radius: 14px; flex-direction: column; gap: .1rem; }
 .plan-one-off > span { display: block; font-weight: 500; font-size: .85em; color: var(--muted); }
+
+/* A card folds up when its title is tapped (foldCards in core.js): the title is a button, with a chevron after it. */
+.fold-btn { font: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0; border-radius: 6px; padding: 0; margin: 0;
+  text-align: left; justify-content: flex-start; gap: .45rem; line-height: inherit; }
+.fold-btn::after { content: ""; flex: none; width: .45em; height: .45em; border: solid var(--muted); border-width: 0 2px 2px 0;
+  transform: translateY(-.15em) rotate(45deg); transition: transform .15s; }
+.card.folded .fold-btn::after { transform: translateY(.05em) rotate(-135deg); }
+.card.folded > :not(.fold-head) { display: none; }
+.card.folded > .fold-head, .card.folded > .fold-head h2 { margin-bottom: 0; }
+
+/* A pop-up keeps the page behind it still (phones scrolled it). */
+html:has(#dlg[open]), html:has(#dlg[open]) body { overflow: hidden; }
+#dlg { overscroll-behavior: contain; }
+
+/* Focus Area pills on a phone: the group's name on its own line, its pills under it. */
+@media (max-width: 560px) {
+  .tag-group > small { flex-basis: 100%; min-width: 0; }
+  .tag-pick { gap: .6rem; }
+}

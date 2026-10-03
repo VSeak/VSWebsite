@@ -53,7 +53,7 @@ async function calendarTab(loc, head, t) {
   const dows = cells.slice(0, 7).map(d => day(d).toLocaleDateString(undefined, { weekday: 'short' }));
   view(`${head}
     <div class="cal-layout">
-      <section class="card cal-card">
+      <section class="card cal-card" data-nofold>
         <div class="row between cal-head"><h2>${fmtMonthYear(calMonth)}</h2>
           <div class="row"><button type="button" class="small ghost" data-month="-1" aria-label="Previous month">‹</button>
             <button type="button" class="small ghost" data-month="0">Today</button>
@@ -62,7 +62,7 @@ async function calendarTab(loc, head, t) {
         <div class="legend">${Object.entries(KINDS).map(([k, v]) => `<span><i class="k-${k}"></i>${v}</span>`).join('')}</div>
       </section>
       <div class="side">
-        <section class="card">
+        <section class="card" data-nofold>
           <div class="row between"><h2>${fmtDay(calPick)}</h2><button type="button" class="small fill" id="addEvent">+ Add Event</button></div>
           ${picked.length ? picked.map(e => eventRow(e, { where: alsoAt(e, loc, locs) })).join('')
             : '<p class="muted">Nothing on this day.</p>'}

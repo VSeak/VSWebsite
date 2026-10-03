@@ -513,3 +513,12 @@ details.said-more > summary { cursor: pointer; font-weight: 600; font-size: .9re
 details.said-more > summary::-webkit-details-marker { display: none; }
 details.said-more .when-open, details.said-more[open] .when-shut { display: none; }
 details.said-more[open] .when-open { display: inline; }
+
+/* Install banner (core.js installBanner): phones only, under the header */
+#installBar { display: grid; grid-template-columns: 40px 1fr; gap: .4rem .75rem; align-items: center; padding: .7rem 16px;
+  background: var(--accent-soft); border-bottom: 1px solid var(--line); }
+#installBar[hidden] { display: none; }
+#installBar img { width: 40px; height: 40px; border-radius: 10px; }
+#installBar p { margin: 0; font-size: .9rem; }
+.install-btns { grid-column: 2; display: flex; gap: .5rem; justify-content: flex-end; }
+.share-ic { width: 1.1em; height: 1.1em; vertical-align: -.15em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

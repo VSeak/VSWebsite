@@ -375,3 +375,37 @@ function wireGrips(moved, root = app) {
   if (gripFocus) root.querySelector(`[data-id="${gripFocus}"] [data-grip]`)?.focus();
   gripFocus = null;
 }
+
+// ---------- Install banner ----------
+// On a phone, a banner under the header offers to put the app on the home screen (it then opens full screen).
+// Android browsers hand the page their install box (beforeinstallprompt), so Install opens it. iPhones have none,
+// so there it says how: Share, then Add to Home Screen (Safari only: apps' built-in browsers can't add one).
+// Never once installed; Not Now hides it on this device for 30 days.
+const INSTALL_LATER = CONFIG.siteName.toLowerCase().replace(/\s/g, '') + '.installLater';
+const SHARE_ICON = '<svg class="share-ic" viewBox="0 0 24 24" aria-label="Share"><path d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8"/></svg>';
+let installBox = null;
+function installBanner(how) {
+  const bar = $('#installBar');
+  if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) return;
+  if (!matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) > 600) return;   // phones only
+  try { if (Date.now() < +localStorage.getItem(INSTALL_LATER)) return; } catch {}
+  $('p', bar).innerHTML = how === 'ios'
+    ? `Add ${esc(CONFIG.siteName)} to your home screen: tap Share ${SHARE_ICON} then <b>Add to Home Screen</b>. You'll sign in once more there.`
+    : `Get ${esc(CONFIG.siteName)} on your home screen. It opens full screen, like an app.`;
+  $('[data-install="go"]', bar).hidden = how === 'ios';
+  bar.hidden = false;
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installBox = e; installBanner('android'); });
+window.addEventListener('appinstalled', () => { $('#installBar').hidden = true; });
+if (/iPhone|iPod/.test(navigator.userAgent) && /Safari\//.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)) installBanner('ios');
+$('#installBar').addEventListener('click', async e => {
+  const b = e.target.closest('[data-install]');
+  if (!b) return;
+  if (b.dataset.install === 'go' && installBox) {
+    installBox.prompt();
+    const { outcome } = await installBox.userChoice;
+    installBox = null;
+    if (outcome !== 'accepted') return;   // they can still tap Not Now
+  } else try { localStorage.setItem(INSTALL_LATER, Date.now() + 30 * 864e5); } catch {}
+  $('#installBar').hidden = true;
+});

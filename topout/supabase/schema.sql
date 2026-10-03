@@ -653,7 +653,7 @@ create policy "admin: everything" on public.team_staff_locations for all to auth
   using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
 
 -- Coaches see only their locations; admins see and manage all.
-create policy "staff: read" on public.team_locations for select to authenticated using (id = any ((select public.team_my_locations())));
+create policy "staff: read" on public.team_locations for select to authenticated using (id in (select unnest(public.team_my_locations())));
 create policy "admin: everything" on public.team_locations for all to authenticated
   using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
 
@@ -710,7 +710,7 @@ create policy "admin: everything" on public.team_checkin_questions for all to au
 
 -- Team Focus: any coach at the location.
 create policy "staff: everything" on public.team_focus for all to authenticated
-  using (location_id = any ((select public.team_my_locations()))) with check (public.team_can_location(location_id));
+  using (location_id in (select unnest(public.team_my_locations()))) with check (public.team_can_location(location_id));
 
 -- Practices: shared, so every staff member reads, adds, changes and deletes them, wherever they coach.
 create policy "staff: everything" on public.team_practices for all to authenticated

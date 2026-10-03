@@ -23,7 +23,7 @@ $$;
 revoke execute on function public.team_my_locations(), public.team_my_members() from public, anon;
 grant execute on function public.team_my_locations(), public.team_my_members() to authenticated;
 
-alter policy "staff: read" on public.team_locations to authenticated using (id = any ((select public.team_my_locations())));
+alter policy "staff: read" on public.team_locations to authenticated using (id in (select unnest(public.team_my_locations())));
 alter policy "staff: read" on public.team_members to authenticated using (id in (select public.team_my_members()));
 alter policy "staff: read" on public.team_member_locations to authenticated using (member_id in (select public.team_my_members()));
 alter policy "staff: everything" on public.team_goals to authenticated
@@ -32,7 +32,7 @@ alter policy "staff: read" on public.team_exits to authenticated using (member_i
 alter policy "staff: read" on public.team_coach_notes to authenticated using (member_id in (select public.team_my_members()));
 alter policy "staff: read" on public.team_checkins to authenticated using (member_id in (select public.team_my_members()));
 alter policy "staff: everything" on public.team_focus to authenticated
-  using (location_id = any ((select public.team_my_locations()))) with check (public.team_can_location(location_id));
+  using (location_id in (select unnest(public.team_my_locations()))) with check (public.team_can_location(location_id));
 alter policy "staff: read" on public.team_events to authenticated
   using ((location_ids is null and (select public.team_is_staff())) or location_ids && (select public.team_my_locations()));
 

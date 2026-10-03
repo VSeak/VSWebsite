@@ -319,6 +319,20 @@ language sql stable security definer set search_path = '' as $$
     select 1 from public.team_member_locations ml where ml.member_id = p and public.team_can_location(ml.location_id));
 $$;
 
+-- The same two, worked out once per query for the read rules (a lookup per row was slow on long lists).
+create function public.team_my_locations() returns uuid[]
+language sql stable security definer set search_path = '' as $$
+  select case when public.team_is_admin() then (select coalesce(array_agg(id), '{}') from public.team_locations)
+    else (select coalesce(array_agg(sl.location_id), '{}') from public.team_staff_locations sl join public.team_staff s on s.id = sl.staff_id
+          where s.email = lower(auth.jwt() ->> 'email') and 'coach' = any (s.roles)) end;
+$$;
+create function public.team_my_members() returns setof uuid
+language sql stable security definer set search_path = '' as $$
+  select id from public.team_members where public.team_is_admin()
+  union
+  select member_id from public.team_member_locations where location_id = any (public.team_my_locations());
+$$;
+
 -- Can see one of these locations (reading an event), or every one of them (changing it).
 create function public.team_can_any_location(p uuid[]) returns boolean
 language sql stable security definer set search_path = '' as $$
@@ -639,18 +653,18 @@ create policy "admin: everything" on public.team_staff_locations for all to auth
   using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
 
 -- Coaches see only their locations; admins see and manage all.
-create policy "staff: read" on public.team_locations for select to authenticated using (public.team_can_location(id));
+create policy "staff: read" on public.team_locations for select to authenticated using (id = any ((select public.team_my_locations())));
 create policy "admin: everything" on public.team_locations for all to authenticated
   using ((select public.team_is_admin())) with check ((select public.team_is_admin()));
 
 -- Members: anyone who coaches one of their teams. New members come in through team_add_member().
-create policy "staff: read" on public.team_members for select to authenticated using (public.team_can_member(id));
+create policy "staff: read" on public.team_members for select to authenticated using (id in (select public.team_my_members()));
 create policy "staff: change" on public.team_members for update to authenticated
   using (public.team_can_member(id)) with check (public.team_can_member(id));
 create policy "admins: delete" on public.team_members for delete to authenticated using (public.team_is_admin());   -- Delete Member is admins only
 
 -- Teams: anyone who sees the member sees all their teams; a coach adds, takes off or marks inactive only their own locations.
-create policy "staff: read" on public.team_member_locations for select to authenticated using (public.team_can_member(member_id));
+create policy "staff: read" on public.team_member_locations for select to authenticated using (member_id in (select public.team_my_members()));
 create policy "staff: add" on public.team_member_locations for insert to authenticated
   with check (public.team_can_location(location_id) and public.team_can_member(member_id));
 create policy "staff: remove" on public.team_member_locations for delete to authenticated using (public.team_can_location(location_id));
@@ -658,17 +672,17 @@ create policy "staff: change" on public.team_member_locations for update to auth
   using (public.team_can_location(location_id)) with check (public.team_can_location(location_id));
 
 create policy "staff: everything" on public.team_goals for all to authenticated
-  using (public.team_can_member(member_id)) with check (public.team_can_member(member_id));
+  using (member_id in (select public.team_my_members())) with check (public.team_can_member(member_id));
 
 -- Exit Intake: anyone who sees the member reads, adds and changes it; it goes with the member (admins delete).
-create policy "staff: read" on public.team_exits for select to authenticated using (public.team_can_member(member_id));
+create policy "staff: read" on public.team_exits for select to authenticated using (member_id in (select public.team_my_members()));
 create policy "staff: add" on public.team_exits for insert to authenticated with check (public.team_can_member(member_id));
 create policy "staff: change" on public.team_exits for update to authenticated
   using (public.team_can_member(member_id)) with check (public.team_can_member(member_id));
 create policy "admins: delete" on public.team_exits for delete to authenticated using ((select public.team_is_admin()));
 
 -- Coach Notes and check-ins: anyone at the location reads and adds; the author or an admin edits or deletes.
-create policy "staff: read" on public.team_coach_notes for select to authenticated using (public.team_can_member(member_id));
+create policy "staff: read" on public.team_coach_notes for select to authenticated using (member_id in (select public.team_my_members()));
 create policy "staff: add" on public.team_coach_notes for insert to authenticated with check (public.team_can_member(member_id));
 create policy "author: change" on public.team_coach_notes for update to authenticated
   using (public.team_can_member(member_id) and (author_id = (select auth.uid()) or (select public.team_is_admin())))
@@ -676,7 +690,7 @@ create policy "author: change" on public.team_coach_notes for update to authenti
 create policy "author: delete" on public.team_coach_notes for delete to authenticated
   using (public.team_can_member(member_id) and (author_id = (select auth.uid()) or (select public.team_is_admin())));
 
-create policy "staff: read" on public.team_checkins for select to authenticated using (public.team_can_member(member_id));
+create policy "staff: read" on public.team_checkins for select to authenticated using (member_id in (select public.team_my_members()));
 create policy "staff: add" on public.team_checkins for insert to authenticated with check (public.team_can_member(member_id));
 create policy "author: change" on public.team_checkins for update to authenticated
   using (public.team_can_member(member_id) and (author_id = (select auth.uid()) or (select public.team_is_admin())))
@@ -696,7 +710,7 @@ create policy "admin: everything" on public.team_checkin_questions for all to au
 
 -- Team Focus: any coach at the location.
 create policy "staff: everything" on public.team_focus for all to authenticated
-  using (public.team_can_location(location_id)) with check (public.team_can_location(location_id));
+  using (location_id = any ((select public.team_my_locations()))) with check (public.team_can_location(location_id));
 
 -- Practices: shared, so every staff member reads, adds, changes and deletes them, wherever they coach.
 create policy "staff: everything" on public.team_practices for all to authenticated
@@ -705,7 +719,7 @@ create policy "staff: everything" on public.team_practices for all to authentica
 -- Calendar: staff read the events at their locations and every-location events; they change an event only when
 -- they have all its locations. Admins change any (and only they add every-location ones).
 create policy "staff: read" on public.team_events for select to authenticated
-  using ((location_ids is null and (select public.team_is_staff())) or public.team_can_any_location(location_ids));
+  using ((location_ids is null and (select public.team_is_staff())) or location_ids && (select public.team_my_locations()));
 create policy "staff: write" on public.team_events for all to authenticated
   using ((select public.team_is_admin()) or (location_ids is not null and public.team_can_all_locations(location_ids)))
   with check ((select public.team_is_admin()) or (location_ids is not null and public.team_can_all_locations(location_ids)));
@@ -803,13 +817,13 @@ revoke execute on function public.team_member_left(), public.team_only_admin_lea
 
 -- 6. Nothing here needs the anonymous (signed-out) role.
 revoke execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
-  public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
+  public.team_can_location(uuid), public.team_can_member(uuid), public.team_my_locations(), public.team_my_members(), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
   public.team_staff_list(), public.team_stamp_sender(text), public.team_add_member(text, text, text, text, date, uuid[]),
   public.team_same_name(text, text), public.team_join_location(uuid, uuid), public.team_staff_lookup(text),
   public.team_event_practice(uuid, text, text, uuid[], jsonb)
   from public, anon;
 grant execute on function public.team_my_id(), public.team_my_roles(), public.team_is_staff(), public.team_is_admin(),
-  public.team_can_location(uuid), public.team_can_member(uuid), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
+  public.team_can_location(uuid), public.team_can_member(uuid), public.team_my_locations(), public.team_my_members(), public.team_can_any_location(uuid[]), public.team_can_all_locations(uuid[]),
   public.team_staff_list(), public.team_stamp_sender(text), public.team_add_member(text, text, text, text, date, uuid[]),
   public.team_same_name(text, text), public.team_join_location(uuid, uuid), public.team_staff_lookup(text),
   public.team_event_practice(uuid, text, text, uuid[], jsonb)

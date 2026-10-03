@@ -32,10 +32,20 @@ async function boot() {
 // catches up with the sign-in server's, and it answers 401 "JWT issued at future". Wait and try again, up to 3 times.
 async function skewFetch(url, opts) {
   for (let i = 1; ; i++) {
+    const t0 = performance.now();
     const res = await fetch(url, opts);
+    slowCheck(url, opts, performance.now() - t0);
     if (res.status !== 401 || i > 3 || !/issued at future/i.test(await res.clone().text())) return res;
     await new Promise(r => setTimeout(r, 1000 * i));
   }
+}
+
+// A call over 4 seconds goes to the error log (logError), by address without the query (it can hold names).
+// Not while the page is hidden: a phone pauses a page in the background, which isn't the server being slow.
+function slowCheck(url, opts, ms) {
+  const path = new URL(String(url)).pathname;
+  if (ms > 4000 && !document.hidden && !path.endsWith('/app_errors'))
+    logError('slow', `${opts?.method || 'GET'} ${path}`, `${(ms / 1000).toFixed(1)} s`);
 }
 
 async function loadMe(user) {

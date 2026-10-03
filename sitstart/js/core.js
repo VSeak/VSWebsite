@@ -86,8 +86,26 @@ function flash(msg, kind = 'ok') {
   flashTimer = setTimeout(() => { f.hidden = true; }, kind === 'error' ? 7000 : 3500);
 }
 
+// ---------- Error log ----------
+// Unexpected errors and server calls over 4 seconds (skewFetch) go to the shared app_errors table
+// (supabase-shared/2026-10-03-app-errors.sql), so problems show up without anyone reporting them. The app can only
+// add rows; the owner reads them in Supabase's Table Editor. At most 10 a page load, each message once.
+// Skipped: a wrong password, being offline, and the database refusals msgOf turns into a friendly message.
+const logged = new Set();
+function logError(kind, message, detail = '') {
+  message = String(message ?? '').slice(0, 1000);
+  if (!sb || !message || logged.size >= 10 || logged.has(kind + message)) return;
+  if (/invalid login credentials|failed to fetch|load failed|networkerror|_fkey|duplicate key|^Script error.?$|ResizeObserver loop/i.test(message)) return;
+  logged.add(kind + message);
+  sb.from('app_errors').insert({ app: 'sitstart', kind, message, detail: String(detail ?? '').slice(0, 4000),
+    page: location.hash.slice(0, 300), user_agent: navigator.userAgent.slice(0, 300) }).then(() => {}, () => {});
+}
+window.addEventListener('error', e => logError('error', e.message, e.error?.stack || `${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', e => logError('error', e.reason?.message ?? e.reason, e.reason?.stack));
+
 function msgOf(e) {
   const m = e?.message || String(e);
+  logError('error', m, e?.stack);
   if (/invalid login credentials/i.test(m)) return "That email and password don't match. Forgot your password? Tap Forgot Password below.";
   if (/failed to fetch/i.test(m)) return "Couldn't reach the server. Check your connection and try again.";
   if (/does not exist|could not find the function/i.test(m)) return m + ' (Has supabase/schema.sql been run?)';
